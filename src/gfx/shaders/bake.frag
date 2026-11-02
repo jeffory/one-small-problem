@@ -41,4 +41,24 @@ void main(){vec2 u=v;vec4 a=vec4(0);vec3 e=vec3(0);
  else if(uLay==3){a=panel(u,vec3(.2,.195,.18),vec3(.17,.165,.15),vec3(.23,.22,.2),0.,e);} // lander hull
  else if(uLay==4){a=vec4(.008,.009,.011,0.);}  // dark glass
  else if(uLay==5){float n=fbm(u,vec2(4.),5);a=vec4(vec3(n),n);} // macro variation
+ else if(uLay==6){ // alien flesh
+  vec2 wv=vec2(fbm(u,vec2(4.),4),fbm(u+.37,vec2(4.),4));float vv=fbm(u+.12*wv,vec2(5.),4),vein=smoothstep(.035,0.,abs(vv-.5));
+  float mo=fbm(u,vec2(10.),4);vec3 w=wor(u,9.);float bump=smoothstep(.5,0.,w.x);
+  vec3 c=mix(vec3(.06,.03,.04),vec3(.16,.09,.08),mo);c*=.75+.4*bump;c=mix(c,vec3(.24,.26,.05),vein*.85);
+  a=vec4(c,mo*.4+bump*.35+vein*.3);e=vec3(.03,.045,0.)*vein;}
+ else if(uLay==7){ // chitin: dark glossy segmented shell
+  float b=fract(u.y*5.),seg=smoothstep(0.,.12,b)*smoothstep(1.,.85,b),n=fbm(u,vec2(10.),5);vec3 w=wor(u,12.);float pit=smoothstep(.15,0.,w.x);
+  vec3 c=mix(vec3(.04,.03,.022),vec3(.14,.095,.05),n*.8+seg*.3);c*=.55+.45*seg;c*=1.-pit*.5;a=vec4(c,seg*.6+n*.3-pit*.2);}
+ else if(uLay==8){a=vec4(.02,.02,.01,0.);e=vec3(.95,1.,.3);} // eyes
+ else if(uLay==9){float g=step(.35,fract(u.y*6.));a=vec4(.04,.05,.045,g*.3);e=vec3(.3,1.,.7)*(.35+.65*g);} // coil
+ else if(uLay==10){a=panel(u,vec3(.075,.075,.085),vec3(.11,.08,.05),vec3(.085,.06,.1),1.,e);} // alien panel
+ else if(uLay==11){ // tape: dull grey cloth, fine diagonal weave
+  vec2 d=vec2(u.x+u.y,u.x-u.y);float wv=.5*vn(d*64.,vec2(64.))+.5*vn(d*96.,vec2(96.));
+  a=vec4(vec3(.16+.08*wv),wv);}
+ else if(uLay==12){ // scorch: charred black-brown, cell edges slightly lighter
+  float n=fbm(u,vec2(6.),5);vec3 w=wor(u,9.);float ed=smoothstep(.1,0.,w.y-w.x);
+  a=vec4(vec3(.012,.01,.008)+n*vec3(.028,.022,.017)+ed*vec3(.008,.006,.004),n*.5+ed*.3);}
+ else if(uLay==13){ // goo: sickly yellow-green with bright bubbles
+  float n=fbm(u,vec2(5.),4);vec3 w=wor(u,8.);float bub=smoothstep(.3,.08,w.x);
+  a=vec4(vec3(.12,.16,.03)*(.75+.5*n)+bub*vec3(.04,.05,.01),bub*.6+n*.3);e=vec3(.15,.2,.03)*bub;}
  oA=a;oE=vec4(e,1.);}
