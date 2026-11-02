@@ -24,7 +24,8 @@ export function cycleWeapon(a, dir) {
     if (a.owned[i]) { a.cur = i; return; }
   }
 }
-export const coolWeapon = (a, dt) => { a.cool = Math.max(0, a.cool - dt); };
+// M3: the cooldown carries its remainder, so the fire rate doesn't snap to the sub-step; idle banks at most one sub-step (<= .05 s).
+export const coolWeapon = (a, dt) => { a.cool = Math.max(-Math.min(dt, .05), a.cool - dt); };
 export function fireWeapon(a, eye, basis, aimPoint) {
   const w = a.cur;
   if (w < 0 || a.cool > 0) return null;
@@ -33,7 +34,7 @@ export function fireWeapon(a, eye, basis, aimPoint) {
     if (a.owned[0] && w !== 0) a.cur = 0;
     return null;
   }
-  a.cool = W.cool;
+  a.cool += W.cool;
   if (W.melee) return { melee: true, w };
   a.cells -= W.cells;
   const { f, r, u } = basis, m = W.muzzle, bolts = [];

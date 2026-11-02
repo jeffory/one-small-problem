@@ -16,6 +16,12 @@ test('scattergun: five bolts fanned within the spread, four cells', () => { cons
   const ang = s.bolts.map(b => Math.atan2(b.vx, -b.vz)); assert.ok(Math.max(...ang) - Math.min(...ang) > 0.15); assert.ok(ang.every(x => Math.abs(x) <= WEAPONS[2].spread + 0.02)); });
 test('out of cells falls back to the flag pole (Review Focus 4)', () => { const a = createArsenal(); give(a, 0, 0); give(a, 1, 1); fireWeapon(a, eye, B, aim); coolWeapon(a, 1);
   assert.equal(fireWeapon(a, eye, B, aim), null); assert.equal(a.cur, 0); });
+test('holding fire for 2 s fires the same number of pistol shots at 20, 60 and 144 fps (M3)', () => { const n = [1 / 20, 1 / 60, 1 / 144].map(dt => {
+  const a = createArsenal(); give(a, 0, 0); give(a, 1, MAX_CELLS); let shots = 0; for (let i = 0, m = Math.round(2 / dt); i < m; i++) { coolWeapon(a, dt); if (fireWeapon(a, eye, B, aim)) shots++; } return shots; });
+  assert.ok(Math.max(...n) - Math.min(...n) <= 1, n.join()); assert.ok(n.every(k => Math.abs(k - 2 / WEAPONS[1].cool) <= 1.5), n.join()); });
+test('idle banks at most one sub-step of cooldown, never below -0.05 (M3)', () => { const a = createArsenal(); give(a, 0, 0); give(a, 1, MAX_CELLS);
+  for (let i = 0; i < 100; i++) coolWeapon(a, 1 / 144); assert.ok(a.cool >= -1 / 144 - 1e-12 && a.cool < 0); coolWeapon(a, 1); assert.ok(a.cool >= -.05);
+  fireWeapon(a, eye, B, aim); assert.ok(Math.abs(a.cool - (WEAPONS[1].cool - .05)) < 1e-9); });
 test('weapon keys and the wheel only reach owned weapons (Review Focus 4)', () => { const a = createArsenal(); give(a, 0, 0);
   assert.equal(selectWeapon(a, 2), false); assert.equal(a.cur, 0); give(a, 2, 4); assert.equal(a.cur, 2); give(a, 0, 0); assert.equal(a.cur, 2); selectWeapon(a, 0);
   cycleWeapon(a, 1); assert.equal(a.cur, 2); cycleWeapon(a, 1); assert.equal(a.cur, 0); cycleWeapon(a, -1); assert.equal(a.cur, 2);
