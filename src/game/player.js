@@ -8,7 +8,8 @@ export function createPlayer({ x, z, dx, dz }, ground) {
 
 export function stepPlayer(p, input, dt, ground, bound) {
   const s = Math.sin(p.yaw), c = Math.cos(p.yaw), speed = input.run ? PLAYER.run : PLAYER.walk;
-  const dvx = (-s * input.fwd + c * input.strafe) * speed, dvz = (-c * input.fwd - s * input.strafe) * speed;
+  const len = Math.hypot(input.fwd, input.strafe), n0 = len > 1 ? 1 / len : 1, fwd = input.fwd * n0, str = input.strafe * n0;
+  const dvx = (-s * fwd + c * str) * speed, dvz = (-c * fwd - s * str) * speed;
   if (p.onGround) { p.vx = dvx; p.vz = dvz; }
   else { const k = Math.min(1, PLAYER.airControl * dt); p.vx += (dvx - p.vx) * k; p.vz += (dvz - p.vz) * k; }
   if (input.jump && p.onGround) { p.vy = PLAYER.jumpV; p.onGround = false; }
