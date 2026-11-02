@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test'; import { pathToFileURL } from 'node:url'; import { resolve } from 'node:path';
 import { generateWorld } from '../src/gen/world.js'; import { checksumWorld } from '../src/gen/checksum.js';
+import { HELP_TIME } from '../src/ui/hud.js';
 export const URLS = [['file', pathToFileURL(resolve('dist/index.html')).href], ['http', 'http://localhost:4173/index.html']];
 // Benign Firefox parser note about the packed binary payload when the server's utf-8 header overrides the page's iso-8859-15 meta; real decoding failures are caught by the ready check.
 const BENIGN = /byte stream was erroneous according to the character encoding/i;
@@ -143,3 +144,10 @@ test('the end screen releases the pointer lock, so Back to title works after a N
   await page.evaluate(() => window.ospTest.finish()); await expect(page.locator('#end')).toBeVisible();
   await expect.poll(() => page.evaluate(() => document.pointerLockElement === null)).toBe(true); await page.click('#back');
   await expect(page.locator('#title')).toBeVisible(); expect(await state(page)).toBe('title'); });
+// R2: the help line shows as each run starts and hides after HELP_TIME s of the run's play time; a death restart doesn't bring it back
+test('the help line shows at the start of a run, hides after HELP_TIME s of play, stays hidden through a death, and returns with the next run (R2)', async ({ page }) => {
+  const errors = watchErrors(page); await start(page); const help = page.locator('#hud > div').first(); await expect(help).toContainText('Esc pause');
+  await page.evaluate(t => window.ospTest.ff(t), HELP_TIME - 2); await expect(help).toContainText('Esc pause');
+  await page.evaluate(() => window.ospTest.ff(2.5)); await expect(help).toHaveText('');
+  await page.evaluate(() => { window.ospTest.hurt(999); window.ospTest.ff(4); }); expect((await fight(page)).state).toBe('play'); await expect(help).toHaveText('');
+  await page.evaluate(() => { window.ospTest.finish(); window.ospTest.play(); }); await expect(help).toContainText('Esc pause'); expect(errors).toEqual([]); });

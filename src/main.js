@@ -13,12 +13,12 @@ import { WEAPONS } from './game/weapons.js';
 import { buildSurfaceScene } from './game/surfaceScene.js';
 import { buildBaseScene } from './game/baseScene.js';
 import { createInput } from './game/input.js';
-import { createHud } from './ui/hud.js';
+import { createHud, HELP_TIME } from './ui/hud.js';
 import { createMenus } from './ui/menus.js';
 import { shareLink, recordBest } from './ui/score.js';
 
 // The scene fields a frame carries (the view supplies the meshes and lights); the events whose text flashes up; where a death
-// in each area sends you back to; no input at all; the help line in play.
+// in each area sends you back to; no input at all; the help line, shown as a run starts and hidden after HELP_TIME s of it (R2).
 const SCENE = ['sky', 'mode', 'sun', 'earth', 'curv', 'fog', 'fogDensity', 'occTex'], FLASH = new Set(['pickup', 'flag', 'golf', 'area']);
 const BACK = ['the wreck', 'the crater rim', 'the lift', 'the comms room door'];
 const IDLE = { fwd: 0, strafe: 0, run: false, jump: false, fire: false, use: false, weapon: -1, wheel: 0 };
@@ -117,6 +117,7 @@ function boot() {
     if (playing) {
       const p = F.player, U = run.world.crater.use;
       hud.status({ hp: Math.ceil(F.hp), cells: F.ars.cells, weapon: WEAPONS[F.ars.cur]?.name ?? '' });
+      if (F.time >= HELP_TIME) hud.help('');
       for (const ev of F.events) if (FLASH.has(ev.type) && ev.text) hud.flash(ev.text);
       hud.prompt(F.state === 'dead' ? 'You died. Back to ' + BACK[F.area] + '...'
         : F.lv.id === 'surface' && !F.flag.held && Math.hypot(p.x - F.flag.x, p.z - F.flag.z) < 2.2 ? '[E] grab the flag'
