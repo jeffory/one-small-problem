@@ -95,7 +95,7 @@ function floater(a, ctx, dt, dx, dz, d, toP) {
   const T = ALIENS.fl;
   a.yaw = toP;
   if (a.state === 'hover') {
-    if (a.cool <= 0 && d < T.sight && ctx.los(a)) { go(a, 'aim'); a.flash = .6; return 0; }
+    if (a.cool <= 0 && d < T.sight && ctx.los(a)) { go(a, 'aim'); return 0; } // the view pulses its flash while it aims
     const s = T.speed * dt / (d || 1), w = a.id % 2 ? 1 : -1; // w: which way it circles
     return d < T.keep[0] ? move(a, ctx, -dx * s, -dz * s) : d > T.keep[1] ? move(a, ctx, dx * s, dz * s) : move(a, ctx, dz * s * w, -dx * s * w);
   }

@@ -58,8 +58,8 @@ export function fillFrame(V, F, frame, t) {
   for (const m of V.static) M.push(m);
   for (const a of F.aliens) {
     if (!near(a.x, a.z)) continue;
-    // R13: a floater's 0.7 s wind-up keeps it lit
-    const parts = RIGS[a.type].parts, fl = a.type === 'fl' && a.state === 'aim' ? Math.max(a.flash, .5) : a.flash;
+    // R13 as amended by M1: a floater's 0.7 s wind-up pulses its flash between 0 and .22 at 6 Hz (a hit still flashes it fully)
+    const parts = RIGS[a.type].parts, fl = a.type === 'fl' && a.state === 'aim' ? Math.max(a.flash, .11 - .11 * Math.cos(12 * Math.PI * t)) : a.flash;
     for (let i = 0; i < parts.length; i++) { const m = partMatrix(a, i); M.push({ gpu: G[parts[i].mesh], model: m, rot: rot3(m), flash: fl }); }
   }
   const fg = F.flag;
