@@ -68,7 +68,7 @@ test('dying sends you back to the wreck with a fresh area', async ({ page }) => 
   const errors = watchErrors(page); await page.goto(URLS[1][1] + '#APOLLO-4471'); await ready(page);
   await page.evaluate(() => { const o = window.ospTest; o.grab(); o.warp(2); o.hurt(999); });
   await expect(page.locator('#prompt')).toContainText('died'); await expect.poll(() => fight(page).then(f => f.state), { timeout: 10_000 }).toBe('play');
-  const f = await fight(page); expect(f.hp).toBe(100); expect(f.atSpawn).toBe(true); expect(errors).toEqual([]); });
+  const f = await fight(page); expect(f.hp).toBe(100); expect(f.atStart).toBe(true); expect(errors).toEqual([]); });
 test('weapon keys work without pointer lock; the capture click never fires (Review Focus 5)', async ({ page }) => {
   await page.goto(URLS[1][1] + '#APOLLO-4471'); await ready(page); await page.evaluate(() => { window.ospTest.grab(); window.ospTest.give(); });
   await page.keyboard.press('Digit2'); await expect.poll(() => fight(page).then(f => f.cur)).toBe(1);
@@ -91,3 +91,20 @@ test('without WebGL2 the failure screen shows only its message (carry-over)', as
   await page.goto(URLS[1][1] + '#APOLLO-4471'); await expect(page.locator('#msg')).toContainText('Could not start');
   expect(await page.evaluate(() => ['stat', 'prompt', 'flash'].map(id => document.getElementById(id).textContent).join(''))).toBe('');
   expect(await page.locator('#x').isVisible()).toBe(false); });
+const toBase = async page => { await page.evaluate(() => { const o = window.ospTest; o.grab(); o.give(); o.door(); });
+  await expect(page.locator('#prompt')).toContainText('enter the hangar'); await page.evaluate(() => window.ospTest.enter());
+  await expect.poll(() => page.evaluate(() => window.ospTest.area()), { timeout: 10_000 }).toBe('base'); };
+test('walking into the base renders palette-true with no errors', async ({ page }) => {
+  const errors = watchErrors(page); await page.goto(URLS[1][1] + '#APOLLO-4471'); await ready(page); await toBase(page); await page.waitForTimeout(500);
+  const s = await page.evaluate(() => window.ospTest.capture()); expect(s.inPalette).toBe(1); expect(s.colours).toBeGreaterThan(6); expect(s.black).toBeLessThan(.9); expect(errors).toEqual([]); });
+test('dying in the base restarts you at the lift', async ({ page }) => {
+  const errors = watchErrors(page); await page.goto(URLS[1][1] + '#APOLLO-4471'); await ready(page); await toBase(page);
+  await page.evaluate(() => { window.ospTest.warp(0); window.ospTest.hurt(999); }); await expect(page.locator('#prompt')).toContainText('the lift');
+  await expect.poll(() => fight(page).then(f => f.state), { timeout: 10_000 }).toBe('play');
+  const f = await fight(page); expect([f.area, f.atStart, f.hp]).toEqual(['base', true, 100]); expect(errors).toEqual([]); });
+test('a lost GPU context in the base still shows the reload message', async ({ page }) => {
+  const errors = watchErrors(page); await page.goto(URLS[1][1] + '#APOLLO-4471'); await ready(page); await toBase(page);
+  // area() turns 'base' inside enter(); two more frames mean the base scene has been swapped in and drawn before the loss
+  const n = await page.evaluate(() => window.ospTest.frames()); await expect.poll(() => page.evaluate(() => window.ospTest.frames())).toBeGreaterThan(n + 1);
+  await page.evaluate(() => document.getElementById('c').getContext('webgl2').getExtension('WEBGL_lose_context').loseContext());
+  await expect(page.locator('#msg')).toContainText('Graphics context lost'); await page.waitForTimeout(500); expect(errors).toEqual([]); });
