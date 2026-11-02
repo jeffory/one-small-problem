@@ -1,9 +1,10 @@
 import { edgeMargin } from './helpers.mjs';
-import { sampleGround, MAX_STEP, N, HALF, MAP_MARGIN } from '../src/gen/surface.js';
+import { sampleGround, distToPolyline, MAX_STEP, N, HALF, MAP_MARGIN } from '../src/gen/surface.js';
 import { generateWorld } from '../src/gen/world.js';
+import { CRATER } from '../src/gen/crater.js';
 import { budgetAt, COST } from '../src/gen/encounters.js';
 import { reachMap } from '../src/gen/passable.js';
-const hist = {}; let rerolls = 0, fail = 0, worst = 0, rockMin = Infinity, worstEdge = Infinity, rockMax = 0;
+const hist = {}; let rerolls = 0, fail = 0, worst = 0, worstCrater = 0, rockMin = Infinity, worstEdge = Infinity, rockMax = 0;
 for (let n = 0; n < 1000; n++) {
   const seed = 'SOAK-' + String(n).padStart(4, '0');
   try {
@@ -21,8 +22,22 @@ for (let n = 0; n < 1000; n++) {
     if (seedWorst > MAX_STEP) { fail++; console.error(seed, 'centreline step', seedWorst); }
     const em = edgeMargin(w); worstEdge = Math.min(worstEdge, em);
     if (em < 0) { fail++; console.error(seed, 'edge margin', em); }
+    const K = w.crater, kc = [Math.round(K.use.x + HALF), Math.round(K.use.z + HALF)];
+    let kWorst = 0;
+    for (let k = 0; k + 1 < K.path.length; k++) {
+      const [ax, az] = K.path[k], [bx, bz] = K.path[k + 1], m = Math.ceil(Math.hypot(bx - ax, bz - az));
+      let prev = sampleGround(w, ax, az);
+      for (let i = 1; i <= m; i++) {
+        const t = i / m, v = sampleGround(w, ax + (bx - ax) * t, az + (bz - az) * t);
+        kWorst = Math.max(kWorst, Math.abs(v - prev)); prev = v;
+      }
+    }
+    worstCrater = Math.max(worstCrater, kWorst);
+    if (kWorst > MAX_STEP) { fail++; console.error(seed, 'switchback step', kWorst); }
+    if (w.rocks.some((r) => distToPolyline(r.x, r.z, K.path) <= CRATER.half + Math.max(r.sx, r.sz))) { fail++; console.error(seed, 'rock on the switchback'); }
     const P = w.plan, bad = (m) => { fail++; console.error(seed, 'plan', m); };
     const reach = reachMap(w.occ, N, [Math.round(w.spawn.x + HALF), Math.round(w.spawn.z + HALF)], MAX_STEP, MAP_MARGIN), lim = HALF - MAP_MARGIN;
+    if (reach[kc[1] * N + kc[0]] !== 1) { fail++; console.error(seed, 'door unreachable'); }
     const stands = (o) => Math.abs(o.x) <= lim && Math.abs(o.z) <= lim && reach[Math.round(o.z + HALF) * N + Math.round(o.x + HALF)] === 1;
     P.encounters.forEach((e, k) => {
       if (k > 0 && e.aliens.reduce((s, a) => s + COST[a.type], 0) !== budgetAt(e.p)) bad('budget ' + k);
@@ -45,5 +60,5 @@ for (let n = 0; n < 1000; n++) {
 }
 const rate = rerolls / 1000;
 console.log('attempt histogram', JSON.stringify(hist), 'rerolls', rerolls, 'rate', rate);
-console.log('worst centreline step', worst.toFixed(4), 'worst edge margin', worstEdge.toFixed(3), 'rocks min/max', rockMin, rockMax, 'failures', fail);
+console.log('worst centreline step', worst.toFixed(4), 'worst switchback step', worstCrater.toFixed(4), 'worst edge margin', worstEdge.toFixed(3), 'rocks min/max', rockMin, rockMax, 'failures', fail);
 process.exit(fail || rate > 0.05 ? 1 : 0);

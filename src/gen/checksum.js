@@ -14,6 +14,10 @@ export function checksumWorld(world) {
     for (const c of world.plan.canisters) f.push(c.x, c.y, c.z);
     parts.push(new Float32Array(f));
   }
+  if (world.crater) {
+    const K = world.crater, { door: d, use: u, bunker: b } = K;
+    parts.push(new Float32Array([...K.path.flat(), ...K.ys, d.x, d.y, d.z, d.dx, d.dz, u.x, u.z, b.x, b.z, b.ux, b.uz, b.w, b.d, b.h, b.y]));
+  }
   let hash = 2166136261;
   for (const arr of parts) {
     const bytes = new Uint8Array(arr.buffer, arr.byteOffset, arr.byteLength);
