@@ -53,3 +53,41 @@ test('aliens draw out to 80 m, no further (carry-over)', () => { const F = creat
   put(F, a.x + 100, a.z); fillFrame(V, F, fr, 0); assert.ok(!fr.meshes.some(m => bodies.includes(m.gpu))); });
 test('sprites fade into the base fog like the world does (carry-over)', () => { const fs = readFileSync('src/gfx/shaders/sprite.frag', 'utf8'), r = readFileSync('src/gfx/renderer.js', 'utf8');
   for (const u of ['uFog', 'uFogD', 'uMode']) { assert.match(fs, new RegExp(`\\b${u}\\b`)); assert.match(r, new RegExp(`P\\.${u}\\b`)); } });
+import { buildBaseScene } from '../src/game/baseScene.js'; import { setScene, LIGHT_FADE, MAX_DYN } from '../src/game/fightView.js'; import { tilePath } from './helpers.mjs'; import { PLAYER } from '../src/game/player.js';
+const baseFrame = S => ({ ...frame(), sky: S.sky, mode: S.mode, fog: S.fog, fogDensity: S.fogDensity, curv: S.curv, occTex: null });
+const MB = W.baseMap;
+test('walking the base, no lamp that reaches you is dropped, and lamps that join fade in from dark (Review Focus 4)', () => {
+  const g = fakeGL(), S = buildBaseScene(g, MB), Vb = createFightView(g, S), F = createFight(W, 2), fr = baseFrame(S), p = F.player, pts = tilePath(MB, MB.start, MB.commsDoor);
+  F.canisters.length = 0; let t = 0, prev = [];
+  for (let k = 0; k + 1 < pts.length; k++) for (let s = 0; s < 1; s += .1) {
+    p.x = pts[k][0] + (pts[k + 1][0] - pts[k][0]) * s; p.z = pts[k][1] + (pts[k + 1][1] - pts[k][1]) * s; p.y = F.lv.ground(p.x, p.z); t += 1 / 60; fillFrame(Vb, F, fr, t);
+    const c = fr.cam, sel = [...Vb._sel];
+    for (const i of prev) if (!sel.includes(i)) { const L = MB.lights[i]; assert.ok(Math.hypot(c.x - L.x, c.y - L.y, c.z - L.z) >= L.r, `lamp ${i} dropped while it lit you`); }
+    for (const i of sel) if (!prev.includes(i)) assert.ok(Vb._w[i] <= LIGHT_FADE / 60 + 1e-6, `lamp ${i} popped in`);
+    prev = sel; } });
+test('a crowded base fight takes at most 6 slots from the lamps (Review Focus 4)', () => { const g = fakeGL(), S = buildBaseScene(g, MB), Vb = createFightView(g, S), F = createFight(W, 2), fr = baseFrame(S), p = F.player;
+  for (let i = 0; i < 300; i++) F.bolts.push({ x: p.x + .1 * i, y: p.y + 1.7, z: p.z, vx: 1, vy: 0, vz: 0, dmg: 1, r: .2, life: 9, col: [.3, 1, .8], team: 1, src: 99 });
+  fillFrame(Vb, F, fr, 0); assert.equal(fr.lights.count, 16); assert.ok(Vb._sel.length >= 16 - MAX_DYN);
+  MB.lights.forEach((L, i) => { if (Math.hypot(fr.cam.x - L.x, fr.cam.y - L.y, fr.cam.z - L.z) < L.r) assert.ok(Vb._sel.includes(i), `lamp ${i}`); }); });
+test('red lamps flicker and the core pulses; steady lamps hold once faded in', () => { const g = fakeGL(), S = buildBaseScene(g, MB), Vb = createFightView(g, S), F = createFight(W, 2), fr = baseFrame(S), p = F.player;
+  for (const kind of [0, 1, 2]) { const i = MB.lights.findIndex(l => l.kind === kind), L = MB.lights[i], seen = new Set();
+    p.x = L.x; p.z = L.z; p.y = L.y - PLAYER.eye; setScene(Vb, S); // the eye sits in the lamp (the core lamp stands inside solid tiles)
+    for (let t = 0; t < 3; t += .05) { fillFrame(Vb, F, fr, t); if (t > .5) seen.add(fr.lights.col[Vb._sel.indexOf(i) * 4].toFixed(3)); }
+    assert.equal(seen.size > 1, kind > 0, `kind ${kind}`); } });
+test('the flag is not drawn in the base, and golf balls glint', () => { const g = fakeGL(), S = buildBaseScene(g, MB), Vb = createFightView(g, S), F = createFight(W, 2), fr = baseFrame(S);
+  fillFrame(Vb, F, fr, 0); assert.ok(!fr.meshes.some(m => m.gpu === Vb.gpu.flag)); const b = F.balls[0]; F.player.x = b.x + 3; F.player.z = b.z;
+  let glints = 0; for (let t = 0; t < 2.5; t += .05) { fillFrame(Vb, F, fr, t); if (fr.meshes.some(m => m.gpu === Vb.gpu.golf)) glints += fr.sprites.nGlow > 0; } assert.ok(glints >= 1); });
+test('under pressure a lamp that holds you outranks 16 kept by hysteresis, and hysteresis keeps a lit lamp over a nearer one (Review Focus 4)', () => {
+  const F = createFight(W, 2), p = F.player, x0 = p.x, y = p.y + PLAYER.eye, at = (x, z, r) => ({ x: x0 + x, y, z: p.z + z, r, col: [1, 1, 1], kind: 0 });
+  const lamps = Array.from({ length: 16 }, (_, k) => at(5 * Math.cos(k * Math.PI / 8 + .1), 5 * Math.sin(k * Math.PI / 8 + .1), 4.5)), H = lamps.push(at(7, 0, 6)) - 1;
+  const Vs = createFightView(fakeGL(), { meshes: [], lamps }), fr = frame(); F.canisters.length = 0;
+  fillFrame(Vs, F, fr, 0); assert.equal(fr.lights.count, 16); assert.ok(!Vs._sel.includes(H)); // 17 within reach: the one 1 m off waits
+  p.x = x0 + 1.5; fillFrame(Vs, F, fr, 1 / 60); assert.ok(Vs._sel.includes(H), 'a lamp that holds the camera is lit'); assert.equal(Vs._w[H], 0);
+  p.x = x0; fillFrame(Vs, F, fr, 2 / 60); assert.ok(Vs._sel.includes(H), 'kept by hysteresis'); assert.ok(Vs._w[H] > 0);
+  for (let i = 0; i < 30; i++) F.bolts.push({ x: x0 + .1 * i, y, z: p.z, vx: 1, vy: 0, vz: 0, dmg: 1, r: .2, life: 9, col: [.3, 1, .8], team: 1, src: 99 });
+  fillFrame(Vs, F, fr, 3 / 60); assert.equal(fr.lights.count, 16); assert.equal(Vs._sel.length, 16 - MAX_DYN, 'plasma gets its MAX_DYN slots'); });
+test('by the hangar door a crowded surface fight gives the door lamp one slot (pre-flight F18)', () => { const F = createFight(W, 1), p = F.player, d = W.crater.door;
+  put(F, d.x + 3 * d.dx, d.z + 3 * d.dz); F.canisters.length = 0;
+  for (let i = 0; i < 300; i++) F.bolts.push({ x: p.x + 1 + i, y: p.y + 1.7, z: p.z, vx: 1, vy: 0, vz: 0, dmg: 1, r: .2, life: 9, col: [.3, 1, .8], team: 1, src: 99 });
+  const fr = frame(), L = scene.lamps[0]; fillFrame(V, F, fr, 0); assert.deepEqual([...V._sel], [0]); assert.equal(fr.lights.count, 16);
+  assert.deepEqual([...fr.lights.pos.slice(0, 4)], [L.x, L.y, L.z, L.r].map(Math.fround)); assert.ok(fr.lights.pos[4 * 15] === Math.fround(p.x + 15)); }); // the lamp, then the 15 nearest bolts

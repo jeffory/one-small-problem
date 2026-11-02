@@ -1,4 +1,5 @@
-// GPU scene for a generated surface: terrain, rocks, lander and flag, plus the shadow height texture and the sky lights.
+// GPU scene for a generated surface: terrain, rocks, lander and flag, plus the shadow height texture, the sky lights and
+// one lamp, over the hangar door.
 import { uploadMesh, disposeMesh, createHeightTexture } from '../gfx/gl.js';
 import { createMesh, vtx, quadIdx, blob, finishMesh } from '../gfx/mesh.js';
 import { MAT } from '../gfx/materials.js';
@@ -7,6 +8,7 @@ import { vn3 } from '../gen/noise.js';
 import { sampleBilinear } from '../gen/surface.js';
 import { buildLander, buildBunker } from './props.js';
 import { GRAVITY } from './areas.js';
+import { LIGHT } from '../gen/baseplan.js';
 
 export function buildSurfaceScene(gl, world) {
   const { N, half, h, lander: L, spawn: { dx, dz } } = world, terr = createMesh(), rocks = createMesh(), props = createMesh();
@@ -27,12 +29,14 @@ export function buildSurfaceScene(gl, world) {
   buildBunker(props, world.crater);
 
   const meshes = [terr, rocks, props].map(M => ({ gpu: uploadMesh(gl, finishMesh(M)), model: I4, rot: I3 })), occTex = createHeightTexture(gl, world.occ, N);
+  // The hangar door's lamp hangs 4 m above the door, 1 m out along its facing.
+  const d = world.crater.door;
   return {
-    sky: true, mode: 0, fog: [.010, .014, .011], fogDensity: .07, gravity: GRAVITY.surface,
+    id: 'surface', sky: true, mode: 0, fog: [.010, .014, .011], fogDensity: .07, gravity: GRAVITY.surface,
     sun: norm([-.43, .17, -.9]),
     earth: norm([.8 * dx, .42, .8 * dz]),
     curv: 1 / 1800,
-    meshes, occTex,
+    meshes, occTex, lamps: [{ x: d.x + d.dx, y: d.y + 4, z: d.z + d.dz, r: 6, col: LIGHT.teal.col, kind: 0 }],
     dispose() { meshes.forEach(m => disposeMesh(gl, m.gpu)); gl.deleteTexture(occTex); },
   };
 }

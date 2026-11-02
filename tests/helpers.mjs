@@ -16,3 +16,6 @@ export function tileLevel(rows, { ceil = 3, wall = 99 } = {}) {
   return { n, ground: (x, z) => at(floor, x, z, wall), ceil: (x, z) => at(top, x, z, 0),
     gap(x, z) { let g = Infinity; for (let j = -1; j <= n; j++) for (let i = -1; i <= n; i++) if (solid(i, j)) g = Math.min(g, Math.hypot(Math.max(0, Math.abs(x - i) - .5), Math.max(0, Math.abs(z - j) - .5))); return g; } };
 }
+export function tilePath(B, a, b, step = .35) { const n = B.n, c = p => Math.round(p.z + B.half) * n + Math.round(p.x + B.half), s = c(a), g = c(b), from = new Int32Array(n * n).fill(-1), q = [s]; from[s] = s;
+  for (let h = 0; h < q.length && from[g] < 0; h++) { const k = q[h]; for (const d of [1, -1, n, -n]) { const m = k + d; if (from[m] < 0 && Math.abs(B.floor[m] - B.floor[k]) <= step) { from[m] = k; q.push(m); } } }
+  const out = []; for (let k = g; ; k = from[k]) { out.unshift([k % n - B.half, (k / n | 0) - B.half]); if (k === s) return out; } }

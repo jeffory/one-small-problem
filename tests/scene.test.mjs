@@ -6,3 +6,10 @@ test('disposeMesh frees everything uploadMesh made', () => { const gl = fakeGL()
 test('the surface scene owns its frame fields and frees all it made', () => { const gl = fakeGL(), s = buildSurfaceScene(gl, generateWorld('APOLLO-4471'));
   assert.equal(s.sky, true); assert.equal(s.mode, 0); assert.equal(s.gravity, 3.0); assert.equal(s.fog.length, 3); assert.ok(s.fogDensity > 0);
   assert.ok(gl.live.size > 0); s.dispose(); assert.equal(gl.live.size, 0); });
+import { buildBaseScene } from '../src/game/baseScene.js'; import { GRAVITY } from '../src/game/areas.js'; import { createFight } from '../src/game/fight.js';
+const WW = generateWorld('APOLLO-4471');
+test('the base scene: no sky, banded mode, murky fog, gravity 9 from the shared table, its lamps, two meshes, and it frees all it made', () => { const gl = fakeGL(), s = buildBaseScene(gl, WW.baseMap);
+  assert.deepEqual([s.id, s.sky, s.mode, s.occTex, s.gravity, GRAVITY.base], ['base', false, 1, null, 9.0, 9.0]); assert.equal(s.lamps, WW.baseMap.lights); assert.equal(s.meshes.length, 2);
+  const [r, g, b] = s.fog; assert.ok(g >= r && r > b && Math.max(r, g, b) < .03); assert.equal(createFight(WW, 2).gravity, s.gravity); s.dispose(); assert.equal(gl.live.size, 0); });
+test('the surface scene names itself and lights the hangar door', () => { const gl = fakeGL(), s = buildSurfaceScene(gl, WW), d = WW.crater.door;
+  assert.equal(s.id, 'surface'); assert.equal(s.gravity, GRAVITY.surface); assert.equal(s.lamps.length, 1); assert.ok(Math.hypot(s.lamps[0].x - d.x, s.lamps[0].z - d.z) < 2); s.dispose(); });
