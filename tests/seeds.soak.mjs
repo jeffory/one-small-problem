@@ -9,6 +9,7 @@ import { LIGHT_CAP, LEAK, BASE_SCALE } from '../src/gen/baseplan.js';
 // The base comes from generateWorld, one per seed: a layout that fails to construct or is rejected re-rolls, and that is
 // routine (pre-flight F7: printed, not gated). Only a seed that exhausts all BASE.attempts (32) attempts fails the soak,
 // because generateBase then throws (ruling R2).
+const T0 = Date.now();
 const bhist = {}; let brerolls = 0, ghDropped = 0;
 const THEME_ORDER = 'lift,hangar,lab,reactor,greenhouse,comms', inRange = (v, r) => v >= r[0] && v <= r[1];
 function checkBase(seed, B, golfSurface) {
@@ -143,4 +144,5 @@ console.log('golf balls beside a rock', golfRock + '/' + golfAll);
 const rate = rerolls / 1000;
 console.log('attempt histogram', JSON.stringify(hist), 'rerolls', rerolls, 'rate', rate);
 console.log('worst centreline step', worst.toFixed(4), 'worst switchback step', worstCrater.toFixed(4), 'worst edge margin', worstEdge.toFixed(3), 'rocks min/max', rockMin, rockMax, 'failures', fail);
+console.log('soak wall time', ((Date.now() - T0) / 1000).toFixed(1) + ' s');
 process.exit(fail || rate > 0.05 ? 1 : 0);
