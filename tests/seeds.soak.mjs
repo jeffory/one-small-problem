@@ -4,6 +4,7 @@ import { generateWorld } from '../src/gen/world.js';
 import { CRATER } from '../src/gen/crater.js';
 import { budgetAt, COST, CRATER_P, CRATER_AT } from '../src/gen/encounters.js';
 import { reachMap } from '../src/gen/passable.js';
+import { generateBase, BASE, K as TILE } from '../src/gen/base.js';
 const hist = {}; let rerolls = 0, fail = 0, worst = 0, worstCrater = 0, rockMin = Infinity, worstEdge = Infinity, rockMax = 0, golfAll = 0, golfRock = 0;
 for (let n = 0; n < 1000; n++) {
   const seed = 'SOAK-' + String(n).padStart(4, '0');
@@ -73,6 +74,33 @@ for (let n = 0; n < 1000; n++) {
     rockMin = Math.min(rockMin, w.rocks.length); rockMax = Math.max(rockMax, w.rocks.length);
   } catch (e) { fail++; console.error(seed, e.message); }
 }
+// The base: a layout that fails to construct or is rejected re-rolls, and that is routine (pre-flight F7). Only a
+// seed that exhausts all 8 attempts fails the soak, because generateBase then throws.
+const bhist = {}; let brerolls = 0;
+const THEME_ORDER = 'lift,hangar,lab,reactor,greenhouse,comms', inRange = (v, r) => v >= r[0] && v <= r[1];
+for (let q = 0; q < 1000; q++) {
+  const seed = 'SOAK-' + String(q).padStart(4, '0'), bad = (m) => { fail++; console.error(seed, 'base', m); };
+  try {
+    const B = generateBase(seed), n = B.n, h = B.half, at = (o) => Math.round(o.z + h) * n + Math.round(o.x + h);
+    const reach = reachMap(B.floor, n, [Math.round(B.start.x + h), Math.round(B.start.z + h)], BASE.step, 0);
+    let lost = 0; for (let k = 0; k < n * n; k++) if (B.kind[k] === TILE.floor && reach[k] !== 1) lost++;
+    if (lost) bad(lost + ' floor tiles unreachable');
+    if (reach[at(B.commsDoor)] !== 1) bad('comms door unreachable');
+    if (!inRange(B.crit.length, BASE.crit) || !inRange(B.side.length, BASE.side) || !inRange(B.links.filter((l) => l.loop).length, BASE.loops)) bad('room counts');
+    if (B.crit.map((r) => B.rooms[r].theme).filter((t) => t !== 'plain').join() !== THEME_ORDER || B.side.some((r) => B.rooms[r].theme !== 'side')) bad('theme order');
+    const area = (r) => (r.x1 - r.x0) * (r.z1 - r.z0), c = B.rooms[B.crit[B.crit.length - 1]];
+    if (B.rooms.some((r) => r !== c && area(r) >= area(c))) bad('comms room not the largest');
+    if (B.spawnDoors.length < 3 || B.spawnDoors.length > 4) bad('spawn doors ' + B.spawnDoors.length);
+    for (const l of B.links) { // 3 across; the length (2 to 8) runs along whichever axis separates the two rooms (pre-flight F5)
+      const A = B.rooms[l.a], C = B.rooms[l.b], xl = A.x1 <= C.x0 || C.x1 <= A.x0, across = xl ? l.z1 - l.z0 : l.x1 - l.x0, len = xl ? l.x1 - l.x0 : l.z1 - l.z0;
+      if (across !== BASE.corridor || len < 2 || len > 8) bad(`corridor ${l.a}-${l.b} ${across} across, ${len} long`);
+    }
+    for (let i = 0; i < n; i++) if ([i, (n - 1) * n + i, i * n, i * n + n - 1].some((k) => B.kind[k] !== TILE.wall)) { bad('edge not sealed'); break; }
+    if (B.attempt > 0) brerolls++;
+    bhist[B.attempt] = (bhist[B.attempt] || 0) + 1;
+  } catch (e) { fail++; console.error(seed, 'base', e.message); }
+}
+console.log('base attempt histogram', JSON.stringify(bhist), 'rerolls', brerolls, 'rate', brerolls / 1000);
 console.log('golf balls beside a rock', golfRock + '/' + golfAll);
 const rate = rerolls / 1000;
 console.log('attempt histogram', JSON.stringify(hist), 'rerolls', rerolls, 'rate', rate);
