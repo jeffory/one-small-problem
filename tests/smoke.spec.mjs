@@ -79,3 +79,10 @@ test('the HUD overlays let the capture click through to the canvas (M7)', async 
   const hits = await page.evaluate(() => ['hud', 'seed', 'stat', 'prompt', 'flash', 'x'].map(id => { const r = document.getElementById(id).getBoundingClientRect();
     return r.width && r.height ? [id, document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)?.id] : null; }).filter(Boolean));
   expect(hits.length).toBeGreaterThanOrEqual(4); for (const [id, at] of hits) expect(at, id).toBe('c'); });
+test('below 25 health only the number turns red, and an unchanged status line is not rewritten (M8)', async ({ page }) => {
+  const errors = watchErrors(page); await page.goto(URLS[1][1] + '#APOLLO-4471'); await ready(page); await page.evaluate(() => { window.ospTest.grab(); window.ospTest.hurt(80); });
+  await expect(page.locator('#stat')).toContainText('HEALTH 20');
+  const s = await page.evaluate(() => new Promise(done => { const el = document.getElementById('stat'), n = el.querySelector('span'); let m = 0;
+    new MutationObserver(r => { m += r.length; }).observe(el, { subtree: true, childList: true, characterData: true, attributes: true });
+    setTimeout(() => done({ line: getComputedStyle(el).color, num: n && getComputedStyle(n).color, text: n?.textContent, m }), 500); }));
+  expect(s).toEqual({ line: 'rgb(184, 174, 156)', num: 'rgb(184, 48, 26)', text: '20', m: 0 }); expect(errors).toEqual([]); });

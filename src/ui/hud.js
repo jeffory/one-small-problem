@@ -1,15 +1,18 @@
 // Text overlays from the shell: #hud (help line, then debug line), #seed, and the full-screen #msg for fatal errors.
 export function createHud() {
   const $ = id => document.getElementById(id), msg = $('msg'), help = document.createElement('div'), debug = document.createElement('div');
-  const stat = $('stat'), prompt = $('prompt'), flash = $('flash');
+  const stat = $('stat'), prompt = $('prompt'), flash = $('flash'), num = document.createElement('span'), rest = document.createTextNode('');
   $('hud').append(help, debug);
+  stat.append('HEALTH ', num, rest); // M8: only the number turns red, below 25
+  let low = false;
   return {
     help: t => { help.textContent = t; },
     seed: t => { $('seed').textContent = t; },
     status: ({ hp, cells, weapon }) => {
-      const t = `HEALTH ${hp}   CELLS ${cells}   ${weapon}`;
-      if (stat.textContent !== t) stat.textContent = t;
-      stat.style.color = hp < 25 ? '#b8301a' : '';
+      const h = String(hp), t = `   CELLS ${cells}   ${weapon}`;
+      if (num.textContent !== h) num.textContent = h;
+      if (rest.data !== t) rest.data = t;
+      if (low !== hp < 25) { low = hp < 25; num.style.color = low ? '#b8301a' : ''; }
     },
     prompt: t => { if (prompt.textContent !== t) prompt.textContent = t; },
     flash: t => {
