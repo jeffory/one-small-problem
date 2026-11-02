@@ -1,33 +1,37 @@
-// The surface fight: one pure simulation tying the player, weapons, bolts, aliens, pickups and canisters together.
-// Deterministic: every random draw comes from F.rng = makeRng(world.seed + '/sim'); there is no wall clock, DOM or GPU here.
+// The fight: one pure simulation tying the player, weapons, bolts, aliens, pickups and canisters together, run on a level
+// (the surface or the base; see areas.js). Deterministic: every random draw comes from F.rng = makeRng(world.seed + '/sim');
+// there is no wall clock, DOM or GPU here.
 import { makeRng } from '../gen/rng.js';
-import { sampleGround, flagSpot, HALF, MAP_MARGIN, MAX_STEP } from '../gen/surface.js';
+import { sampleGround, flagSpot } from '../gen/surface.js';
 import { cameraBasis } from '../gfx/math.js';
-import { PLAYER, createPlayer, stepPlayer, knock } from './player.js';
+import { PLAYER, createPlayer, stepPlayer, knock, fits } from './player.js';
 import { WEAPONS, MAX_CELLS, createArsenal, give, selectWeapon, cycleWeapon, coolWeapon, fireWeapon, meleeTargets } from './weapons.js';
-import { stepBolts } from './bolts.js';
+import { stepBolts, groundNormal } from './bolts.js';
 import { lineOfSight, createField, updateField } from './nav.js';
 import { muzzleWorld, worldSpheres } from './rigs.js';
 import { ALIENS, createAlien, stepAlien, hurtAlien, move, level } from './aliens.js';
+import { LEVEL, makeLevel, areaStart } from './areas.js';
 
 export const PICKUP = { tape: 25, cells: 25, pistol: 20, scatter: 16, flCells: 15, pistolDrop: .3 };
 export const CANISTER = { hp: 15, radius: .45, blast: 5, dmg: 70, knock: 9, fuse: .2 };
 export const DEATH_TIME = 2.5;
-// WAKE: encounter wake radius; CORPSE: seconds a corpse lasts, the last SINK of them sinking 1 m; DECALS: each kind's ring
-// (M5: goo can't evict scorch); GRAB: flag reach; REACH: pickup reach; CAN_Y: canister centre above its base; CAN_H: its height.
-const WAKE = 60, CORPSE = 8, SINK = 2, MAX_PARTS = 300, DECALS = { scorch: 40, goo: 24 }, BOOM_LIFE = .6, FIELD_DT = .25, GRAB = 2.2, REACH = 1.2;
-const CAN_Y = .4, CAN_H = .9, TAU = 2 * Math.PI, sqrt = Math.sqrt, STILL = { fwd: 0, strafe: 0, run: false, jump: false };
+// CORPSE: seconds a corpse lasts, the last SINK of them sinking 1 m; DECALS: each kind's ring (M5: goo can't evict scorch);
+// GRAB: flag reach; REACH: pickup reach; CAN_Y: canister centre above its base; CAN_H: its height; WALL: ground this far above
+// a particle stops it like a wall.
+const CORPSE = 8, SINK = 2, MAX_PARTS = 300, DECALS = { scorch: 40, goo: 24 }, BOOM_LIFE = .6, FIELD_DT = .25, GRAB = 2.2, REACH = 1.2;
+const CAN_Y = .4, CAN_H = .9, WALL = .35, TAU = 2 * Math.PI, sqrt = Math.sqrt, STILL = { fwd: 0, strafe: 0, run: false, jump: false };
 
-export function createFight(world, { gravity }) {
-  const G = (x, z) => sampleGround(world, x, z), fs = flagSpot(world);
-  const F = { world, gravity, rng: makeRng(world.seed + '/sim'), player: createPlayer(world.spawn, G), hp: 100, ars: createArsenal(),
-    encs: [], aliens: [], bolts: [], pickups: [], canisters: [], parts: [], decals: [], booms: [],
-    flag: { x: fs.x, y: G(fs.x, fs.z), z: fs.z, held: false }, entry: { owned: [false, false, false], cells: 0, flagHeld: false },
+// A fight starting at area k, on that area's level, at its start, with nothing held.
+export function createFight(world, k = 0) {
+  const lv = makeLevel(world, LEVEL[k]), fs = flagSpot(world);
+  const F = { world, area: k, lv, gravity: lv.gravity, rng: makeRng(world.seed + '/sim'), player: createPlayer(areaStart(world, k), lv.ground), hp: 100, ars: createArsenal(),
+    encs: [], aliens: [], bolts: [], pickups: [], canisters: [], balls: [], parts: [], decals: [], booms: [],
+    flag: { x: fs.x, y: sampleGround(world, fs.x, fs.z), z: fs.z, held: false }, entry: { owned: [false, false, false], cells: 0, flagHeld: false },
     state: 'play', deadT: 0, time: 0, kills: 0, shots: 0, shotT: 9, hurtT: 0, field: createField(), fieldT: 0, events: [], god: false,
-    _g: G };
+    found: [], golf: 0 };
   clearDecals(F);
-  const C = F._ctx = { ground: G, px: 0, py: 0, pz: 0, field: F.field, rng: F.rng, others: F.aliens,
-    los: a => lineOfSight(G, muzzleWorld(a), [C.px, C.py + PLAYER.eye, C.pz]),
+  const C = F._ctx = { ground: lv.ground, ceil: lv.ceil, px: 0, py: 0, pz: 0, field: F.field, rng: F.rng, others: F.aliens,
+    los: a => lineOfSight(F.lv.ground, muzzleWorld(a), [C.px, C.py + PLAYER.eye, C.pz], F.lv.ceil),
     shoot: (a, m, d, s) => { F.bolts.push({ x: m[0], y: m[1], z: m[2], vx: d[0] * s.speed, vy: d[1] * s.speed, vz: d[2] * s.speed,
       dmg: s.dmg, r: s.size, life: 4, col: s.col, team: 1, src: a.id }); },
     melee: (a, dmg, k) => {
@@ -35,21 +39,23 @@ export function createFight(world, { gravity }) {
       if (l > 1e-6) { dx /= l; dz /= l; } else { dx = Math.sin(a.yaw); dz = Math.cos(a.yaw); }
       hurtPlayer(F, dmg, dx * k, 1.5, dz * k);
     } };
-  populate(F);
+  populate(F, k);
   return F;
 }
 
-// Encounters, aliens (ids from 1), pickups and canisters, fresh from the world plan. Arrays are refilled in place.
-function populate(F) {
-  const plan = F.world.plan; let id = 1;
-  F.encs.length = F.aliens.length = F.pickups.length = F.canisters.length = 0;
+// From the level plan: one fresh enc per encounter (encs and aliens are rebuilt), then the aliens, pickups and canisters of
+// areas >= from, appended (pre-flight F19: callers empty what they replace). Each carries its area. Ids are the level plan's:
+// an alien's is 1 + its index in the plan's aliens (encounter by encounter), a canister's -1 - its index in the plan's canisters.
+function populate(F, from) {
+  const plan = F.lv.plan; let id = 1;
+  F.encs.length = F.aliens.length = 0;
   for (const e of plan.encounters) {
-    const enc = { x: e.x, z: e.z, p: e.p, first: e.first, alerted: false, waved: false };
+    const enc = { x: e.x, z: e.z, p: e.p, first: e.first, area: e.area, room: e.room ?? -1, alerted: false, waved: false };
     F.encs.push(enc);
-    for (const s of e.aliens) F.aliens.push(createAlien(s, id++, enc));
+    for (const s of e.aliens) { const i = id++; if (e.area < from) continue; const a = createAlien(s, i, enc); a.area = e.area; F.aliens.push(a); }
   }
-  for (const p of plan.pickups) F.pickups.push({ kind: p.kind, x: p.x, y: p.y, z: p.z, n: PICKUP[p.kind] });
-  plan.canisters.forEach((c, i) => F.canisters.push({ x: c.x, y: c.y, z: c.z, hp: CANISTER.hp, fuse: 0, id: -1 - i }));
+  for (const p of plan.pickups) if (p.area >= from) F.pickups.push({ kind: p.kind, x: p.x, y: p.y, z: p.z, n: PICKUP[p.kind], area: p.area });
+  plan.canisters.forEach((c, i) => { if (c.area >= from) F.canisters.push({ x: c.x, y: c.y, z: c.z, hp: CANISTER.hp, fuse: 0, id: -1 - i, area: c.area }); });
 }
 
 export function hurtPlayer(F, dmg, kx, ky, kz) {
@@ -67,21 +73,24 @@ function die(F) {
   F.events.push({ type: 'dead' });
 }
 
+// Back to the current area's start with what you entered it with, facing it fresh.
 export function restartArea(F) {
   const E = F.entry, A = F.ars;
-  Object.assign(F.player, createPlayer(F.world.spawn, F._g)); // in place: the input module holds this object
+  Object.assign(F.player, createPlayer(areaStart(F.world, F.area), F.lv.ground)); // in place: the input module holds this object
   F.hp = 100;
   A.owned = E.owned.slice(); A.cells = E.cells; A.cool = 0; A.cur = A.owned.lastIndexOf(true);
   F.flag.held = E.flagHeld;
-  populate(F);
   F.bolts.length = F.parts.length = F.booms.length = 0; clearDecals(F);
+  F.aliens.length = F.pickups.length = F.canisters.length = F.balls.length = 0;
   F.field = createField(); F.fieldT = 0;
   F.state = 'play'; F.deadT = 0; F.hurtT = 0; F.shotT = 9;
-  F.events.push({ type: 'restart' });
+  populate(F, F.area);
+  F.events.push({ type: 'restart', area: F.area });
 }
 
-// Where the crosshair ray first meets a live alien's sphere or the ground (0.5 m steps), up to 200 m (and never nearer than 1 m,
-// so a bolt from the muzzle can't be sent backwards). Spheres that hold the eye are ignored.
+// Where the crosshair ray first meets a live alien's sphere or the level (the ground, or indoors at or above the ceiling; 0.5 m
+// steps), up to 200 m (and never nearer than 1 m, so a bolt from the muzzle can't be sent backwards). Spheres that hold the eye
+// are ignored.
 export function aimPoint(F) {
   const p = F.player, f = cameraBasis(p.yaw, p.pitch).f, ex = p.x, ey = p.y + PLAYER.eye, ez = p.z;
   let best = 200;
@@ -96,7 +105,11 @@ export function aimPoint(F) {
       if (disc >= 0) best = Math.min(best, -b - sqrt(disc));
     }
   }
-  for (let s = .5; s < best; s += .5) if (ey + f[1] * s <= F._g(ex + f[0] * s, ez + f[2] * s)) { best = s; break; }
+  const G = F.lv.ground, Cl = F.lv.ceil;
+  for (let s = .5; s < best; s += .5) {
+    const x = ex + f[0] * s, y = ey + f[1] * s, z = ez + f[2] * s;
+    if (y <= G(x, z) || (Cl && y >= Cl(x, z))) { best = s; break; }
+  }
   best = Math.max(1, best);
   return [ex + f[0] * best, ey + f[1] * best, ez + f[2] * best];
 }
@@ -106,16 +119,16 @@ export function stepFight(F, input, dt) {
   F.time += dt; F.shotT += dt;
   if (F.state === 'dead') {
     F.deadT += dt;
-    stepPlayer(F.player, STILL, dt, F._g, HALF - MAP_MARGIN, F.gravity);
+    stepPlayer(F.player, STILL, dt, F.lv.ground, F.lv.bound, F.gravity, F.lv.ceil);
     flyBolts(F, dt); stepParts(F, dt); stepBooms(F, dt);
     if (F.deadT >= DEATH_TIME) restartArea(F);
     return;
   }
-  const p = F.player, A = F.ars, W = F.world;
-  // 2. weapon input
+  const p = F.player, A = F.ars, lv = F.lv;
+  // 2. weapon input; the flag stands on the surface level only
   if (input.weapon >= 0) selectWeapon(A, input.weapon);
   if (input.wheel) cycleWeapon(A, input.wheel);
-  if (input.use && !F.flag.held && Math.hypot(p.x - F.flag.x, p.z - F.flag.z) <= GRAB) {
+  if (input.use && lv.id === 'surface' && !F.flag.held && Math.hypot(p.x - F.flag.x, p.z - F.flag.z) <= GRAB) {
     give(A, 0, 0); F.flag.held = true;
     F.entry = { owned: A.owned.slice(), cells: A.cells, flagHeld: true };
     F.events.push({ type: 'flag', text: WEAPONS[0].name, x: F.flag.x, y: F.flag.y, z: F.flag.z });
@@ -123,15 +136,15 @@ export function stepFight(F, input, dt) {
   coolWeapon(A, dt);
   if (input.fire && A.cur >= 0 && A.cool <= 0) fire(F);
   // 3. player
-  stepPlayer(p, input, dt, F._g, HALF - MAP_MARGIN, F.gravity);
+  stepPlayer(p, input, dt, lv.ground, lv.bound, F.gravity, lv.ceil);
   // 4. distance field
-  if ((F.fieldT -= dt) <= 0) { F.fieldT = FIELD_DT; updateField(F.field, W.occ, W.N, W.half, p.x, p.z, MAX_STEP); }
-  // 5. aliens: awake near their encounter or once it is alerted; the asleep only tick their clock
-  const C = F._ctx;
+  if ((F.fieldT -= dt) <= 0) { F.fieldT = FIELD_DT; updateField(F.field, lv.grid, lv.n, lv.half, p.x, p.z, lv.maxStep); }
+  // 5. aliens: awake within the level's wake radius of their encounter or once it is alerted; the asleep only tick their clock
+  const C = F._ctx, wake = lv.wake;
   C.px = p.x; C.py = p.y; C.pz = p.z; C.field = F.field;
   for (const a of F.aliens) {
     const e = a.enc, dx = p.x - e.x, dz = p.z - e.z;
-    if (e.alerted || dx * dx + dz * dz < WAKE * WAKE) stepAlien(a, C, dt); else a.t += dt;
+    if (e.alerted || dx * dx + dz * dz < wake * wake) stepAlien(a, C, dt); else a.t += dt;
   }
   // 5b. the player can't stand inside a live walker or a canister
   bodies(F);
@@ -148,17 +161,18 @@ export function stepFight(F, input, dt) {
   if (F.state === 'play' && F.hp <= 0) { if (F.god) F.hp = 1; else die(F); }
 }
 
-// R16: the player is pushed out of live walkers and canisters (horizontally, where their heights overlap). A push that would
-// climb more than PLAYER.stepUp, or cross the bound, shoves the walker instead (by its own climb rule); canisters never move.
+// R16: the player is pushed out of live walkers and canisters (horizontally, where their heights overlap). A push to where the
+// player doesn't fit (more than PLAYER.stepUp to climb, or indoors a wall or low ceiling under the box), or across the bound,
+// shoves the walker instead (by its own climb rule); canisters never move.
 function bodies(F) {
-  const p = F.player, G = F._g, lim = HALF - MAP_MARGIN;
+  const p = F.player, G = F.lv.ground, Cl = F.lv.ceil, lim = F.lv.bound;
   const out = (x, z, R, a) => {
     let dx = p.x - x, dz = p.z - z; const l2 = dx * dx + dz * dz;
     if (l2 >= R * R) return;
     const l = sqrt(l2), d = R - l;
     if (l > 1e-9) { dx /= l; dz /= l; } else { dx = Math.sin(p.yaw); dz = Math.cos(p.yaw); } // dead centre: back off
-    const nx = p.x + dx * d, nz = p.z + dz * d, gy = G(nx, nz);
-    if (Math.abs(nx) <= lim && Math.abs(nz) <= lim && gy - p.y <= PLAYER.stepUp) { p.x = nx; p.z = nz; p.y = Math.max(p.y, gy); }
+    const nx = p.x + dx * d, nz = p.z + dz * d;
+    if (Math.abs(nx) <= lim && Math.abs(nz) <= lim && fits(p, nx, nz, G, Cl)) { p.x = nx; p.z = nz; p.y = Math.max(p.y, G(nx, nz)); }
     else if (a) move(a, F._ctx, -dx * d, -dz * d);
   };
   for (const a of F.aliens) if (a.type !== 'fl' && a.state !== 'dead' && level(a, p.y)) out(a.x, a.z, ALIENS[a.type].radius + PLAYER.radius, a);
@@ -183,16 +197,17 @@ function fire(F) {
   }
 }
 
-// Bolts against the player's two spheres (id 0), every live alien's spheres (its id) and every canister (id -1 - index).
+// Bolts against the level, the player's two spheres (id 0), every live alien's spheres (its id) and every canister (its id).
+// A level hit scorches the face it hit (floor, wall or ceiling).
 function flyBolts(F, dt) {
   if (!F.bolts.length) return;
   const p = F.player, T = [{ x: p.x, y: p.y + .5, z: p.z, r: .4, id: 0 }, { x: p.x, y: p.y + 1.3, z: p.z, r: .4, id: 0 }];
   for (const a of F.aliens) if (a.state !== 'dead') for (const s of worldSpheres(a)) T.push({ x: s[0], y: s[1], z: s[2], r: s[3], id: a.id, a });
   for (const c of F.canisters) T.push({ x: c.x, y: c.y + CAN_Y, z: c.z, r: CANISTER.radius, id: c.id, c });
-  for (const h of stepBolts(F.bolts, dt, F._g, T)) {
+  for (const h of stepBolts(F.bolts, dt, F.lv.ground, T, F.lv.ceil)) {
     const b = h.b, t = h.t;
     if (!t) {
-      decal(F, 'scorch', h.x, h.y, h.z, b.r >= .3 ? .7 : .35);
+      decal(F, 'scorch', h.x, h.y, h.z, b.r >= .3 ? .7 : .35, h.n);
       burst(F, 'spark', h.x, h.y, h.z, 4, 2.5, 1, 3.5, .25, .5);
       burst(F, 'dust', h.x, h.y, h.z, 2, .8, .4, 1.2, .7, 1.2);
     } else if (t.a) { hurtAlien(t.a, b.team ? b.dmg / 2 : b.dmg, 0, 0); burst(F, 'goo', h.x, h.y, h.z, 6, 1.2, .5, 2, 8, 8); }
@@ -203,7 +218,7 @@ function flyBolts(F, dt) {
 
 // New deaths score, splash goo and drop; corpses sink over their last SINK seconds and go after CORPSE. Ids never change.
 function deaths(F) {
-  const G = F._g, L = F.aliens; let w = 0;
+  const G = F.lv.ground, L = F.aliens; let w = 0;
   for (const a of L) {
     if (a.state === 'dead') {
       if (a._died == null) killed(F, a);
@@ -218,11 +233,11 @@ function deaths(F) {
 
 function killed(F, a) {
   a._died = F.time; F.kills++;
-  const c = worldSpheres(a)[0], gy = F._g(a.x, a.z);
+  const c = worldSpheres(a)[0], gy = F.lv.ground(a.x, a.z);
   burst(F, 'goo', c[0], c[1], c[2], 24, 1.5, 1, 3, 8, 8);
   F.events.push({ type: 'kill', x: a.x, y: gy, z: a.z });
   const kind = a.type === 'fl' ? 'cells' : a.type === 'br' ? 'scatter' : a.enc.first || F.rng.next() < PICKUP.pistolDrop ? 'pistol' : null;
-  if (kind) F.pickups.push({ kind, x: a.x, y: gy, z: a.z, n: kind === 'cells' ? PICKUP.flCells : PICKUP[kind] });
+  if (kind) F.pickups.push({ kind, x: a.x, y: gy, z: a.z, n: kind === 'cells' ? PICKUP.flCells : PICKUP[kind], area: a.area });
 }
 
 // A shot-out canister lights its fuse; when the fuse runs out it is removed and explodes.
@@ -254,7 +269,8 @@ function explode(F, c) {
     if ((q = hit(s[0], s[1], s[2]))) hurtAlien(a, q[0], q[1], q[3]);
   }
   for (const o of F.canisters) if ((q = hit(o.x, o.y + CAN_Y, o.z))) { o.hp -= q[0]; if (!(o.fuse > 0)) o.fuse = B.fuse; }
-  decal(F, 'scorch', x, F._g(x, z), z, 1.6);
+  const G = F.lv.ground;
+  decal(F, 'scorch', x, G(x, z), z, 1.6, groundNormal(G, x, z));
   burst(F, 'spark', x, y, z, 30, 6, 1.5, 7, .3, .7);
   F.booms.push({ x, y, z, age: 0 });
   F.events.push({ type: 'boom', x, y, z });
@@ -288,8 +304,13 @@ function collect(F, k) {
   return true;
 }
 
+// Is (x, y, z) inside the level (ground more than WALL above it: a wall, or deep in a slope)? A bolt that starts there (an alien
+// muzzle buried in a wall) is reported there; it leaves no decal or particles.
+const buried = (F, x, y, z) => F.lv.ground(x, z) - y > WALL;
+
 // n particles of one kind: horizontal speed up to h each way, upward speed vy0..vy1, life l0..l1 seconds. The oldest go past MAX_PARTS.
 function burst(F, kind, x, y, z, n, h, vy0, vy1, l0, l1) {
+  if (buried(F, x, y, z)) return;
   const r = F.rng, P = F.parts;
   for (let i = 0; i < n; i++) P.push({ x, y, z, vx: r.range(-h, h), vy: r.range(vy0, vy1), vz: r.range(-h, h), kind, life: r.range(l0, l1) });
   if (P.length > MAX_PARTS) P.splice(0, P.length - MAX_PARTS);
@@ -298,23 +319,30 @@ function burst(F, kind, x, y, z, n, h, vy0, vy1, l0, l1) {
 // F.decals is one dense list; each kind keeps a ring (the decals' indices in that list, oldest first) of DECALS[kind].
 function clearDecals(F) { F.decals.length = 0; F._dr = { scorch: { at: [], n: 0 }, goo: { at: [], n: 0 } }; F._gn = 0; }
 
-// A ground mark facing the ground's normal (from its gradient); past its kind's ring size it replaces that kind's oldest.
-function decal(F, kind, x, y, z, r) {
-  const G = F._g, gx = G(x + .5, z) - G(x - .5, z), gz = G(x, z + .5) - G(x, z - .5), l = Math.hypot(gx, 1, gz), R = F._dr[kind], n = R.n++ % DECALS[kind];
-  const d = { x, y, z, nx: -gx / l, ny: 1 / l, nz: -gz / l, r, yaw: F.rng.range(0, TAU), kind };
-  if (R.at.length < DECALS[kind]) { R.at.push(F.decals.length); F.decals.push(d); } else F.decals[R.at[n]] = d;
+// A mark at (x, y, z) facing the unit normal n (of a floor, wall or ceiling); past its kind's ring size it replaces that kind's
+// oldest.
+function decal(F, kind, x, y, z, r, n) {
+  if (buried(F, x, y, z)) return;
+  const R = F._dr[kind], i = R.n++ % DECALS[kind];
+  const d = { x, y, z, nx: n[0], ny: n[1], nz: n[2], r, yaw: F.rng.range(0, TAU), kind };
+  if (R.at.length < DECALS[kind]) { R.at.push(F.decals.length); F.decals.push(d); } else F.decals[R.at[i]] = d;
 }
 
-// Particles fall under the area's gravity. Every 3rd goo particle to reach the ground sticks as a decal (the rest vanish);
-// sparks and dust settle and fade.
+// Particles fall under the level's gravity. A move to where the ground is more than WALL above the particle (a wall) is
+// refused: it keeps its x and z, loses its horizontal speed and falls down the face. Indoors the ceiling holds it down. Every
+// 3rd goo particle to reach the ground sticks as a decal facing the floor (the rest vanish); sparks and dust settle and fade.
 function stepParts(F, dt) {
-  const P = F.parts, G = F._g, g = F.gravity; let w = 0;
+  const P = F.parts, G = F.lv.ground, Cl = F.lv.ceil, g = F.gravity; let w = 0;
   for (const q of P) {
     if ((q.life -= dt) <= 0) continue;
-    q.vy -= g * dt; q.x += q.vx * dt; q.y += q.vy * dt; q.z += q.vz * dt;
+    q.vy -= g * dt;
+    const x = q.x + q.vx * dt, z = q.z + q.vz * dt;
+    if (G(x, z) - q.y > WALL) q.vx = q.vz = 0; else { q.x = x; q.z = z; }
+    q.y += q.vy * dt;
+    if (Cl) { const c = Cl(q.x, q.z); if (q.y > c) { q.y = c; q.vy = Math.min(q.vy, 0); } }
     const gy = G(q.x, q.z);
     if (q.y <= gy) {
-      if (q.kind === 'goo') { if (++F._gn % 3 === 0) decal(F, 'goo', q.x, gy, q.z, F.rng.range(.12, .3)); continue; }
+      if (q.kind === 'goo') { if (++F._gn % 3 === 0) decal(F, 'goo', q.x, gy, q.z, F.rng.range(.12, .3), groundNormal(G, q.x, q.z)); continue; }
       q.y = gy; q.vx = q.vy = q.vz = 0;
     }
     P[w++] = q;

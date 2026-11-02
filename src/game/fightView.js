@@ -72,8 +72,8 @@ export function fillFrame(V, F, frame, t) {
     const parts = RIGS[a.type].parts, fl = a.type === 'fl' && a.state === 'aim' ? Math.max(a.flash, .11 - .11 * Math.cos(12 * Math.PI * t)) : a.flash;
     for (let i = 0; i < parts.length; i++) M.push(ent(G[parts[i].mesh], partMatrixTo(mat(), a, i), null, fl));
   }
-  const fg = F.flag;
-  if (!fg.held) M.push(ent(G.flag, setT(mat(), fg.x, fg.y, fg.z), I3));
+  const fg = F.flag; // planted on the surface level only
+  if (!fg.held && F.lv.id === 'surface') M.push(ent(G.flag, setT(mat(), fg.x, fg.y, fg.z), I3));
   for (const q of F.pickups) {
     if (!near(q.x, q.z)) continue;
     const gun = q.kind === 'pistol' || q.kind === 'scatter';

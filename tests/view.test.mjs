@@ -7,11 +7,11 @@ const W = generateWorld('APOLLO-4471'), gl = fakeGL(), scene = buildSurfaceScene
 const idle = { fwd: 0, strafe: 0, run: false, jump: false, fire: false, use: false, weapon: -1, wheel: 0 };
 const frame = () => ({ ...scene, exposure: 1, lights: { pos: new Float32Array(64), col: new Float32Array(64), count: 0 }, spheres: new Float32Array(32) });
 const put = (F, x, z) => Object.assign(F.player, { x, z, y: sampleGround(W, x, z) });
-test('the frame carries the scene, nearby aliens and the planted flag', () => { const F = createFight(W, { gravity: 3 }), fr = frame(), a = F.aliens[0];
+test('the frame carries the scene, nearby aliens and the planted flag', () => { const F = createFight(W), fr = frame(), a = F.aliens[0];
   put(F, a.x + 20, a.z); fillFrame(V, F, fr, 0); for (const m of V.static) assert.ok(fr.meshes.includes(m));
   assert.ok(fr.meshes.filter(m => m.gpu === V.gpu.skLeg).length >= 6); assert.ok(fr.meshes.some(m => m.gpu === V.gpu.flag));
   put(F, F.flag.x + 1, F.flag.z); stepFight(F, { ...idle, use: true }, 1 / 60); fillFrame(V, F, fr, 0); assert.ok(!fr.meshes.some(m => m.gpu === V.gpu.flag)); });
-test('a crowded fight clips to 16 lights, 8 spheres and 512 sprites, nearest first (Review Focus 2)', () => { const F = createFight(W, { gravity: 3 }), fr = frame(), p = F.player, e = p.y + 1.7;
+test('a crowded fight clips to 16 lights, 8 spheres and 512 sprites, nearest first (Review Focus 2)', () => { const F = createFight(W), fr = frame(), p = F.player, e = p.y + 1.7;
   F.canisters.length = 0; F.shotT = 9;
   for (let i = 0; i < 300; i++) F.bolts.push({ x: p.x + 1 + i, y: e, z: p.z, vx: 1, vy: 0, vz: 0, dmg: 1, r: .2, life: 9, col: [.3, 1, .8], team: 1, src: 99 });
   for (let i = 0; i < 400; i++) F.parts.push({ x: p.x, y: e, z: p.z - 2 - i * .01, vx: 0, vy: 0, vz: 0, kind: 'goo', life: 9 });
@@ -20,18 +20,20 @@ test('a crowded fight clips to 16 lights, 8 spheres and 512 sprites, nearest fir
   for (let i = 0; i < 16; i++) assert.ok(Math.hypot(fr.lights.pos[i * 4] - p.x, fr.lights.pos[i * 4 + 2] - p.z) <= 16 + 1e-3);
   let ns = 0; for (let i = 0; i < 8; i++) if (fr.spheres[i * 4 + 3] > 0) ns++; assert.equal(ns, 8); assert.ok(Math.abs(fr.spheres[0] - (p.x - 3)) < .5);
   assert.ok(fr.sprites.nOpaque + fr.sprites.nGlow <= 512); assert.ok(fr.sprites.nOpaque <= 192); });
-test('the view model follows the weapon and is gone when dead', () => { const F = createFight(W, { gravity: 3 }), fr = frame();
+test('the planted flag is drawn on the surface level only', () => { const fr = frame(), at = F => { fillFrame(V, F, fr, 0); return fr.meshes.some(m => m.gpu === V.gpu.flag); };
+  assert.equal(at(createFight(W)), true); assert.equal(at(createFight(W, 1)), true); assert.equal(at(createFight(W, 2)), false); });
+test('the view model follows the weapon and is gone when dead', () => { const F = createFight(W), fr = frame();
   fillFrame(V, F, fr, 0); assert.equal(fr.view, null); put(F, F.flag.x + 1, F.flag.z); stepFight(F, { ...idle, use: true }, 1 / 60); fillFrame(V, F, fr, 0); assert.equal(fr.view.gpu, V.gpu.pole);
   give(F.ars, 1, 10); fillFrame(V, F, fr, 0); assert.equal(fr.view.gpu, V.gpu.pistol); F.hp = 1; hurtPlayer(F, 5, 0, 0, 0); fillFrame(V, F, fr, 0); assert.equal(fr.view, null); });
-test('the screen flashes red when hurt, then fades; the tint is a bounded mix (R17)', () => { const F = createFight(W, { gravity: 3 }), fr = frame(); hurtPlayer(F, 10, 0, 0, 0); fillFrame(V, F, fr, 0);
+test('the screen flashes red when hurt, then fades; the tint is a bounded mix (R17)', () => { const F = createFight(W), fr = frame(); hurtPlayer(F, 10, 0, 0, 0); fillFrame(V, F, fr, 0);
   assert.ok(fr.tint[0] > .05 && fr.tint[0] <= .18 && fr.tint[1] === 0 && fr.tint[2] === 0); for (let i = 0; i < 60; i++) stepFight(F, idle, 1 / 60); fillFrame(V, F, fr, 1); assert.ok(fr.tint[0] < .02);
   hurtPlayer(F, 60, 0, 0, 0); fillFrame(V, F, fr, 2); assert.ok(fr.tint[0] <= .18 && fr.tint[0] > .15); F.hp = 1; hurtPlayer(F, 5, 0, 0, 0); fillFrame(V, F, fr, 3); assert.deepEqual(fr.tint, [.12, 0, 0]); });
-test('the held pole rests low, right of and below the crosshair, and its swing sweeps across the centre (R18)', () => { const F = createFight(W, { gravity: 3 }), fr = frame(), p = F.player;
+test('the held pole rests low, right of and below the crosshair, and its swing sweeps across the centre (R18)', () => { const F = createFight(W), fr = frame(), p = F.player;
   put(F, F.flag.x + 1, F.flag.z); stepFight(F, { ...idle, use: true }, 1 / 60);
   const tip = () => { fillFrame(V, F, fr, 0); const c = fr.cam, B = cameraBasis(c.yaw, c.pitch), q = xf(fr.view.model, [0, 1.6, 0]), d = [q[0] - c.x, q[1] - c.y, q[2] - c.z], z = dot(d, B.f); return [dot(d, B.r) / z, dot(d, B.u) / z]; };
   F.shotT = 9; const [x, y] = tip(), tan = Math.tan(31 * Math.PI / 180); assert.ok(x > .06 * tan && y < -.06 * tan, `rest ${x} ${y}`); // at least 6% of the half-height off both axes (8 px at 270p)
   let crossed = false; for (let t = 0; t < .3; t += .005) { F.shotT = t; const [sx, sy] = tip(); if (sx < 0 && Math.abs(sy) < .1 * tan) crossed = true; } assert.ok(crossed); });
-test('an aiming floater pulses between 0 and .22 at about 6 Hz instead of holding a wash-out flash (M1)', () => { const F = createFight(W, { gravity: 3 }), fr = frame(), a = F.aliens.find(x => x.type === 'fl');
+test('an aiming floater pulses between 0 and .22 at about 6 Hz instead of holding a wash-out flash (M1)', () => { const F = createFight(W), fr = frame(), a = F.aliens.find(x => x.type === 'fl');
   put(F, a.x + 10, a.z); a.state = 'aim'; a.flash = 0; const f = []; for (let i = 0; i < 40; i++) { fillFrame(V, F, fr, i / 240); f.push(fr.meshes.find(m => m.gpu === V.gpu.flBody).flash); }
   assert.ok(Math.min(...f) < .01 && Math.max(...f) > .2 && Math.max(...f) <= .22 + 1e-9); assert.ok(f[0] < .01 && f[20] > .21 && Math.abs(f[10] - .11) < .01); }); // 1/6 s period: trough, quarter, crest
 test('dispose frees the uploaded models only', () => { const g2 = fakeGL(), s2 = buildSurfaceScene(g2, W), before = g2.live.size, V2 = createFightView(g2, s2);
@@ -39,14 +41,14 @@ test('dispose frees the uploaded models only', () => { const g2 = fakeGL(), s2 =
 const r6 = v => Math.round(v * 1e6) / 1e6 + 0;
 test('a ceiling decal faces down instead of turning into NaN (carry-over)', () => { const m = tilt(1, 3, 2, 0, -1, 0);
   assert.ok([...m].every(Number.isFinite)); assert.deepEqual(xf(m, [0, 1, 0]).map(r6), [1, 2, 2]); assert.deepEqual(xf(tilt(0, 0, 0, 1, 0, 0), [0, 1, 0]).map(r6), [1, 0, 0]); });
-test('a busy frame allocates no Float32Array once warm (carry-over)', () => { const F = createFight(W, { gravity: 3 }), fr = frame(), p = F.player; give(F.ars, 0, 0); give(F.ars, 1, 50);
+test('a busy frame allocates no Float32Array once warm (carry-over)', () => { const F = createFight(W), fr = frame(), p = F.player; give(F.ars, 0, 0); give(F.ars, 1, 50);
   for (let i = 0; i < 40; i++) F.aliens.push(createAlien({ type: ['sk', 'fl', 'br'][i % 3], x: p.x - 3 - i, y: p.y, z: p.z + 2 }, 500 + i, F.encs[0]));
   for (let i = 0; i < 100; i++) F.bolts.push({ x: p.x + 1 + i, y: p.y + 1.7, z: p.z, vx: 1, vy: 0, vz: 0, dmg: 1, r: .2, life: 9, col: [.3, 1, .8], team: 1, src: 99 });
   for (let i = 0; i < 60; i++) F.decals.push({ x: p.x + i % 8, y: p.y, z: p.z + 3, nx: 0, ny: 1, nz: 0, r: .3, yaw: i, kind: i % 2 ? 'goo' : 'scorch' });
   fillFrame(V, F, fr, 0); const Real = globalThis.Float32Array; let n = 0;
   globalThis.Float32Array = class extends Real { constructor(...a) { super(...a); n++; } };
   try { fillFrame(V, F, fr, 1 / 60); } finally { globalThis.Float32Array = Real; } assert.equal(n, 0); });
-test('aliens draw out to 80 m, no further (carry-over)', () => { const F = createFight(W, { gravity: 3 }), fr = frame(), a = F.aliens[0], bodies = [V.gpu.skBody, V.gpu.flBody, V.gpu.brBody];
+test('aliens draw out to 80 m, no further (carry-over)', () => { const F = createFight(W), fr = frame(), a = F.aliens[0], bodies = [V.gpu.skBody, V.gpu.flBody, V.gpu.brBody];
   F.aliens.length = 1; put(F, a.x + 70, a.z); fillFrame(V, F, fr, 0); assert.ok(fr.meshes.some(m => bodies.includes(m.gpu)));
   put(F, a.x + 100, a.z); fillFrame(V, F, fr, 0); assert.ok(!fr.meshes.some(m => bodies.includes(m.gpu))); });
 test('sprites fade into the base fog like the world does (carry-over)', () => { const fs = readFileSync('src/gfx/shaders/sprite.frag', 'utf8'), r = readFileSync('src/gfx/renderer.js', 'utf8');

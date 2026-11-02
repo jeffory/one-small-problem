@@ -6,7 +6,7 @@ const W = generateWorld('APOLLO-4471'), COUNT = { dead: 'deaths', restart: 'rest
 // the route at the encounters, strafing, jumping, cycling weapons and firing at the nearest live alien; a blast-like hit at
 // frame 900 makes sure of a death mid-fight.
 function play(view) {
-  const F = createFight(W, { gravity: 3 }), p = F.player, r = makeRng('replay-dt'), out = { deaths: 0, restarts: 0, kills: 0, booms: 0, snaps: [] };
+  const F = createFight(W), p = F.player, r = makeRng('replay-dt'), out = { deaths: 0, restarts: 0, kills: 0, booms: 0, snaps: [] };
   let V = null, frame = null, t = 0;
   if (view) { const gl = fakeGL(), scene = buildSurfaceScene(gl, W); V = createFightView(gl, scene); frame = { ...scene, exposure: 1 }; }
   const snap = () => JSON.stringify([F.time, F.state, F.deadT, F.hp, F.kills, F.shots, F.shotT, F.hurtT, p, F.ars, F.flag, F.bolts, F.parts, F.decals, F.booms, F.pickups,

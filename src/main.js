@@ -25,7 +25,7 @@ function boot() {
 
   const { gl, hdrOK } = createGL(canvas), renderer = createRenderer(gl, hdrOK);
   const world = generateWorld(seed), scene = buildSurfaceScene(gl, world), ground = (x, z) => sampleGround(world, x, z);
-  const F = createFight(world, { gravity: scene.gravity }), V = createFightView(gl, scene), p = F.player, input = createInput(canvas, p), RES = [180, 270, 360];
+  const F = createFight(world), V = createFightView(gl, scene), p = F.player, input = createInput(canvas, p), RES = [180, 270, 360];
   let resI = 1, palMode = 1, lost = false, shown = false, fp = DEBUG ? `#${seed} ${checksumWorld(world)}` : "", warpK = 0, raf = 0, frames = 0, fault = false, helpShown = true, t0 = performance.now(), last = t0, fpsN = 0, fpsT = 0;
 
   const resize = () => lost || renderer.resize(innerWidth, innerHeight, devicePixelRatio || 1, RES[resI]);
@@ -66,7 +66,7 @@ function boot() {
       if (!shown) { shown = true; hud.ready(); }
       if (DEBUG) {
         fpsN++; fpsT += el;
-        if (fpsT >= .5) { hud.debug(`${fp} \u00b7 ${Math.round(fpsN / fpsT)} fps \u00b7 ${RES[resI]}p \u00b7 palette ${['off', 'dithered', 'flat'][palMode]} \u00b7 hp ${Math.ceil(F.hp)} \u00b7 awake ${F.aliens.filter(a => a.state !== 'dead' && (a.enc.alerted || Math.hypot(p.x - a.enc.x, p.z - a.enc.z) < 60)).length} \u00b7 bolts ${F.bolts.length}`); fpsN = fpsT = 0; }
+        if (fpsT >= .5) { hud.debug(`${fp} \u00b7 ${Math.round(fpsN / fpsT)} fps \u00b7 ${RES[resI]}p \u00b7 palette ${['off', 'dithered', 'flat'][palMode]} \u00b7 hp ${Math.ceil(F.hp)} \u00b7 awake ${F.aliens.filter(a => a.state !== 'dead' && (a.enc.alerted || Math.hypot(p.x - a.enc.x, p.z - a.enc.z) < F.lv.wake)).length} \u00b7 bolts ${F.bolts.length}`); fpsN = fpsT = 0; }
       }
       frames++;
       window.ospTest ??= { ready: true, seed, hdr: hdrOK, checksum: checksumWorld(world), capture: () => renderer.capture(), player: () => ({ x: p.x, y: p.y, z: p.z }), frames: () => frames,
