@@ -5,7 +5,7 @@ import { CRATER } from '../src/gen/crater.js';
 import { budgetAt, COST, CRATER_P, CRATER_AT } from '../src/gen/encounters.js';
 import { reachMap } from '../src/gen/passable.js';
 import { BASE, K as TILE } from '../src/gen/base.js';
-import { LIGHT_CAP, LEAK, BASE_SCALE } from '../src/gen/baseplan.js';
+import { LIGHT_CAP, BASE_SCALE } from '../src/gen/baseplan.js';
 // The base comes from generateWorld, one per seed: a layout that fails to construct or is rejected re-rolls, and that is
 // routine (pre-flight F7: printed, not gated). Only a seed that exhausts all BASE.attempts (32) attempts fails the soak,
 // because generateBase then throws (ruling R2).
@@ -58,13 +58,17 @@ function checkBase(seed, B, golfSurface) {
       let c = 0; for (const l of B.lights) { const dx = l.x - x, dy = l.y - y, dz = l.z - z; if (dx * dx + dy * dy + dz * dz < l.r * l.r) c++; }
       if (c > LIGHT_CAP) { bad('LIGHT_CAP exceeded ' + c); break; }
     }
+    for (const r of B.rooms) if (!B.lights.some((l) => l.kind === 0 && B.room[tile(l)] === r.id)) bad('no steady lamp in room ' + r.id + ' ' + r.theme);
+    // R16: no lamp reaches a walkable tile it cannot see (a 2D sight line to the tile's centre, sampled every 5 cm; wall tiles block).
     for (const l of B.lights) {
-      let c = Infinity;
-      for (let j = Math.max(0, Math.floor(l.z + h) - 14); j <= Math.min(n - 1, Math.floor(l.z + h) + 14); j++) for (let i = Math.max(0, Math.floor(l.x + h) - 14); i <= Math.min(n - 1, Math.floor(l.x + h) + 14); i++) {
-        if (B.kind[j * n + i] !== TILE.wall) continue;
-        const dx = Math.max(0, Math.abs(l.x - (i - h)) - .5), dz = Math.max(0, Math.abs(l.z - (j - h)) - .5); c = Math.min(c, Math.sqrt(dx * dx + dz * dz));
+      const fx = l.x + h, fz = l.z + h, R = Math.ceil(l.r) + 1; let leak = false;
+      for (let j = Math.max(0, Math.floor(fz) - R); j <= Math.min(n - 1, Math.floor(fz) + R) && !leak; j++) for (let i = Math.max(0, Math.floor(fx) - R); i <= Math.min(n - 1, Math.floor(fx) + R) && !leak; i++) {
+        if (B.kind[j * n + i] === TILE.wall) continue;
+        const dx = Math.max(0, Math.abs(fx - i) - .5), dz = Math.max(0, Math.abs(fz - j) - .5); if (Math.sqrt(dx * dx + dz * dz) >= l.r - 1e-9) continue;
+        const s = Math.ceil(Math.hypot(i - fx, j - fz) / .05);
+        for (let k = 1; k < s; k++) if (B.kind[Math.round(fz + (j - fz) * k / s) * n + Math.round(fx + (i - fx) * k / s)] === TILE.wall) { leak = true; break; }
       }
-      if (l.r > c + LEAK + 1e-9) { bad('lamp reaches through a wall'); break; }
+      if (leak) { bad('lamp reaches a tile behind a wall'); break; }
     }
   }
 }

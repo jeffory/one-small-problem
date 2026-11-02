@@ -5,7 +5,8 @@ import { budgetAt } from './encounters.js';
 
 // Lamp colours are the look test's. kind: 0 steady, 1 red flicker (spawn doors), 2 pulsing (reactor core).
 export const LIGHT = { amber: { col: [1.3, .8, .32], r: 8 }, teal: { col: [.35, 1.3, .85], r: 8 }, red: { col: [2.2, .25, .08], r: 5, kind: 1 }, core: { col: [.5, 2.6, 1.6], r: 12, kind: 2 } };
-export const LIGHT_CAP = 10, LEAK = 1.5, LAMP_DROP = 3.2, CORRIDOR_LAMP = 6, BASE_SCALE = .7;
+// LAMP_DROP: room lamps hang this far above the floor, the look test's height (R16).
+export const LIGHT_CAP = 10, LAMP_DROP = 2.65, CORRIDOR_LAMP = 6, BASE_SCALE = .7;
 // Heights above a floor tile where the cap is sampled: a standing eye and a jumping one (pre-flight F28).
 const SAMPLE = [1.7, 2.4], TALL = 4.5, TRIES = 40;
 const AMBER_ROOM = { lift: 1, hangar: 1, comms: 1 }, TEAL_ROOM = { lab: 1, reactor: 1, greenhouse: 1 };
@@ -13,20 +14,39 @@ const AMBER_ROOM = { lift: 1, hangar: 1, comms: 1 }, TEAL_ROOM = { lab: 1, react
 export function lightBase(B) {
   const { n, half, floor, kind, room, rooms } = B, rng = makeRng(B.seed + '/base/lights/' + B.attempt), lights = [];
   const cnt = SAMPLE.map(() => new Uint8Array(n * n));
-  // Horizontal distance from a point (in tile coordinates) to the nearest wall tile square within reach.
-  const clearance = (fx, fz, reach) => {
+  const wall = (i, j) => i < 0 || j < 0 || i >= n || j >= n || kind[j * n + i] === K.wall;
+  // Can a point (in tile coordinates; tile k spans k - .5 to k + .5) see tile (bi, bj)'s centre? A 2D walk over every tile the
+  // segment crosses, starting with the one it leaves the point through (a point on a tile edge belongs to the side it heads for):
+  // any wall tile on it blocks, and at an exact tile corner either side's wall does.
+  const sees = (ax, az, bi, bj) => {
+    const dx = bi - ax, dz = bj - az, si = dx < 0 ? -1 : 1, sj = dz < 0 ? -1 : 1, ux = dx ? si / dx : 2, uz = dz ? sj / dz : 2;
+    let i = si > 0 ? Math.floor(ax + .5) : Math.ceil(ax - .5), j = sj > 0 ? Math.floor(az + .5) : Math.ceil(az - .5);
+    let tx = dx ? (i + .5 * si - ax) / dx : 2, tz = dz ? (j + .5 * sj - az) / dz : 2;
+    if (wall(i, j)) return false;
+    for (let s = 0; s < 4 * n && (i !== bi || j !== bj); s++) {
+      if (tx < tz - 1e-9) { i += si; tx += ux; }
+      else if (tz < tx - 1e-9) { j += sj; tz += uz; }
+      else { if (wall(i + si, j) || wall(i, j + sj)) return false; i += si; j += sj; tx += ux; tz += uz; }
+      if (wall(i, j)) return false;
+    }
+    return i === bi && j === bj;
+  };
+  // R16: how far a lamp at a point may reach, at most reach: the horizontal distance to the nearest non-wall tile square it cannot
+  // see. Walls between spaces are at least 2 tiles thick, so this keeps light from passing through them without stopping it short
+  // at the nearest wall the way a clearance bound did.
+  const sight = (fx, fz, reach) => {
     let c = reach;
     const r = Math.ceil(reach) + 1;
     for (let j = Math.max(0, Math.floor(fz) - r); j <= Math.min(n - 1, Math.floor(fz) + r); j++)
       for (let i = Math.max(0, Math.floor(fx) - r); i <= Math.min(n - 1, Math.floor(fx) + r); i++) {
-        if (kind[j * n + i] !== K.wall) continue;
+        if (kind[j * n + i] === K.wall) continue;
         const dx = Math.max(0, Math.abs(fx - i) - .5), dz = Math.max(0, Math.abs(fz - j) - .5), d = Math.sqrt(dx * dx + dz * dz);
-        if (d < c) c = d;
+        if (d < c && !sees(fx, fz, i, j)) c = d;
       }
     return c;
   };
   const add = (x, y, z, def) => {
-    const fx = x + half, fz = z + half, r = Math.min(def.r, clearance(fx, fz, def.r) + LEAK), hit = [];
+    const fx = x + half, fz = z + half, r = sight(fx, fz, def.r), hit = [];
     const i0 = Math.max(0, Math.floor(fx - r)), i1 = Math.min(n - 1, Math.ceil(fx + r)), j0 = Math.max(0, Math.floor(fz - r)), j1 = Math.min(n - 1, Math.ceil(fz + r));
     for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
       const t = j * n + i;

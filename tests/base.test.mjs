@@ -35,7 +35,7 @@ test('re-rolls run to 32 attempts, so no seed is left without a base (ruling R2)
   for (const s of ['APOLLO-2428', 'EAGLE-7587', 'ORION-6034', 'CRATER-7635', 'MERCURY-5618', 'TITAN-0038']) { const b = generateBase(s); assert.equal(b.seed, s); assert.ok(b.attempt >= 8, `${s} attempt ${b.attempt}`); } });
 test('base generation is quick', () => { const t = performance.now(); for (let i = 0; i < 50; i++) generateBase('SPEED-' + i); assert.ok(performance.now() - t < 1000); });
 import { generateWorld } from '../src/gen/world.js'; import { checksumWorld } from '../src/gen/checksum.js';
-import { LIGHT, LIGHT_CAP, LEAK, BASE_SCALE } from '../src/gen/baseplan.js'; import { budgetAt, COST } from '../src/gen/encounters.js';
+import { LIGHT, LIGHT_CAP, LAMP_DROP, BASE_SCALE } from '../src/gen/baseplan.js'; import { budgetAt, COST } from '../src/gen/encounters.js';
 const WW = generateWorld('APOLLO-4471'), M = WW.baseMap, P = M.plan, cost = e => e.aliens.reduce((s, a) => s + COST[a.type], 0);
 const tm = o => Math.round(o.z + M.half) * M.n + Math.round(o.x + M.half), rm = reachMap(M.floor, M.n, [Math.round(M.start.x + M.half), Math.round(M.start.z + M.half)], BASE.step, 0);
 const room = t => M.rooms.find(r => r.theme === t).id;
@@ -55,12 +55,29 @@ test('tape in every side room and before every brute room, cells in the hangar a
   for (const q of [...P.pickups, ...P.canisters]) { assert.equal(q.area, 2); assert.equal(rm[tm(q)], 1); } });
 test('two golf balls in the first two side rooms, reachable (Review Focus 3)', () => { assert.deepEqual(P.golf.map(g => [g.id, g.area]), [[3, 2], [4, 2]]);
   P.golf.forEach((g, i) => { assert.equal(M.room[tm(g)], M.side[i]); assert.equal(rm[tm(g)], 1); assert.equal(g.y, M.floor[tm(g)]); }); });
-test('lamps: amber and teal pools, a pulsing core, red flicker at the spawn doors, at most LIGHT_CAP on any tile, no leak past LEAK', () => { const Ls = M.lights;
+test('lamps: amber and teal pools, a pulsing core, red flicker at the spawn doors, at most LIGHT_CAP on any tile, a steady lamp in every room', () => { const Ls = M.lights;
   assert.ok(Ls.some(l => l.kind === 2 && M.room[tm(l)] === room('reactor'))); assert.ok(Ls.filter(l => l.kind === 1).length >= M.spawnDoors.length);
   const cols = new Set(Ls.filter(l => !l.kind).map(l => l.col.join())); assert.ok(cols.has(LIGHT.amber.col.join()) && cols.has(LIGHT.teal.col.join()));
   for (let k = 0; k < M.n * M.n; k++) if (M.kind[k] === K.floor) for (const up of [1.7, 2.4]) { const x = k % M.n - M.half, z = (k / M.n | 0) - M.half, y = M.floor[k] + up; // pre-flight F28
     assert.ok(Ls.filter(l => Math.hypot(l.x - x, l.y - y, l.z - z) < l.r).length <= LIGHT_CAP, `tile ${x}, ${z} at +${up}`); }
-  for (const l of Ls) { let c = Infinity; for (let k = 0; k < M.n * M.n; k++) if (M.kind[k] === K.wall) { const dx = Math.max(0, Math.abs(l.x - (k % M.n - M.half)) - .5), dz = Math.max(0, Math.abs(l.z - ((k / M.n | 0) - M.half)) - .5); c = Math.min(c, Math.hypot(dx, dz)); }
-    assert.ok(l.r <= c + LEAK + 1e-9, `lamp at ${l.x}, ${l.z} reaches through a wall`); } });
+  for (const r of M.rooms) assert.ok(Ls.some(l => l.kind === 0 && M.room[tm(l)] === r.id), `room ${r.id} (${r.theme}) has no steady lamp`); }); // R16: the cap may refuse lamps, never a room's last
+// R16: a 2D sight line over the tile grid, sampled every 2 cm from (x, z) to tile t's centre; any wall tile on it blocks.
+const sees = (B, x, z, t) => { const bx = t % B.n - B.half, bz = (t / B.n | 0) - B.half, s = Math.ceil(Math.hypot(bx - x, bz - z) / .02);
+  for (let k = 1; k < s; k++) if (B.kind[Math.round(z + (bz - z) * k / s + B.half) * B.n + Math.round(x + (bx - x) * k / s + B.half)] === K.wall) return false; return true; };
+test('room lamps hang at the look test height, and no lamp reaches a walkable tile it cannot see, so light never passes through a wall (R16)', () => {
+  assert.equal(LAMP_DROP, 2.65); for (const l of M.lights) { const r = M.rooms[M.room[tm(l)]]; if (!l.kind && r) assert.equal(l.y, r.floor + LAMP_DROP, `lamp at ${l.x}, ${l.z}`); }
+  for (const l of M.lights) for (let t = 0; t < M.n * M.n; t++) { if (M.kind[t] === K.wall) continue;
+    const dx = Math.max(0, Math.abs(l.x - (t % M.n - M.half)) - .5), dz = Math.max(0, Math.abs(l.z - ((t / M.n | 0) - M.half)) - .5);
+    if (Math.hypot(dx, dz) < l.r - 1e-9) assert.ok(sees(M, l.x, l.z, t), `lamp at ${l.x}, ${l.z} (r ${l.r}) reaches tile ${t % M.n}, ${t / M.n | 0} behind a wall`); } });
+// R16: the world shader's own lighting for a floor point (squared falloff, the cosine to the up normal, ambient .012-.013, 14 bands), with
+// each lamp at full colour (the core at its mean pulse, .7), averaged over the channels; band 1 is the first lit step.
+const bandAt = (B, t) => { const x = t % B.n - B.half, z = (t / B.n | 0) - B.half, y = B.floor[t]; let s = (.012 + .013 + .012) / 3;
+  for (const l of B.lights) { const dx = l.x - x, dy = l.y - y, dz = l.z - z, d = Math.hypot(dx, dy, dz), k = Math.max(0, 1 - d / l.r);
+    if (k > 0 && dy > 0) s += (l.col[0] + l.col[1] + l.col[2]) / 3 * (l.kind === 2 ? .7 : 1) * k * k * dy / d; }
+  return Math.floor(s * 14 + .5); };
+test('the lamps light the floor: at least 60% of walkable tiles reach band 1 on three seeds (R16)', () => {
+  for (const seed of ['APOLLO-4471', 'EAGLE-0001', 'SOAK-0042']) { const B = seed === 'APOLLO-4471' ? M : generateWorld(seed).baseMap; let lit = 0, all = 0;
+    for (let t = 0; t < B.n * B.n; t++) if (B.kind[t] === K.floor) { all++; if (bandAt(B, t) >= 1) lit++; }
+    assert.ok(lit / all >= .6, `${seed}: ${(100 * lit / all).toFixed(1)}% of walkable tiles lit`); } });
 test('generateWorld carries the base, and the checksum covers it', () => { const a = generateWorld('APOLLO-4471'); assert.equal(checksumWorld(a), checksumWorld(WW));
   a.baseMap.lights[0].r += .5; assert.notEqual(checksumWorld(a), checksumWorld(WW)); });

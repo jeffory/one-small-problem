@@ -114,13 +114,14 @@ export function createRenderer(gl, hdrOK, tex = bakeTextures(gl)) {
     gl.bindFramebuffer(gl.READ_FRAMEBUFFER, null);
   }
 
-  // Reads back the low-res palette target: fractions of in-palette and pure-black pixels, and distinct RGB count.
+  // Reads back the low-res palette target: fractions of in-palette and pure-black pixels, distinct RGB count, and the mean of
+  // (r + g + b) / 3 over the frame (0-255).
   function capture() {
     const px = new Uint8Array(w * h * 4), pal = new Set(PALETTE.map(s => parseInt(s, 16))), seen = new Set();
     gl.bindFramebuffer(gl.READ_FRAMEBUFFER, fboL); gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, px); gl.bindFramebuffer(gl.READ_FRAMEBUFFER, null);
-    let inPal = 0, black = 0;
-    for (let i = 0; i < px.length; i += 4) { const c = px[i] << 16 | px[i + 1] << 8 | px[i + 2]; seen.add(c); if (pal.has(c)) inPal++; if (!c) black++; }
-    return { w, h, inPalette: inPal / (w * h), black: black / (w * h), colours: seen.size };
+    let inPal = 0, black = 0, sum = 0;
+    for (let i = 0; i < px.length; i += 4) { const c = px[i] << 16 | px[i + 1] << 8 | px[i + 2]; seen.add(c); if (pal.has(c)) inPal++; if (!c) black++; sum += px[i] + px[i + 1] + px[i + 2]; }
+    return { w, h, inPalette: inPal / (w * h), black: black / (w * h), colours: seen.size, mean: sum / 3 / (w * h) };
   }
 
   return { resize, render, capture };
