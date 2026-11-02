@@ -1,5 +1,5 @@
 // Pure model builders (no GL): design-A aliens, held weapons, flag/pole and prop meshes as finishMesh output.
-import { createMesh, vtx, quadIdx, box, beam, blob, lathe, finishMesh } from '../gfx/mesh.js';
+import { createMesh, vtx, quadIdx, box, blob, lathe, finishMesh } from '../gfx/mesh.js';
 import { MAT } from '../gfx/materials.js';
 import { vn3 } from '../gen/noise.js';
 import { buildFlag } from './props.js';
@@ -64,7 +64,8 @@ export function buildModels() {
     lathe(m, [0, -.05, .01], [0, -.21, .07], [[0, .035], [.5, .04], [1, .032]], 10, MAT.gunFlesh);
     lathe(m, [0, -.08, -.02], [0, -.075, -.34], [[0, .02], [.5, .025], [1, .016]], 8, MAT.gunFlesh);
   });
-  const pole = make(m => { beam(m, [0, 0, 0], [0, 1.6, 0], .025, MAT.hull); box(m, 0, 1.2, -.01, .3, 1.55, .01, MAT.hull); });
+  // R18: a round shaft (the held pole is seen up close) and a small cloth near the tip, off toward +x
+  const pole = make(m => { lathe(m, [0, 0, 0], [0, 1.6, 0], [[0, .024], [.97, .024], [1, .017]], 10, MAT.hull); box(m, 0, 1.4, -.006, .17, 1.57, .006, MAT.hull); });
   const flag = make(m => buildFlag(m, 0, 0, () => 0));
   const tape = make(m => lathe(m, [-.03, 0, 0], [.03, 0, 0], [[0, .07], [.06, .09], [.94, .09], [1, .07]], 14, MAT.tape));
   const cell = make(m => lathe(m, [0, 0, 0], [0, .25, 0], [[0, .01], [.1, .04], [.9, .04], [1, .01]], 10, MAT.coilB));

@@ -1,7 +1,7 @@
 import test from 'node:test'; import assert from 'node:assert/strict'; import { fakeGL } from './fakegl.mjs';
 import { generateSurface, sampleGround } from '../src/gen/surface.js'; import { buildSurfaceScene } from '../src/game/surfaceScene.js';
 import { createFight, stepFight, hurtPlayer } from '../src/game/fight.js'; import { createAlien } from '../src/game/aliens.js'; import { give } from '../src/game/weapons.js';
-import { createFightView, fillFrame } from '../src/game/fightView.js';
+import { createFightView, fillFrame } from '../src/game/fightView.js'; import { cameraBasis, xf, dot } from '../src/gfx/math.js';
 const W = generateSurface('APOLLO-4471'), gl = fakeGL(), scene = buildSurfaceScene(gl, W), V = createFightView(gl, scene);
 const idle = { fwd: 0, strafe: 0, run: false, jump: false, fire: false, use: false, weapon: -1, wheel: 0 };
 const frame = () => ({ ...scene, exposure: 1, lights: { pos: new Float32Array(64), col: new Float32Array(64), count: 0 }, spheres: new Float32Array(32) });
@@ -25,5 +25,10 @@ test('the view model follows the weapon and is gone when dead', () => { const F 
 test('the screen flashes red when hurt, then fades; the tint is a bounded mix (R17)', () => { const F = createFight(W, { gravity: 3 }), fr = frame(); hurtPlayer(F, 10, 0, 0, 0); fillFrame(V, F, fr, 0);
   assert.ok(fr.tint[0] > .05 && fr.tint[0] <= .18 && fr.tint[1] === 0 && fr.tint[2] === 0); for (let i = 0; i < 60; i++) stepFight(F, idle, 1 / 60); fillFrame(V, F, fr, 1); assert.ok(fr.tint[0] < .02);
   hurtPlayer(F, 60, 0, 0, 0); fillFrame(V, F, fr, 2); assert.ok(fr.tint[0] <= .18 && fr.tint[0] > .15); F.hp = 1; hurtPlayer(F, 5, 0, 0, 0); fillFrame(V, F, fr, 3); assert.deepEqual(fr.tint, [.12, 0, 0]); });
+test('the held pole rests low, right of and below the crosshair, and its swing sweeps across the centre (R18)', () => { const F = createFight(W, { gravity: 3 }), fr = frame(), p = F.player;
+  put(F, F.flag.x + 1, F.flag.z); stepFight(F, { ...idle, use: true }, 1 / 60);
+  const tip = () => { fillFrame(V, F, fr, 0); const c = fr.cam, B = cameraBasis(c.yaw, c.pitch), q = xf(fr.view.model, [0, 1.6, 0]), d = [q[0] - c.x, q[1] - c.y, q[2] - c.z], z = dot(d, B.f); return [dot(d, B.r) / z, dot(d, B.u) / z]; };
+  F.shotT = 9; const [x, y] = tip(), tan = Math.tan(31 * Math.PI / 180); assert.ok(x > .06 * tan && y < -.06 * tan, `rest ${x} ${y}`); // at least 6% of the half-height off both axes (8 px at 270p)
+  let crossed = false; for (let t = 0; t < .3; t += .005) { F.shotT = t; const [sx, sy] = tip(); if (sx < 0 && Math.abs(sy) < .1 * tan) crossed = true; } assert.ok(crossed); });
 test('dispose frees the uploaded models only', () => { const g2 = fakeGL(), s2 = buildSurfaceScene(g2, W), before = g2.live.size, V2 = createFightView(g2, s2);
   assert.ok(g2.live.size > before); V2.dispose(); assert.equal(g2.live.size, before); });

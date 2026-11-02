@@ -9,9 +9,10 @@ import { PLAYER } from './player.js';
 
 // Per-frame caps (16 lights, 8 spheres, 512 sprites of which at most 192 opaque); FAR culls aliens and small props.
 const MAX_L = 16, MAX_SPH = 8, MAX_SPR = 512, MAX_OPQ = 192, FAR = 150;
-// R13: the pole (built upright, 1.6 m) is gripped GRIP m up its shaft, leaned LEAN rad forward and turned TURN rad across
-// the view, like a spear held low at the right.
-const GRIP = .25, LEAN = .95, TURN = .22;
+// R18: the pole (built upright, 1.6 m) is gripped GRIP m up its shaft at HOLD (camera space, like VIEW_MODEL.off), leaned
+// LEAN rad forward (nearly level) and turned TURN rad in, so its tip rests right of and below the crosshair. A swing turns it
+// SWING[0] rad left and lifts it SWING[1] rad, sweeping the tip across the centre.
+const GRIP = .25, LEAN = 1.3, TURN = .12, HOLD = [.16, -.23, .36], SWING = [.9, .35];
 // A bolt and its trail: [size, intensity] for each of its 4 sprites, spaced .03 s of flight apart.
 const TRAIL = [[1, 1], [.7, .55], [.55, .35], [.42, .2]];
 const byD = (a, b) => a.d - b.d, smooth = v => { const x = Math.max(0, Math.min(1, v)); return x * x * (3 - 2 * x); };
@@ -129,10 +130,10 @@ export function fillFrame(V, F, frame, t) {
   V._t = t; V._ph += dt * (p.onGround ? Math.hypot(p.vx, p.vz) : 0) * 1.6;
   if (!W) frame.view = null;
   else {
-    const o = VIEW_MODEL.off, bx = o[0] + Math.cos(V._ph) * .005, by = o[1] + Math.sin(2 * V._ph) * .006;
+    const o = W.melee ? HOLD : VIEW_MODEL.off, bx = o[0] + Math.cos(V._ph) * .005, by = o[1] + Math.sin(2 * V._ph) * .006;
     const Cm = new Float32Array([r[0], r[1], r[2], 0, u[0], u[1], u[2], 0, -f[0], -f[1], -f[2], 0, cx, cy, cz, 1]);
     const sw = W.melee && F.shotT < .3 ? Math.sin(Math.PI * F.shotT / .3) : 0, kick = W.melee ? 0 : .05 * Math.max(0, 1 - F.shotT / .15);
-    const m = W.melee ? MM(Cm, T(bx, by, -o[2]), Rx(-1.2 * sw), Ry(TURN), Rx(-LEAN), Sc(VIEW_MODEL.scale), T(0, -GRIP, 0))
+    const m = W.melee ? MM(Cm, T(bx, by, -o[2]), Ry(SWING[0] * sw), Rx(SWING[1] * sw), Ry(TURN), Rx(-LEAN), Sc(VIEW_MODEL.scale), T(0, -GRIP, 0))
       : MM(Cm, T(bx, by, kick - o[2]), Sc(VIEW_MODEL.scale));
     frame.view = { gpu: G[W.melee ? 'pole' : W.id], model: m, rot: rot3(m) };
   }
