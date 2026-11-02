@@ -80,8 +80,14 @@ export function planFight(world) {
   pick('cells', 0.3 * Lr, 8, 14, false);
   pick('cells', 0.7 * Lr, 8, 14, false);
 
+  // R15: a canister stands 1.5 m from every alien, 1 m from every pickup and 1.2 m from every canister already placed
+  // (its own cluster's members and, though they are far apart anyway, the other clusters').
   const canisters = [], walkers = encounters.flatMap(e => e.aliens);
-  const clear = (x, z) => standable(x, z) && walkers.every(a => dist(a, { x, z }) >= 1.5);
+  const clear = (x, z, cluster) => {
+    const q = { x, z };
+    return standable(x, z) && walkers.every(a => dist(a, q) >= 1.5) && pickups.every(u => dist(u, q) >= 1) &&
+      canisters.every(c => dist(c, q) >= 1.2) && cluster.every(c => dist(c, q) >= 1.2);
+  };
   const hosts = [1, 3, encounters.length - 1].filter((v, i, a) => a.indexOf(v) === i);
   for (const ei of hosts) {
     const e = encounters[ei], cluster = [];
@@ -91,7 +97,7 @@ export function planFight(world) {
       // side axis from the route direction at the encounter centre
       const r = nearestDir(route, e.x, e.z);
       const x = e.x - r.dz * side + r.dx * fwd, z = e.z + r.dx * side + r.dz * fwd;
-      if (clear(x, z)) anchor = { x, z };
+      if (clear(x, z, cluster)) anchor = { x, z };
     }
     if (!anchor) continue;
     cluster.push(anchor);
@@ -104,7 +110,7 @@ export function planFight(world) {
         if (l < 0.05) continue;
         const d = rng.range(1.2, 2.0);
         const x = prev.x + vx / l * d, z = prev.z + vz / l * d;
-        if (clear(x, z)) spot = { x, z };
+        if (clear(x, z, cluster)) spot = { x, z };
       }
       if (!spot) break;
       cluster.push(spot);

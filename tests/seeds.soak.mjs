@@ -34,6 +34,9 @@ for (let n = 0; n < 1000; n++) {
     if (P.canisters.length < 6) bad('canisters ' + P.canisters.length);
     if (!P.pickups.every(stands)) bad('pickup unreachable');
     if (!P.canisters.every(stands)) bad('canister unreachable');
+    const C = P.canisters, gap = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
+    if (C.some((c, i) => C.some((d, j) => j > i && gap(c, d) < 1.2))) bad('canisters closer than 1.2 m');
+    if (C.some((c) => P.pickups.some((u) => gap(c, u) < 1))) bad('canister within 1 m of a pickup');
     if (w.attempt > 0) rerolls++;
     hist[w.attempt] = (hist[w.attempt] || 0) + 1;
     rockMin = Math.min(rockMin, w.rocks.length); rockMax = Math.max(rockMax, w.rocks.length);

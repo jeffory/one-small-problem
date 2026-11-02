@@ -19,6 +19,9 @@ test('floaters hover 3 to 4.5 m up', () => { for (const a of all.filter(a => a.t
 test('two tapes, two cell caches, canisters in chainable clusters', () => {
   assert.equal(P.pickups.filter(p => p.kind === 'tape').length, 2); assert.equal(P.pickups.filter(p => p.kind === 'cells').length, 2);
   assert.ok(P.canisters.length >= 6); for (const c of P.canisters) assert.ok(P.canisters.some(d => d !== c && Math.hypot(d.x - c.x, d.z - c.z) <= 2.2)); });
+test('canisters keep 1.2 m from one another and 1 m from every pickup (R15)', () => { for (const P of [W.plan, generateSurface('SOAK-0005').plan, generateSurface('SOAK-0045').plan]) {
+  const C = P.canisters; assert.ok(C.length >= 6);
+  for (const c of C) { for (const d of C) if (d !== c) assert.ok(Math.hypot(d.x - c.x, d.z - c.z) >= 1.2 - 1e-9); for (const u of P.pickups) assert.ok(Math.hypot(u.x - c.x, u.z - c.z) >= 1 - 1e-9); } } });
 test('reachMap agrees with passable', () => { const g = new Float32Array(256); for (let j = 0; j < 16; j++) g[j * 16 + 8] = 5;
   assert.equal(reachMap(g, 16, [2, 2], 0.45)[14 * 16 + 14], 0); g[3 * 16 + 8] = 0;
   assert.equal(reachMap(g, 16, [2, 2], 0.45)[14 * 16 + 14], 1); assert.equal(passable(g, 16, [2, 2], [14, 14], 0.45), true); });
