@@ -151,3 +151,38 @@ test('the help line shows at the start of a run, hides after HELP_TIME s of play
   await page.evaluate(() => window.ospTest.ff(2.5)); await expect(help).toHaveText('');
   await page.evaluate(() => { window.ospTest.hurt(999); window.ospTest.ff(4); }); expect((await fight(page)).state).toBe('play'); await expect(help).toHaveText('');
   await page.evaluate(() => { window.ospTest.finish(); window.ospTest.play(); }); await expect(help).toContainText('Esc pause'); expect(errors).toEqual([]); });
+export const paused = page => page.evaluate(() => window.ospTest.paused());
+test('Esc pauses and releases the mouse; nothing moves while paused; Esc again resumes (pause)', async ({ page }) => {
+  const errors = watchErrors(page); await start(page); await page.mouse.click(300, 300); await page.waitForTimeout(200);
+  await page.keyboard.press('Escape'); await expect.poll(() => paused(page)).toBe(true); await expect(page.locator('#pause')).toBeVisible();
+  await expect(page.locator('#controls')).toContainText('WASD move'); // R3: the controls stay reachable after the help line hides
+  expect(await page.evaluate(() => document.pointerLockElement)).toBe(null);
+  const t = await page.evaluate(() => window.ospTest.fight().time); await page.waitForTimeout(400); expect(await page.evaluate(() => window.ospTest.fight().time)).toBe(t);
+  await page.keyboard.press('Escape'); await expect.poll(() => paused(page)).toBe(false); await expect(page.locator('#pause')).toBeHidden();
+  await expect.poll(() => page.evaluate(() => window.ospTest.fight().time)).toBeGreaterThan(t); expect(errors).toEqual([]); });
+test('settings apply at once and survive a reload (settings)', async ({ page }) => {
+  const errors = watchErrors(page); await start(page); await page.keyboard.press('Escape'); await expect(page.locator('#pause')).toBeVisible();
+  await page.selectOption('#res', '0'); await page.waitForTimeout(200); expect((await page.evaluate(() => window.ospTest.capture())).h).toBe(180);
+  await page.uncheck('#pal'); await page.waitForTimeout(200); expect((await page.evaluate(() => window.ospTest.capture())).colours).toBeGreaterThan(51);
+  await page.check('#pal'); await page.check('#inv'); await page.fill('#vol', '0.3'); await page.reload(); await ready(page);
+  expect((await page.evaluate(() => window.ospTest.capture())).h).toBe(180);
+  expect(await page.evaluate(() => window.ospTest.settings())).toEqual({ res: 0, pal: true, vol: .3, sens: 1, invert: true }); expect(errors).toEqual([]); });
+test('a localStorage that throws leaves the settings and the end screen working (Review Focus 4)', async ({ page }) => {
+  await page.addInitScript(() => Object.defineProperty(window, 'localStorage', { get() { throw new DOMException('denied', 'SecurityError'); } }));
+  const errors = watchErrors(page); await start(page); await page.keyboard.press('Escape'); await page.selectOption('#res', '2'); await page.waitForTimeout(200);
+  expect((await page.evaluate(() => window.ospTest.capture())).h).toBe(360); await page.keyboard.press('Escape'); await page.evaluate(() => window.ospTest.finish());
+  await expect(page.locator('#stats')).toContainText('KILLS 0'); await expect(page.locator('#stats')).not.toContainText('BEST'); expect(errors).toEqual([]); });
+// R3: a storage whose methods throw (the object is there, every call fails) is survived the same way
+test('a Storage whose getItem and setItem throw leaves settings in memory and the end screen working (R3)', async ({ page }) => {
+  await page.addInitScript(() => { Storage.prototype.getItem = () => { throw new Error('denied'); }; Storage.prototype.setItem = () => { throw new Error('full'); }; });
+  const errors = watchErrors(page); await start(page); await page.keyboard.press('Escape'); await page.selectOption('#res', '0'); await page.waitForTimeout(200);
+  expect((await page.evaluate(() => window.ospTest.capture())).h).toBe(180); expect((await page.evaluate(() => window.ospTest.settings())).res).toBe(0);
+  await page.keyboard.press('Escape'); await page.evaluate(() => window.ospTest.finish());
+  await expect(page.locator('#end')).toBeVisible(); await expect(page.locator('#stats')).toContainText('KILLS 0'); expect(errors).toEqual([]); });
+// R3: New Game and Back run inside the fatal path
+test('an exception in a menu click shows the fatal message and stops the loop (R3)', async ({ page }) => {
+  await page.goto(URLS[1][1] + '#APOLLO-4471'); await ready(page);
+  await page.evaluate(() => { WebGL2RenderingContext.prototype.createBuffer = () => { throw new Error('boom'); }; });
+  await page.evaluate(() => document.getElementById('new').click());
+  await expect(page.locator('#msg')).toContainText('Something went wrong'); const a = await page.evaluate(() => window.ospTest.frames()); await page.waitForTimeout(300);
+  expect(await page.evaluate(() => window.ospTest.frames())).toBe(a); });

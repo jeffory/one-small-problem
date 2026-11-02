@@ -31,7 +31,7 @@ export function createHud() {
     ready: () => { msg.style.display = 'none'; },
     fatal: t => {
       msg.textContent = t; msg.style.display = 'flex';
-      for (const e of [stat, prompt, flash, x, $('title'), $('end')]) e.style.display = 'none';
+      for (const e of [stat, prompt, flash, x, $('title'), $('end'), $('pause')]) e.style.display = 'none';
     },
   };
 }

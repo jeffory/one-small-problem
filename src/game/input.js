@@ -1,10 +1,17 @@
-// Keyboard (works with or without pointer lock) and pointer-lock mouse look, which turns the player directly.
+// Keyboard (works with or without pointer lock) and pointer-lock mouse look, which read() hands over as lookX and lookY.
 // M6: the wheel accumulates scroll (lines and pages as 40 and 800 px) and steps once per WHEEL px, at most once per read; the
 // remainder is dropped after a step, so a 100-120 px mouse notch is one step, and turning back starts over.
-const LOOK = .0022, WHEEL = 50;
+export const LOOK = .0022;
+const WHEEL = 50;
 
-export function createInput(canvas, player) {
-  const keys = new Set(), once = new Set(); let btn = false, scroll = 0, weapon = -1;
+// Mouse look: main applies the accumulated movement to the player each frame (sensitivity and invert-Y are settings).
+export function look(p, dx, dy, sens = 1, invert = false) {
+  p.yaw -= dx * LOOK * sens;
+  p.pitch = Math.max(-1.5, Math.min(1.5, p.pitch - dy * LOOK * sens * (invert ? -1 : 1)));
+}
+
+export function createInput(canvas) {
+  const keys = new Set(), once = new Set(); let btn = false, scroll = 0, weapon = -1, lx = 0, ly = 0;
   const down = (...codes) => codes.some(c => keys.has(c));
   const locked = () => document.pointerLockElement === canvas;
 
@@ -28,8 +35,7 @@ export function createInput(canvas, player) {
   }, { passive: true });
   document.addEventListener('mousemove', e => {
     if (!locked()) return;
-    player.yaw -= e.movementX * LOOK;
-    player.pitch = Math.max(-1.5, Math.min(1.5, player.pitch - e.movementY * LOOK));
+    lx += e.movementX; ly += e.movementY;
   });
   addEventListener('keydown', e => {
     keys.add(e.code); if (e.code === 'Space') e.preventDefault();
@@ -46,8 +52,8 @@ export function createInput(canvas, player) {
       strafe: down('KeyD', 'ArrowRight') - down('KeyA', 'ArrowLeft'),
       run: down('ShiftLeft', 'ShiftRight'),
       jump: down('Space'),
-      fire: btn && locked(), use: once.has('use'), weapon, wheel: Math.abs(scroll) < WHEEL ? 0 : Math.sign(scroll),
-    }; once.clear(); weapon = -1; if (r.wheel) scroll = 0; return r; },
+      fire: btn && locked(), use: once.has('use'), weapon, wheel: Math.abs(scroll) < WHEEL ? 0 : Math.sign(scroll), lookX: lx, lookY: ly,
+    }; lx = ly = 0; once.clear(); weapon = -1; if (r.wheel) scroll = 0; return r; },
     locked, lock,
   };
 }

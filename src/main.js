@@ -12,10 +12,11 @@ import { AREAS, areaStart } from './game/areas.js';
 import { WEAPONS } from './game/weapons.js';
 import { buildSurfaceScene } from './game/surfaceScene.js';
 import { buildBaseScene } from './game/baseScene.js';
-import { createInput } from './game/input.js';
+import { createInput, look } from './game/input.js';
 import { createHud, HELP_TIME } from './ui/hud.js';
 import { createMenus } from './ui/menus.js';
 import { shareLink, recordBest } from './ui/score.js';
+import { RES, loadSettings, saveSettings } from './ui/settings.js';
 
 // The scene fields a frame carries (the view supplies the meshes and lights); the events whose text flashes up; where a death
 // in each area sends you back to; no input at all; the help line, shown as a run starts and hidden after HELP_TIME s of it (R2).
@@ -38,15 +39,22 @@ function boot() {
   const { gl, hdrOK } = createGL(canvas), renderer = createRenderer(gl, hdrOK), V = createFightView(gl, { meshes: [] }), store = storage();
   // run: the Moon on screen, {kind: 'attract' | 'play', seed, world, scene, F}. state: where the flow is (see the top).
   let run = null, state = 'title';
-  // Mouse look turns whichever run's player is on screen.
-  const pov = { get yaw() { return run.F.player.yaw; }, set yaw(v) { run.F.player.yaw = v; },
-    get pitch() { return run.F.player.pitch; }, set pitch(v) { run.F.player.pitch = v; } };
-  const input = createInput(canvas, pov), menus = createMenus({ onNew: () => { input.lock(); newGame(); }, onBack: () => toTitle(true) });
-  const frame = { exposure: 1, lights: { pos: new Float32Array(64), col: new Float32Array(64), count: 0 }, spheres: new Float32Array(32) }, RES = [180, 270, 360];
-  let resI = 1, palMode = 1, lost = false, fp = '', warpK = 0, raf = 0, frames = 0, fault = false, t0 = performance.now(), last = t0, fpsN = 0, fpsT = 0;
+  // S: the settings (loaded once, kept in memory even where the store refuses them). Paused: the pause menu is up, nothing
+  // advances. lockLostAt: when a lost pointer lock paused the game, so the Esc that did it can't also resume it.
+  let S = loadSettings(store), paused = false, lockLostAt = -1e9, appliedRes = -1;
+  // Menu clicks run inside the fatal path too: an exception stops the loop and shows the message, as in tick.
+  const guard = f => (...a) => { try { f(...a); } catch (e) { fail(e); throw e; } };
+  const input = createInput(canvas), menus = createMenus({ onNew: guard(() => { input.lock(); newGame(); }), onBack: guard(() => toTitle(true)),
+    onResume: guard(() => resume()), onQuit: guard(() => quit()), onSetting: guard(setting) });
+  const frame = { exposure: 1, lights: { pos: new Float32Array(64), col: new Float32Array(64), count: 0 }, spheres: new Float32Array(32) };
+  let palMode = S.pal ? 1 : 0, lost = false, fp = '', warpK = 0, raf = 0, frames = 0, fault = false, t0 = performance.now(), last = t0, fpsN = 0, fpsT = 0;
 
-  const resize = () => lost || renderer.resize(innerWidth, innerHeight, devicePixelRatio || 1, RES[resI]);
-  addEventListener('resize', resize); resize();
+  // Native (RES 0) is the window's height in device pixels, at most 2 per CSS pixel.
+  const resize = () => lost || renderer.resize(innerWidth, innerHeight, devicePixelRatio || 1, RES[S.res] || Math.round(innerHeight * Math.min(2, devicePixelRatio || 1)));
+  // Settings take effect at once; the render targets are rebuilt only when the resolution changes.
+  function apply() { palMode = S.pal ? 1 : 0; if (S.res !== appliedRes) { appliedRes = S.res; resize(); } }
+  function setting(s) { S = s; saveSettings(store, S); apply(); }
+  addEventListener('resize', resize); apply();
   canvas.addEventListener('webglcontextlost', e => {
     e.preventDefault(); lost = true; cancelAnimationFrame(raf);
     hud.fatal('Graphics context lost. Reload the page to continue.');
@@ -56,7 +64,24 @@ function boot() {
     if (e.code === 'KeyG') run.F.god = !run.F.god;
     if (e.code === 'KeyB') enter();
     if (e.code === 'KeyN') warp(warpK++ % run.F.encs.length);
-    if (e.code === 'KeyR') { resI = (resI + 1) % RES.length; resize(); }
+    if (e.code === 'KeyR') { S = { ...S, res: (S.res + 1) % RES.length }; apply(); }
+  });
+
+  // --- pause ---
+  const pausable = () => state === 'play' || state === 'ending';
+  function unpause() { paused = false; menus.pause(false); }
+  // Esc or a lost pointer lock: the pause menu goes up, the frame keeps drawing, and the mouse is let go (headless browsers
+  // keep the lock on Esc, so this doesn't rely on the browser).
+  function pause() {
+    if (!pausable() || paused) return;
+    paused = true; menus.pause(true, S, HELP); document.exitPointerLock?.();
+  }
+  function resume() { unpause(); input.lock(); }
+  function quit() { unpause(); toTitle(true); }
+  document.addEventListener('pointerlockchange', () => { if (!document.pointerLockElement && pausable() && !paused) { pause(); lockLostAt = performance.now(); } });
+  addEventListener('keydown', e => {
+    if (e.code !== 'Escape' || e.repeat) return;
+    if (!paused) pause(); else if (performance.now() - lockLostAt > 300) resume();
   });
 
   // --- runs ---
@@ -82,13 +107,13 @@ function boot() {
   function newGame() {
     const seed = normalizeSeed(location.hash) ?? randomSeed();
     try { history.replaceState(null, '', '#' + seed); } catch {}
-    stopRun(); startRun('play', seed);
+    stopRun(); startRun('play', seed); unpause();
     state = 'play'; menus.hide(); hud.mode('play'); hud.help(HELP); hud.seed('#' + seed);
   }
   // The title, with a fresh attract run behind it and the mouse let go (pre-flight F1). At boot the URL's seed stays, so a
   // shared link survives to New Game; Back to title clears it, so the next New Game rolls a fresh Moon.
   function toTitle(clear) {
-    stopRun(); document.exitPointerLock?.();
+    stopRun(); unpause(); document.exitPointerLock?.();
     if (clear) try { history.replaceState(null, '', location.pathname + location.search); } catch {}
     startRun('attract', randomSeed());
     state = 'title';
@@ -99,7 +124,7 @@ function boot() {
   function finish() {
     if (state !== 'play' && state !== 'ending') return;
     const { F, seed } = run;
-    state = 'end';
+    state = 'end'; unpause();
     menus.end({ time: F.time, kills: F.kills, golf: F.golf, link: shareLink(location.href, seed), seed, ...recordBest(store, seed, F.time) });
     hud.mode('none');
     document.exitPointerLock?.();
@@ -152,7 +177,7 @@ function boot() {
     ready: false, hdr: hdrOK,
     get seed() { return run.kind === 'play' ? run.seed : normalizeSeed(location.hash); },
     get checksum() { return run.kind === 'play' ? checksumWorld(run.world) : null; },
-    capture: () => renderer.capture(), frames: () => frames, fault: () => { fault = true; },
+    capture: () => renderer.capture(), frames: () => frames, fault: () => { fault = true; }, paused: () => paused, settings: () => ({ ...S }),
     state: () => state, play: () => newGame(), finish, ff,
     player: () => { const p = run.F.player; return { x: p.x, y: p.y, z: p.z }; },
     fight: () => { const F = run.F, p = F.player, s = areaStart(run.world, F.area);
@@ -169,21 +194,24 @@ function boot() {
       if (fault) throw new Error('test fault');
       // Real time, so slow frames don't slow the game; a long stall skips at most 0.25 s.
       const el = Math.max(0, (now - last) / 1000); last = now;
-      advance(Math.min(.25, el), input.read());
+      const inp = input.read();
+      if (!paused) { if (pausable()) look(run.F.player, inp.lookX, inp.lookY, S.sens, S.invert); advance(Math.min(.25, el), inp); }
       frame.t = (now - t0) / 1000; frame.palMode = palMode;
       fillFrame(V, run.F, frame, frame.t);
       renderer.render(frame);
       if (!T.ready) { T.ready = true; hud.ready(); }
       if (DEBUG) {
         const F = run.F, p = F.player; fpsN++; fpsT += el;
-        if (fpsT >= .5) { hud.debug(`${fp} \u00b7 ${state} \u00b7 ${AREAS[F.area]} \u00b7 ${Math.round(fpsN / fpsT)} fps \u00b7 ${RES[resI]}p \u00b7 palette ${['off', 'dithered', 'flat'][palMode]} \u00b7 hp ${Math.ceil(F.hp)} \u00b7 awake ${F.aliens.filter(a => a.state !== 'dead' && (a.enc.alerted || Math.hypot(p.x - a.enc.x, p.z - a.enc.z) < F.lv.wake)).length} \u00b7 bolts ${F.bolts.length}`); fpsN = fpsT = 0; }
+        if (fpsT >= .5) { hud.debug(`${fp} \u00b7 ${state} \u00b7 ${AREAS[F.area]} \u00b7 ${Math.round(fpsN / fpsT)} fps \u00b7 ${RES[S.res] || 'native'}p \u00b7 palette ${['off', 'dithered', 'flat'][palMode]} \u00b7 hp ${Math.ceil(F.hp)} \u00b7 awake ${F.aliens.filter(a => a.state !== 'dead' && (a.enc.alerted || Math.hypot(p.x - a.enc.x, p.z - a.enc.z) < F.lv.wake)).length} \u00b7 bolts ${F.bolts.length}`); fpsN = fpsT = 0; }
       }
       frames++;
       if (!lost) raf = requestAnimationFrame(tick);
-    } catch (e) {
-      lost = true; cancelAnimationFrame(raf);
-      hud.fatal('Something went wrong: ' + e.message + '. Reload the page to continue.'); throw e;
-    }
+    } catch (e) { fail(e); throw e; }
+  }
+  // Anything that throws in the loop or a menu click stops the frames and says so.
+  function fail(e) {
+    lost = true; cancelAnimationFrame(raf);
+    hud.fatal('Something went wrong: ' + e.message + '. Reload the page to continue.');
   }
   toTitle(false);
   raf = requestAnimationFrame(tick);

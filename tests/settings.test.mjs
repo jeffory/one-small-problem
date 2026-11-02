@@ -1,0 +1,10 @@
+import test from 'node:test'; import assert from 'node:assert/strict'; import { RES, DEFAULTS, cleanSettings, loadSettings, saveSettings } from '../src/ui/settings.js';
+const mem = () => { const m = new Map(); return { getItem: k => m.get(k) ?? null, setItem: (k, v) => m.set(k, String(v)), m }; };
+test('settings round-trip through storage under osp.settings', () => { const s = mem(), v = { res: 0, pal: false, vol: .3, sens: 2.5, invert: true };
+  assert.equal(saveSettings(s, v), true); assert.ok(s.m.has('osp.settings')); assert.deepEqual(loadSettings(s), v); assert.deepEqual(RES, [180, 270, 360, 0]); });
+test('missing, garbage or out-of-range settings fall back field by field', () => { const s = mem(); assert.deepEqual(loadSettings(s), DEFAULTS);
+  s.setItem('osp.settings', '{nope'); assert.deepEqual(loadSettings(s), DEFAULTS);
+  s.setItem('osp.settings', JSON.stringify({ res: 9, pal: 'yes', vol: 7, sens: -1, invert: 1, extra: 2 })); assert.deepEqual(loadSettings(s), { ...DEFAULTS, vol: 1, sens: .25 });
+  assert.deepEqual(cleanSettings({ res: 2.7 }), DEFAULTS); assert.deepEqual(cleanSettings(null), DEFAULTS); });
+test('a store that throws, or none, never throws (Review Focus 4)', () => { const bad = { getItem() { throw new Error('denied'); }, setItem() { throw new Error('full'); } };
+  assert.deepEqual(loadSettings(bad), DEFAULTS); assert.equal(saveSettings(bad, DEFAULTS), false); assert.deepEqual(loadSettings(null), DEFAULTS); assert.equal(saveSettings(null, DEFAULTS), false); });
