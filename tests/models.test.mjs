@@ -20,3 +20,4 @@ test('scatter is at most 0.6 long; discs face up; props have the specified sizes
   const zs = verts(M.scatter, new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1])).map(v => v[2]); assert.ok(Math.max(...zs) - Math.min(...zs) <= .6, 'scatter length');
   for (const k of ['discScorch', 'discGoo']) { assert.equal(M[k].idx.length, 36, k); for (let i = 0; i < M[k].nrm.length; i += 3) assert.ok(M[k].nrm[i + 1] > .99, k); }
   const top = Math.max(...verts(M.canister, new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1])).map(v => v[1])); assert.ok(top >= .8 && top < 1, 'canister height'); });
+test('the golf ball model is a small ball in the golf material', () => { assert.ok(M.golf); assert.equal(M.golf.mat[0], MAT.golf[0]); assert.equal(MAT.golf[0], 19); });

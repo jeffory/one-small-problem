@@ -61,4 +61,19 @@ void main(){vec2 u=v;vec4 a=vec4(0);vec3 e=vec3(0);
  else if(uLay==13){ // goo: sickly yellow-green with bright bubbles
   float n=fbm(u,vec2(5.),4);vec3 w=wor(u,8.);float bub=smoothstep(.3,.08,w.x);
   a=vec4(vec3(.12,.16,.03)*(.75+.5*n)+bub*vec3(.04,.05,.01),bub*.6+n*.3);e=vec3(.15,.2,.03)*bub;}
+ else if(uLay==14){ // floor grate
+  vec2 q=fract(u*2.),s=vec2(fract(q.x*7.),q.y);float slot=step(.28,s.x)*step(.12,q.y)*step(q.y,.88);
+  float fr=min(min(q.x,1.-q.x),min(q.y,1.-q.y)),sc=smoothstep(.6,1.,vn(vec2(u.x*4.,u.y*160.),vec2(4.,160.))),gr=fbm(u,vec2(8.),5);
+  vec3 c=vec3(.085,.08,.075)*(.6+.7*gr)+sc*.05;c*=mix(.3,1.,smoothstep(0.,.05,fr));c=mix(c,vec3(.006,.008,.006),slot);
+  a=vec4(c,(1.-slot)*.7+gr*.2);}
+ else if(uLay==15){ // pipes
+  float y=fract(u.y*5.),pr=max(0.,1.-pow((y-.5)*2.3,2.)),pipe=sqrt(pr),row=floor(u.y*5.);
+  float ring=step(.93,fract(u.x*4.+h21(vec2(row)))),gr=fbm(u,vec2(8.),5);
+  vec3 c=mix(vec3(.13,.07,.035),vec3(.09,.09,.085),step(.5,h21(vec2(row,3.))))*(.4+.9*gr);
+  c*=.25+.75*pipe;c=mix(c,vec3(.2,.15,.06),ring*.7);c=mix(vec3(.004),c,step(.01,pr));a=vec4(c,pipe*.8+ring*.15);}
+ else if(uLay==16){float g=step(.35,fract(u.y*6.));a=vec4(.05,.045,.03,g*.3);e=vec3(1.,.5,.12)*(.35+.65*g);} // amber lamp
+ else if(uLay==17){a=vec4(.05,.01,.01,0.);e=vec3(1.,.14,.05);} // red lamp
+ else if(uLay==18){float n=fbm(u,vec2(6.,3.),5),b=smoothstep(.3,.8,n);a=vec4(.03,.06,.05,n);e=vec3(.15,1.,.65)*(.35+.9*b);} // reactor
+ else if(uLay==19){ // golf ball: muddy white, worley dimples
+  vec3 w=wor(u,12.);float d=smoothstep(.18,.38,w.x);a=vec4(vec3(.42+.1*d),d*.5);}
  oA=a;oE=vec4(e,1.);}

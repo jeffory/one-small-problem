@@ -74,5 +74,6 @@ export function buildModels() {
     lathe(m, [0, .3, 0], [0, .5, 0], [[0, .305], [1, .305]], 14, MAT.coilB);
     lathe(m, [0, .8, 0], [0, .9, 0], [[0, .12], [.5, .14], [1, .1]], 10, MAT.gunMetal);
   });
-  return { skBody, skLeg, flBody, brBody, brClaw, brGun, pistol, scatter, pole, flag, tape, cell, canister, discScorch: disc(MAT.scorch), discGoo: disc(MAT.goo) };
+  const golf = make(m => blob(m, [0, 0, 0], [.06, .06, .06], 10, 7, MAT.golf, null)); // about three times real size, so it can be found
+  return { skBody, skLeg, flBody, brBody, brClaw, brGun, pistol, scatter, pole, flag, tape, cell, canister, golf, discScorch: disc(MAT.scorch), discGoo: disc(MAT.goo) };
 }
