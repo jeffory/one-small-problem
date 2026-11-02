@@ -16,7 +16,7 @@ export const DEATH_TIME = 2.5;
 // WAKE: encounter wake radius; CORPSE: seconds a corpse lasts, the last SINK of them sinking 1 m; GRAB: flag reach;
 // REACH: pickup reach; CAN_Y: canister centre above its base; CAN_H: its height.
 const WAKE = 60, CORPSE = 8, SINK = 2, MAX_PARTS = 300, MAX_DECALS = 64, BOOM_LIFE = .6, FIELD_DT = .25, GRAB = 2.2, REACH = 1.2;
-const CAN_Y = .4, CAN_H = .9, TAU = 2 * Math.PI, sqrt = Math.sqrt;
+const CAN_Y = .4, CAN_H = .9, TAU = 2 * Math.PI, sqrt = Math.sqrt, STILL = { fwd: 0, strafe: 0, run: false, jump: false };
 
 export function createFight(world, { gravity }) {
   const G = (x, z) => sampleGround(world, x, z), fs = flagSpot(world);
@@ -101,10 +101,11 @@ export function aimPoint(F) {
 }
 
 export function stepFight(F, input, dt) {
-  // 1. clock and death
+  // 1. clock and death; the body still falls and slides to rest (M4)
   F.time += dt; F.shotT += dt;
   if (F.state === 'dead') {
     F.deadT += dt;
+    stepPlayer(F.player, STILL, dt, F._g, HALF - MAP_MARGIN, F.gravity);
     flyBolts(F, dt); stepParts(F, dt); stepBooms(F, dt);
     if (F.deadT >= DEATH_TIME) restartArea(F);
     return;

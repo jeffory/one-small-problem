@@ -23,6 +23,10 @@ test('dying mid-chaos restarts you at the wreck with a clean, fresh area (Review
   assert.deepEqual([F.bolts.length, F.parts.length, F.decals.length], [0, 0, 0]); assert.equal(F.aliens.length, W.plan.encounters.reduce((s, e) => s + e.aliens.length, 0));
   assert.ok(F.aliens.every(a => a.hp === ALIENS[a.type].hp)); assert.equal(F.canisters.length, W.plan.canisters.length); assert.ok(F.canisters.every(c => !(c.fuse > 0)));
   assert.deepEqual(F.ars.owned, [true, false, false]); assert.equal(F.ars.cells, 0); run(F, idle, 1); assert.equal(F.hp, 100); });
+test('a death mid-jump falls and slides to rest instead of freezing in the air (M4)', () => { const F = createFight(W, { gravity: 3 }), p = F.player, S = W.spawn;
+  put(F, S.x + 30, S.z); const x0 = p.x, g0 = p.y; Object.assign(p, { y: g0 + 1, vy: 1, vx: 3, onGround: false }); /* lands about 1.2 s later */ F.hp = 1; hurtPlayer(F, 5, 0, 0, 0); assert.equal(F.state, 'dead');
+  run(F, idle, 1.8); const a = { x: p.x, y: p.y, z: p.z }; assert.ok(p.onGround && Math.abs(p.y - sampleGround(W, p.x, p.z)) < 1e-6); assert.ok(Math.abs(p.x - x0) > .5);
+  run(F, idle, .4); assert.equal(F.state, 'dead'); assert.deepEqual([p.x, p.y, p.z], [a.x, a.y, a.z]); });
 test('shooting one canister sets off its cluster and hurts what stands nearby', () => { const F = createFight(W, { gravity: 3 }), c = F.canisters[0], a = F.aliens.at(-1);
   const mates = F.canisters.filter(d => Math.hypot(d.x - c.x, d.z - c.z) <= 4.5); Object.assign(a, { x: c.x + 2, z: c.z, y: sampleGround(W, c.x + 2, c.z) });
   shootAt(F, c, 20); run(F, idle, 1.5); for (const m of mates) assert.ok(!F.canisters.includes(m)); assert.ok(F.events.filter(e => e.type === 'boom').length >= mates.length);
