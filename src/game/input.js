@@ -18,8 +18,9 @@ export function createInput(canvas, player) {
   canvas.addEventListener('mousedown', e => { if (e.button === 0 && locked()) btn = true; });
   addEventListener('mouseup', e => { if (e.button === 0) btn = false; });
   addEventListener('wheel', e => {
+    const mode = e.deltaMode; // read first: Firefox reports lines (mode 1), and deltaY is only meaningful with its mode
     if (!locked() || !e.deltaY) return;
-    const d = e.deltaY * ([1, 40, 800][e.deltaMode] || 1);
+    const d = e.deltaY * ([1, 40, 800][mode] || 1);
     scroll = scroll * d < 0 ? d : scroll + d;
   }, { passive: true });
   document.addEventListener('mousemove', e => {

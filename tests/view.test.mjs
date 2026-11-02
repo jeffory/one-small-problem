@@ -1,8 +1,9 @@
 import test from 'node:test'; import assert from 'node:assert/strict'; import { fakeGL } from './fakegl.mjs';
-import { generateSurface, sampleGround } from '../src/gen/surface.js'; import { buildSurfaceScene } from '../src/game/surfaceScene.js';
+import { sampleGround } from '../src/gen/surface.js'; import { generateWorld } from '../src/gen/world.js'; import { buildSurfaceScene } from '../src/game/surfaceScene.js';
 import { createFight, stepFight, hurtPlayer } from '../src/game/fight.js'; import { createAlien } from '../src/game/aliens.js'; import { give } from '../src/game/weapons.js';
 import { createFightView, fillFrame } from '../src/game/fightView.js'; import { cameraBasis, xf, dot } from '../src/gfx/math.js';
-const W = generateSurface('APOLLO-4471'), gl = fakeGL(), scene = buildSurfaceScene(gl, W), V = createFightView(gl, scene);
+import { tilt } from '../src/game/fightView.js'; import { readFileSync } from 'node:fs';
+const W = generateWorld('APOLLO-4471'), gl = fakeGL(), scene = buildSurfaceScene(gl, W), V = createFightView(gl, scene);
 const idle = { fwd: 0, strafe: 0, run: false, jump: false, fire: false, use: false, weapon: -1, wheel: 0 };
 const frame = () => ({ ...scene, exposure: 1, lights: { pos: new Float32Array(64), col: new Float32Array(64), count: 0 }, spheres: new Float32Array(32) });
 const put = (F, x, z) => Object.assign(F.player, { x, z, y: sampleGround(W, x, z) });
@@ -35,3 +36,18 @@ test('an aiming floater pulses between 0 and .22 at about 6 Hz instead of holdin
   assert.ok(Math.min(...f) < .01 && Math.max(...f) > .2 && Math.max(...f) <= .22 + 1e-9); assert.ok(f[0] < .01 && f[20] > .21 && Math.abs(f[10] - .11) < .01); }); // 1/6 s period: trough, quarter, crest
 test('dispose frees the uploaded models only', () => { const g2 = fakeGL(), s2 = buildSurfaceScene(g2, W), before = g2.live.size, V2 = createFightView(g2, s2);
   assert.ok(g2.live.size > before); V2.dispose(); assert.equal(g2.live.size, before); });
+const r6 = v => Math.round(v * 1e6) / 1e6 + 0;
+test('a ceiling decal faces down instead of turning into NaN (carry-over)', () => { const m = tilt(1, 3, 2, 0, -1, 0);
+  assert.ok([...m].every(Number.isFinite)); assert.deepEqual(xf(m, [0, 1, 0]).map(r6), [1, 2, 2]); assert.deepEqual(xf(tilt(0, 0, 0, 1, 0, 0), [0, 1, 0]).map(r6), [1, 0, 0]); });
+test('a busy frame allocates no Float32Array once warm (carry-over)', () => { const F = createFight(W, { gravity: 3 }), fr = frame(), p = F.player; give(F.ars, 0, 0); give(F.ars, 1, 50);
+  for (let i = 0; i < 40; i++) F.aliens.push(createAlien({ type: ['sk', 'fl', 'br'][i % 3], x: p.x - 3 - i, y: p.y, z: p.z + 2 }, 500 + i, F.encs[0]));
+  for (let i = 0; i < 100; i++) F.bolts.push({ x: p.x + 1 + i, y: p.y + 1.7, z: p.z, vx: 1, vy: 0, vz: 0, dmg: 1, r: .2, life: 9, col: [.3, 1, .8], team: 1, src: 99 });
+  for (let i = 0; i < 60; i++) F.decals.push({ x: p.x + i % 8, y: p.y, z: p.z + 3, nx: 0, ny: 1, nz: 0, r: .3, yaw: i, kind: i % 2 ? 'goo' : 'scorch' });
+  fillFrame(V, F, fr, 0); const Real = globalThis.Float32Array; let n = 0;
+  globalThis.Float32Array = class extends Real { constructor(...a) { super(...a); n++; } };
+  try { fillFrame(V, F, fr, 1 / 60); } finally { globalThis.Float32Array = Real; } assert.equal(n, 0); });
+test('aliens draw out to 80 m, no further (carry-over)', () => { const F = createFight(W, { gravity: 3 }), fr = frame(), a = F.aliens[0], bodies = [V.gpu.skBody, V.gpu.flBody, V.gpu.brBody];
+  F.aliens.length = 1; put(F, a.x + 70, a.z); fillFrame(V, F, fr, 0); assert.ok(fr.meshes.some(m => bodies.includes(m.gpu)));
+  put(F, a.x + 100, a.z); fillFrame(V, F, fr, 0); assert.ok(!fr.meshes.some(m => bodies.includes(m.gpu))); });
+test('sprites fade into the base fog like the world does (carry-over)', () => { const fs = readFileSync('src/gfx/shaders/sprite.frag', 'utf8'), r = readFileSync('src/gfx/renderer.js', 'utf8');
+  for (const u of ['uFog', 'uFogD', 'uMode']) { assert.match(fs, new RegExp(`\\b${u}\\b`)); assert.match(r, new RegExp(`P\\.${u}\\b`)); } });

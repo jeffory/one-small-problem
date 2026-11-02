@@ -1,7 +1,6 @@
 import { fbm2, valueNoise2 } from './noise.js';
 import { makeRng } from './rng.js';
 import { passable } from './passable.js';
-import { planFight } from './encounters.js';
 
 export const N = 512, HALF = 256, MAP_MARGIN = 24, MAX_STEP = 0.45;
 
@@ -195,7 +194,7 @@ export function stampOccluders(h, L, rocks) {
 
 export function sampleGround(world, x, z) { return sampleBilinear(world.occ, x, z); }
 
-function defaultAccept(w) {
+export function surfaceAccept(w) {
   const cell = (p) => [Math.round(p.x + HALF), Math.round(p.z + HALF)];
   return passable(w.occ, N, cell(w.spawn), cell(w.rim), MAX_STEP, MAP_MARGIN);
 }
@@ -205,7 +204,7 @@ export function flagSpot(world) {
   return { x: L.x - 4.5 * dz + 3 * dx, z: L.z + 4.5 * dx + 3 * dz };
 }
 
-export function generateSurface(seed, accept = defaultAccept) {
+export function generateSurface(seed, accept = surfaceAccept) {
   for (let attempt = 0; attempt < 8; attempt++) {
     const rng = makeRng(attempt ? seed + '#' + attempt : seed);
     const L = pickLayout(rng), route = buildRoute(rng, L);
@@ -213,7 +212,7 @@ export function generateSurface(seed, accept = defaultAccept) {
     const rocks = scatterRocks(rng, L, route, h, craters);
     const occ = stampOccluders(h, L, rocks);
     const world = { seed, attempt, N, half: HALF, h, occ, lander: L.lander, spawn: L.spawn, base: L.base, rim: L.rim, route, craters, rocks };
-    if (accept(world)) { world.plan = planFight(world); return world; }
+    if (accept(world)) return world;
   }
   throw new Error('no passable layout for seed ' + seed);
 }

@@ -1,7 +1,7 @@
 import test from 'node:test'; import assert from 'node:assert/strict';
-import { generateSurface, sampleGround } from '../src/gen/surface.js'; import { PLAYER } from '../src/game/player.js'; import { give } from '../src/game/weapons.js';
+import { sampleGround } from '../src/gen/surface.js'; import { generateWorld } from '../src/gen/world.js'; import { PLAYER } from '../src/game/player.js'; import { give } from '../src/game/weapons.js';
 import { createFight, stepFight, hurtPlayer, PICKUP, CANISTER, DEATH_TIME } from '../src/game/fight.js'; import { ALIENS } from '../src/game/aliens.js';
-const W = generateSurface('APOLLO-4471'), idle = { fwd: 0, strafe: 0, run: false, jump: false, fire: false, use: false, weapon: -1, wheel: 0 };
+const W = generateWorld('APOLLO-4471'), idle = { fwd: 0, strafe: 0, run: false, jump: false, fire: false, use: false, weapon: -1, wheel: 0 };
 const run = (F, inp, secs, dt = 1 / 60) => { for (let t = 0; t < secs; t += dt) stepFight(F, typeof inp === 'function' ? inp(t) : inp, dt); };
 const put = (F, x, z) => { Object.assign(F.player, { x, z, y: sampleGround(W, x, z), vx: 0, vy: 0, vz: 0, kx: 0, kz: 0 }); };
 const face = (F, x, y, z) => { const p = F.player, dx = x - p.x, dz = z - p.z; p.yaw = Math.atan2(-dx, -dz); p.pitch = Math.atan2(y - (p.y + PLAYER.eye), Math.hypot(dx, dz)); };

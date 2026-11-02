@@ -3,12 +3,12 @@ export function createHud() {
   const $ = id => document.getElementById(id), msg = $('msg'), help = document.createElement('div'), debug = document.createElement('div');
   const stat = $('stat'), prompt = $('prompt'), flash = $('flash'), num = document.createElement('span'), rest = document.createTextNode('');
   $('hud').append(help, debug);
-  stat.append('HEALTH ', num, rest); // M8: only the number turns red, below 25
-  let low = false;
+  let low = false, shown = false;
   return {
     help: t => { help.textContent = t; },
     seed: t => { $('seed').textContent = t; },
     status: ({ hp, cells, weapon }) => {
+      if (!shown) { shown = true; stat.append('HEALTH ', num, rest); } // M8: only the number turns red, below 25
       const h = String(hp), t = `   CELLS ${cells}   ${weapon}`;
       if (num.textContent !== h) num.textContent = h;
       if (rest.data !== t) rest.data = t;
@@ -22,6 +22,9 @@ export function createHud() {
     },
     debug: t => { debug.textContent = t; },
     ready: () => { msg.style.display = 'none'; },
-    fatal: t => { msg.textContent = t; msg.style.display = 'flex'; },
+    fatal: t => {
+      msg.textContent = t; msg.style.display = 'flex';
+      for (const e of [stat, prompt, flash, $('x')]) e.style.display = 'none';
+    },
   };
 }

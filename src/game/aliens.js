@@ -28,12 +28,14 @@ export function createAlien({ type, x, y, z }, id, enc) {
     aim: 0, claw: 0, wave: 0, fall: 0, hover: null, tumbleCD: 0, vx: 0, vz: 0, flash: 0, _bit: false };
 }
 
-// Horizontal move. Walkers stay on the ground and refuse (per axis, so they slide) any move that climbs more than STEP.
+// Horizontal move. Walkers stay on the ground and refuse (per axis, so they slide) any move after which the ground at their
+// leading edge (radius R ahead) is more than STEP above the ground under their centre. That depends on where they stand, not on
+// how far one step is, so it doesn't change with frame rate, and it keeps their bodies off steep walls.
 export function move(a, ctx, dx, dz) {
   if (a.type === 'fl') { a.x += dx; a.z += dz; return Math.hypot(dx, dz); }
-  let g = ctx.ground(a.x, a.z), m = 0;
-  if (dx) { const h = ctx.ground(a.x + dx, a.z); if (h - g <= STEP) { a.x += dx; g = h; m += dx * dx; } }
-  if (dz) { const h = ctx.ground(a.x, a.z + dz); if (h - g <= STEP) { a.z += dz; g = h; m += dz * dz; } }
+  const R = ALIENS[a.type].radius; let g = ctx.ground(a.x, a.z), m = 0;
+  if (dx && ctx.ground(a.x + dx + (dx > 0 ? R : -R), a.z) - g <= STEP) { a.x += dx; g = ctx.ground(a.x, a.z); m += dx * dx; }
+  if (dz && ctx.ground(a.x, a.z + dz + (dz > 0 ? R : -R)) - g <= STEP) { a.z += dz; g = ctx.ground(a.x, a.z); m += dz * dz; }
   a.y = g; return Math.sqrt(m);
 }
 const walk = (a, ctx, h, v) => { a.yaw = h; return move(a, ctx, sin(h) * v, cos(h) * v); };

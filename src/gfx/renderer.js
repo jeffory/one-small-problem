@@ -94,6 +94,7 @@ export function createRenderer(gl, hdrOK, tex = bakeTextures(gl)) {
       const P = spr.u;
       gl.useProgram(spr.p); gl.uniformMatrix4fv(P.uVP, false, VP); gl.uniform3fv(P.uR, r); gl.uniform3fv(P.uU, u);
       gl.uniform3fv(P.uCam, eye); gl.uniform1f(P.uCurv, F.curv);
+      gl.uniform1i(P.uMode, F.mode); gl.uniform1f(P.uFogD, F.fogDensity); gl.uniform3fv(P.uFog, F.fog);
       gl.bindVertexArray(sVao); gl.bindBuffer(gl.ARRAY_BUFFER, sBuf); gl.bufferData(gl.ARRAY_BUFFER, S.data, gl.DYNAMIC_DRAW, 0, (no + ng) * 8);
       if (no) { from(0); gl.uniform1i(P.uG, 0); gl.drawArraysInstanced(gl.TRIANGLES, 0, 6, no); }
       if (ng) {

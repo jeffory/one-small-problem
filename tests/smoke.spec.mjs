@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'; import { pathToFileURL } from 'node:url'; import { resolve } from 'node:path';
-import { generateSurface } from '../src/gen/surface.js'; import { checksumWorld } from '../src/gen/checksum.js';
+import { generateWorld } from '../src/gen/world.js'; import { checksumWorld } from '../src/gen/checksum.js';
 export const URLS = [['file', pathToFileURL(resolve('dist/index.html')).href], ['http', 'http://localhost:4173/index.html']];
 // Benign Firefox parser note about the packed binary payload when the server's utf-8 header overrides the page's iso-8859-15 meta; real decoding failures are caught by the ready check.
 const BENIGN = /byte stream was erroneous according to the character encoding/i;
@@ -13,7 +13,7 @@ for (const [name, url] of URLS) test(`renders a palette-true frame from ${name}`
   const s = await page.evaluate(() => window.ospTest.capture());
   expect(s.inPalette).toBe(1); expect(s.colours).toBeGreaterThan(6); expect(s.black).toBeLessThan(0.9); expect(errors).toEqual([]);
 });
-const NODE_SUM = checksumWorld(generateSurface('APOLLO-4471'));
+const NODE_SUM = checksumWorld(generateWorld('APOLLO-4471'));
 for (const [name, url] of URLS) {
   test(`same Moon as Node for #APOLLO-4471 (${name})`, async ({ page }) => {
     const errors = watchErrors(page); await page.goto(url + '#APOLLO-4471'); await ready(page);
@@ -86,3 +86,8 @@ test('below 25 health only the number turns red, and an unchanged status line is
     new MutationObserver(r => { m += r.length; }).observe(el, { subtree: true, childList: true, characterData: true, attributes: true });
     setTimeout(() => done({ line: getComputedStyle(el).color, num: n && getComputedStyle(n).color, text: n?.textContent, m }), 500); }));
   expect(s).toEqual({ line: 'rgb(184, 174, 156)', num: 'rgb(184, 48, 26)', text: '20', m: 0 }); expect(errors).toEqual([]); });
+test('without WebGL2 the failure screen shows only its message (carry-over)', async ({ page }) => {
+  await page.addInitScript(() => { const g = HTMLCanvasElement.prototype.getContext; HTMLCanvasElement.prototype.getContext = function (t, o) { return t === 'webgl2' ? null : g.call(this, t, o); }; });
+  await page.goto(URLS[1][1] + '#APOLLO-4471'); await expect(page.locator('#msg')).toContainText('Could not start');
+  expect(await page.evaluate(() => ['stat', 'prompt', 'flash'].map(id => document.getElementById(id).textContent).join(''))).toBe('');
+  expect(await page.locator('#x').isVisible()).toBe(false); });

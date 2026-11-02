@@ -1,14 +1,14 @@
 // The fight view: every frame it turns a Fight into Frame fields (camera, meshes, lights, sphere occluders, sprites,
 // the first-person view model and the damage tint). It only reads the fight; its GPU work is the model upload and dispose.
 import { uploadMesh, disposeMesh } from '../gfx/gl.js';
-import { cameraBasis, MM, T, Rx, Ry, Sc, rot3, I3 } from '../gfx/math.js';
+import { cameraBasis, chainTo, trs, setT, setRx, setRy, setSc, rot3To, I3 } from '../gfx/math.js';
 import { buildModels, VIEW_MODEL } from './models.js';
-import { RIGS, partMatrix, worldSpheres } from './rigs.js';
+import { RIGS, partMatrixTo, worldSpheresTo } from './rigs.js';
 import { WEAPONS, TEAL } from './weapons.js';
 import { PLAYER } from './player.js';
 
-// Per-frame caps (16 lights, 8 spheres, 512 sprites of which at most 192 opaque); FAR culls aliens and small props.
-const MAX_L = 16, MAX_SPH = 8, MAX_SPR = 512, MAX_OPQ = 192, FAR = 150;
+// Per-frame caps (16 lights, 8 spheres, 512 sprites of which at most 192 opaque); FAR culls aliens and small props at 80 m.
+const MAX_L = 16, MAX_SPH = 8, MAX_SPR = 512, MAX_OPQ = 192, FAR = 80;
 // R18: the pole (built upright, 1.6 m) is gripped GRIP m up its shaft at HOLD (camera space, like VIEW_MODEL.off), leaned
 // LEAN rad forward (nearly level) and turned TURN rad in, so its tip rests right of and below the crosshair. A swing turns it
 // SWING[0] rad left and lifts it SWING[1] rad, sweeping the tip across the centre.
@@ -21,15 +21,18 @@ export function createFightView(gl, scene, models = buildModels()) {
   const gpu = {};
   for (const k in models) gpu[k] = uploadMesh(gl, models[k]);
   return { gpu, static: scene.meshes, dispose() { for (const k in gpu) disposeMesh(gl, gpu[k]); },
-    _m: [], _c: [], _pool: [], _cam: {}, _tint: [0, 0, 0], _born: new WeakMap(), _ph: 0, _t: null,
+    _m: [], _c: [], _pool: [], _mats: [], _rots: [], _ents: [], _cam: {}, _tint: [0, 0, 0], _born: new WeakMap(), _ph: 0, _t: null,
     _spr: { data: new Float32Array(MAX_SPR * 8), nOpaque: 0, nGlow: 0 } };
 }
 
-// A rotation taking +y to the unit normal n, placed at (x, y, z).
-const tilt = (x, y, z, nx, ny, nz) => {
-  const k = 1 / (1 + ny);
-  return new Float32Array([1 - k * nx * nx, -nx, -k * nx * nz, 0, nx, ny, nz, 0, -k * nx * nz, -nz, 1 - k * nz * nz, 0, x, y, z, 1]);
+// A rotation taking +y to the unit normal n, placed at (x, y, z). A normal straight down (a ceiling) would divide by zero, so
+// it gets the half-turn about x instead (local +y maps to -y).
+export const tilt = (x, y, z, nx, ny, nz, o = new Float32Array(16)) => {
+  if (ny < -.9999) o.set([1, 0, 0, 0, 0, -1, 0, 0, 0, 0, -1, 0, x, y, z, 1]);
+  else { const k = 1 / (1 + ny); o.set([1 - k * nx * nx, -nx, -k * nx * nz, 0, nx, ny, nz, 0, -k * nx * nz, -nz, 1 - k * nz * nz, 0, x, y, z, 1]); }
+  return o;
 };
+const TA = new Float32Array(16), TB = new Float32Array(16), TC = new Float32Array(16);
 
 export function fillFrame(V, F, frame, t) {
   const p = F.player, dead = F.state === 'dead', W = dead ? null : WEAPONS[F.ars.cur] || null, G = V.gpu;
@@ -53,6 +56,13 @@ export function fillFrame(V, F, frame, t) {
   const keep = n => { if (C.length > n) C.sort(byD); return Math.min(n, C.length); };
 
   // 2. meshes
+  // Matrices, rotations and mesh entries come from pools that restart each frame, so a warm frame allocates none of them.
+  let nm = 0, nr = 0, ne = 0;
+  const mat = () => V._mats[nm++] ??= new Float32Array(16);
+  const ent = (gpu, model, rot, flash) => {
+    const e = V._ents[ne++] ??= {};
+    e.gpu = gpu; e.model = model; e.rot = rot || rot3To(V._rots[nr++] ??= new Float32Array(9), model); e.flash = flash; return e;
+  };
   const M = frame.meshes = V._m;
   M.length = 0;
   for (const m of V.static) M.push(m);
@@ -60,21 +70,20 @@ export function fillFrame(V, F, frame, t) {
     if (!near(a.x, a.z)) continue;
     // R13 as amended by M1: a floater's 0.7 s wind-up pulses its flash between 0 and .22 at 6 Hz (a hit still flashes it fully)
     const parts = RIGS[a.type].parts, fl = a.type === 'fl' && a.state === 'aim' ? Math.max(a.flash, .11 - .11 * Math.cos(12 * Math.PI * t)) : a.flash;
-    for (let i = 0; i < parts.length; i++) { const m = partMatrix(a, i); M.push({ gpu: G[parts[i].mesh], model: m, rot: rot3(m), flash: fl }); }
+    for (let i = 0; i < parts.length; i++) M.push(ent(G[parts[i].mesh], partMatrixTo(mat(), a, i), null, fl));
   }
   const fg = F.flag;
-  if (!fg.held) M.push({ gpu: G.flag, model: T(fg.x, fg.y, fg.z), rot: I3 });
+  if (!fg.held) M.push(ent(G.flag, setT(mat(), fg.x, fg.y, fg.z), I3));
   for (const q of F.pickups) {
     if (!near(q.x, q.z)) continue;
     const gun = q.kind === 'pistol' || q.kind === 'scatter';
-    const m = MM(T(q.x, q.y + (gun ? .45 : .3) + .1 * Math.sin(2.5 * t + q.x), q.z), Ry(1.5 * t), Sc(gun ? 1.6 : 1));
-    M.push({ gpu: G[q.kind === 'cells' ? 'cell' : q.kind], model: m, rot: rot3(m) });
+    M.push(ent(G[q.kind === 'cells' ? 'cell' : q.kind], trs(mat(), q.x, q.y + (gun ? .45 : .3) + .1 * Math.sin(2.5 * t + q.x), q.z, 1.5 * t, gun ? 1.6 : 1)));
   }
-  for (const c of F.canisters) if (near(c.x, c.z)) M.push({ gpu: G.canister, model: T(c.x, c.y, c.z), rot: I3, flash: c.fuse > 0 ? .8 : 0 });
+  for (const c of F.canisters) if (near(c.x, c.z)) M.push(ent(G.canister, setT(mat(), c.x, c.y, c.z), I3, c.fuse > 0 ? .8 : 0));
   for (const d of F.decals) {
     if (!near(d.x, d.z)) continue;
-    const m = MM(tilt(d.x + d.nx * .03, d.y + d.ny * .03, d.z + d.nz * .03, d.nx, d.ny, d.nz), Ry(d.yaw), Sc(d.r));
-    M.push({ gpu: d.kind === 'goo' ? G.discGoo : G.discScorch, model: m, rot: rot3(m) });
+    const m = chainTo(mat(), tilt(d.x + d.nx * .03, d.y + d.ny * .03, d.z + d.nz * .03, d.nx, d.ny, d.nz, TA), setRy(TB, d.yaw), setSc(TC, d.r));
+    M.push(ent(d.kind === 'goo' ? G.discGoo : G.discScorch, m));
   }
 
   // 3. lights: the 16 nearest of bolts, booms, the muzzle flash and canisters
@@ -93,10 +102,7 @@ export function fillFrame(V, F, frame, t) {
   const S = frame.spheres ??= new Float32Array(MAX_SPH * 4);
   S.fill(0);
   let ns = 0;
-  for (const c of C) {
-    if (ns >= MAX_SPH) break;
-    for (const s of worldSpheres(c.o)) if (ns < MAX_SPH) S.set(s, 4 * ns++);
-  }
+  for (const c of C) { if (ns >= MAX_SPH) break; ns = worldSpheresTo(S, ns, c.o, MAX_SPH); }
 
   // 5. sprites: opaque goo and dust (at most 192), then glows until 512
   const P = frame.sprites = V._spr, D = P.data;
@@ -131,11 +137,11 @@ export function fillFrame(V, F, frame, t) {
   if (!W) frame.view = null;
   else {
     const o = W.melee ? HOLD : VIEW_MODEL.off, bx = o[0] + Math.cos(V._ph) * .005, by = o[1] + Math.sin(2 * V._ph) * .006;
-    const Cm = new Float32Array([r[0], r[1], r[2], 0, u[0], u[1], u[2], 0, -f[0], -f[1], -f[2], 0, cx, cy, cz, 1]);
+    const Cm = mat(); Cm.set([r[0], r[1], r[2], 0, u[0], u[1], u[2], 0, -f[0], -f[1], -f[2], 0, cx, cy, cz, 1]);
     const sw = W.melee && F.shotT < .3 ? Math.sin(Math.PI * F.shotT / .3) : 0, kick = W.melee ? 0 : .05 * Math.max(0, 1 - F.shotT / .15);
-    const m = W.melee ? MM(Cm, T(bx, by, -o[2]), Ry(SWING[0] * sw), Rx(SWING[1] * sw), Ry(TURN), Rx(-LEAN), Sc(VIEW_MODEL.scale), T(0, -GRIP, 0))
-      : MM(Cm, T(bx, by, kick - o[2]), Sc(VIEW_MODEL.scale));
-    frame.view = { gpu: G[W.melee ? 'pole' : W.id], model: m, rot: rot3(m) };
+    const m = W.melee ? chainTo(mat(), Cm, setT(mat(), bx, by, -o[2]), setRy(mat(), SWING[0] * sw), setRx(mat(), SWING[1] * sw), setRy(mat(), TURN), setRx(mat(), -LEAN), setSc(mat(), VIEW_MODEL.scale), setT(mat(), 0, -GRIP, 0))
+      : chainTo(mat(), Cm, setT(mat(), bx, by, kick - o[2]), setSc(mat(), VIEW_MODEL.scale));
+    frame.view = ent(G[W.melee ? 'pole' : W.id], m);
   }
 
   // 7. damage tint (R17): tint[0] is how far the post pass mixes the tone-mapped image toward blood red (it caps that at .18);

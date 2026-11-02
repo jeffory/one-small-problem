@@ -1,7 +1,6 @@
 import { makeRng } from './rng.js';
 import { reachMap } from './passable.js';
 import { N, HALF, MAP_MARGIN, MAX_STEP, polylineLength, sampleGround } from './surface.js';
-// surface.js and this file import each other: read surface.js bindings only inside functions.
 
 export const COST = { sk: 1, fl: 2, br: 4 };
 export const SURFACE_P = 0.35, FIRST_AT = 70, GAP = 60;

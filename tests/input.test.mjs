@@ -10,3 +10,5 @@ test('the wheel steps once per 50 px of scroll, at most once per read (M6)', () 
   for (let i = 0; i < 4; i++) wheel(-12); wheel(30); wheel(30); assert.equal(I.read().wheel, 1); }); // turning back starts over
 test('one mouse notch is one step, in pixels, lines or pages (M6)', () => {
   for (const [d, m] of [[100, 0], [120, 0], [3, 1], [1, 2], [-100, 0]]) { wheel(d, m); assert.equal(I.read().wheel, Math.sign(d), `${d} mode ${m}`); assert.equal(I.read().wheel, 0, `${d} mode ${m}`); } });
+test('the wheel reads deltaMode before deltaY, so Firefox reports lines (carry-over)', () => { const seen = [];
+  on.wheel({ get deltaMode() { seen.push('mode'); return 1; }, get deltaY() { seen.push('y'); return 3; } }); assert.equal(seen[0], 'mode'); assert.equal(I.read().wheel, 1); });

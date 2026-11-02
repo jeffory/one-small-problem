@@ -41,3 +41,7 @@ test('berm lift: nothing inside the band, full height at the edge, never rising 
   assert.equal(bermLift(BERM), 0); assert.equal(bermLift(BERM + 30), 0); assert.equal(bermLift(0), BERM_H);
   for (let d = 0; d < BERM; d++) assert.ok(bermLift(d) >= bermLift(d + 1)); });
 test('the map edge hides behind the berm crest, seen from the movement bound', () => { const m = edgeMargin(W); assert.ok(m >= 0, `margin ${m}`); });
+import { generateWorld } from '../src/gen/world.js';
+test('generateWorld is the entry point: it attaches the plan, and the checksum covers it', () => { const a = generateWorld('APOLLO-4471'), s = generateSurface('APOLLO-4471');
+  assert.ok(a.plan.encounters.length > 0); assert.equal(s.plan, undefined); assert.equal(checksumWorld(a), checksumWorld(generateWorld('APOLLO-4471')));
+  assert.notEqual(checksumWorld(a), checksumWorld(s)); });

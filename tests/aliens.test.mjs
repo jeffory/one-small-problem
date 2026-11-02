@@ -44,3 +44,10 @@ test('chasing skitterers that converge bump and tumble at 60 and 144 fps, despit
     for (const x of [a, b]) x.state = 'chase'; sim(W, 2, dt); assert.ok(W.states.get(b).has('tumble'), `dt ${dt}`); assert.ok(!W.states.get(a).has('tumble'), `dt ${dt}`); } });
 test('a bump never tumbles a mate that is not chasing', () => { const e = enc({ alerted: true, waved: true }), a = createAlien({ type: 'sk', x: 0, y: 0, z: -20 }, 1, e), b = createAlien({ type: 'sk', x: .5, y: 0, z: -20 }, 2, e), W = world([a, b]);
   a.state = 'chase'; b.state = 'recover'; sim(W, 1 / 60); assert.notEqual(b.state, 'tumble'); assert.ok(b.tumbleCD <= 0); });
+test('walkers look a fixed distance ahead before climbing, so nothing scales the lander at 20, 60 or 144 fps (carry-over)', () => {
+  const lander = (x, z) => { const r = Math.hypot(x, z); return r < 2 ? 2.45 : r < 3 ? 2.45 * (3 - r) : 0; };
+  for (const type of ['sk', 'br']) for (const dt of [1 / 20, 1 / 60, 1 / 144]) {
+    const a = createAlien({ type, x: 0, y: 0, z: -12 }, 2, enc({ alerted: true, waved: true })), W = world([a], { ground: lander, pz: 12, los: () => false }); // id 2: no chase offset (pre-flight F14)
+    a.state = 'chase'; let top = 0; for (let t = 0; t < 6; t += dt) { stepAlien(a, W.ctx, dt); top = Math.max(top, a.y); } assert.ok(top < .6, `${type} at ${Math.round(1 / dt)} fps climbed to ${top}`); }
+  const b = createAlien({ type: 'br', x: -5, y: 0, z: 0 }, 1, enc({ alerted: true, waved: true })), W = world([b], { ground: x => Math.max(0, x * .3), px: 10, los: () => false });
+  b.state = 'chase'; sim(W, 4); assert.ok(b.x > 2, `a gentle ramp is still climbed: x ${b.x}`); });

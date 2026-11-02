@@ -1,12 +1,13 @@
 import { edgeMargin } from './helpers.mjs';
-import { generateSurface, sampleGround, MAX_STEP, N, HALF, MAP_MARGIN } from '../src/gen/surface.js';
+import { sampleGround, MAX_STEP, N, HALF, MAP_MARGIN } from '../src/gen/surface.js';
+import { generateWorld } from '../src/gen/world.js';
 import { budgetAt, COST } from '../src/gen/encounters.js';
 import { reachMap } from '../src/gen/passable.js';
 const hist = {}; let rerolls = 0, fail = 0, worst = 0, rockMin = Infinity, worstEdge = Infinity, rockMax = 0;
 for (let n = 0; n < 1000; n++) {
   const seed = 'SOAK-' + String(n).padStart(4, '0');
   try {
-    const w = generateSurface(seed);
+    const w = generateWorld(seed);
     let seedWorst = 0;
     for (let k = 0; k + 1 < w.route.length; k++) {
       const [ax, az] = w.route[k], [bx, bz] = w.route[k + 1], m = Math.ceil(Math.hypot(bx - ax, bz - az));

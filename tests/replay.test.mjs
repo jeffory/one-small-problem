@@ -1,7 +1,7 @@
 import test from 'node:test'; import assert from 'node:assert/strict'; import { fakeGL } from './fakegl.mjs';
-import { generateSurface } from '../src/gen/surface.js'; import { makeRng } from '../src/gen/rng.js'; import { buildSurfaceScene } from '../src/game/surfaceScene.js';
+import { generateWorld } from '../src/gen/world.js'; import { makeRng } from '../src/gen/rng.js'; import { buildSurfaceScene } from '../src/game/surfaceScene.js';
 import { createFight, stepFight, hurtPlayer } from '../src/game/fight.js'; import { give } from '../src/game/weapons.js'; import { PLAYER } from '../src/game/player.js'; import { createFightView, fillFrame } from '../src/game/fightView.js';
-const W = generateSurface('APOLLO-4471'), COUNT = { dead: 'deaths', restart: 'restarts', kill: 'kills', boom: 'booms' };
+const W = generateWorld('APOLLO-4471'), COUNT = { dead: 'deaths', restart: 'restarts', kill: 'kills', boom: 'booms' };
 // main.js's frame loop over a seeded, uneven frame time between 1/144 and 1/18 s: grab the flag, take the pistol, then run down
 // the route at the encounters, strafing, jumping, cycling weapons and firing at the nearest live alien; a blast-like hit at
 // frame 900 makes sure of a death mid-fight.

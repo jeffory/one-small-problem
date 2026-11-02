@@ -1,6 +1,7 @@
 // Boot: seed from the URL hash, generate the Moon, build the GPU scene, then walk it.
 import { makeRng, normalizeSeed, seedName } from './gen/rng.js';
-import { generateSurface, sampleGround } from './gen/surface.js';
+import { sampleGround } from './gen/surface.js';
+import { generateWorld } from './gen/world.js';
 import { checksumWorld } from './gen/checksum.js';
 import { createGL } from './gfx/gl.js';
 import { createRenderer } from './gfx/renderer.js';
@@ -23,7 +24,7 @@ function boot() {
   addEventListener('hashchange', () => location.reload());
 
   const { gl, hdrOK } = createGL(canvas), renderer = createRenderer(gl, hdrOK);
-  const world = generateSurface(seed), scene = buildSurfaceScene(gl, world), ground = (x, z) => sampleGround(world, x, z);
+  const world = generateWorld(seed), scene = buildSurfaceScene(gl, world), ground = (x, z) => sampleGround(world, x, z);
   const F = createFight(world, { gravity: scene.gravity }), V = createFightView(gl, scene), p = F.player, input = createInput(canvas, p), RES = [180, 270, 360];
   let resI = 1, palMode = 1, lost = false, shown = false, fp = DEBUG ? `#${seed} ${checksumWorld(world)}` : "", warpK = 0, raf = 0, frames = 0, fault = false, helpShown = true, t0 = performance.now(), last = t0, fpsN = 0, fpsT = 0;
 
