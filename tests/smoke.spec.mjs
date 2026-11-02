@@ -58,3 +58,19 @@ test('an error inside the frame loop shows a message and stops the loop', async 
   await page.evaluate(() => window.ospTest.fault()); await expect(page.locator('#msg')).toContainText('Something went wrong');
   const a = await page.evaluate(() => window.ospTest.frames()); await page.waitForTimeout(300);
   expect(await page.evaluate(() => window.ospTest.frames())).toBe(a); expect(errors.some(e => /test fault/.test(e))).toBe(true); });
+const fight = page => page.evaluate(() => window.ospTest.fight());
+test('a surface fight: aliens shoot back and the frame stays palette-true', async ({ page }) => {
+  const errors = watchErrors(page); await page.goto(URLS[1][1] + '#APOLLO-4471'); await ready(page);
+  await page.evaluate(() => { const o = window.ospTest; o.grab(); o.give(); o.warp(1); });
+  await expect.poll(() => fight(page).then(f => f.bolts), { timeout: 15_000 }).toBeGreaterThan(0);
+  const s = await page.evaluate(() => window.ospTest.capture()); expect(s.inPalette).toBe(1); expect(s.colours).toBeGreaterThan(8); expect(errors).toEqual([]); });
+test('dying sends you back to the wreck with a fresh area', async ({ page }) => {
+  const errors = watchErrors(page); await page.goto(URLS[1][1] + '#APOLLO-4471'); await ready(page);
+  await page.evaluate(() => { const o = window.ospTest; o.grab(); o.warp(2); o.hurt(999); });
+  await expect(page.locator('#prompt')).toContainText('died'); await expect.poll(() => fight(page).then(f => f.state), { timeout: 10_000 }).toBe('play');
+  const f = await fight(page); expect(f.hp).toBe(100); expect(f.atSpawn).toBe(true); expect(errors).toEqual([]); });
+test('weapon keys work without pointer lock; the capture click never fires (Review Focus 5)', async ({ page }) => {
+  await page.goto(URLS[1][1] + '#APOLLO-4471'); await ready(page); await page.evaluate(() => { window.ospTest.grab(); window.ospTest.give(); });
+  await page.keyboard.press('Digit2'); await expect.poll(() => fight(page).then(f => f.cur)).toBe(1);
+  await page.keyboard.press('Digit1'); await expect.poll(() => fight(page).then(f => f.cur)).toBe(0);
+  await page.mouse.click(300, 300); await page.waitForTimeout(300); expect((await fight(page)).shots).toBe(0); });

@@ -6,7 +6,11 @@ html,body{margin:0;height:100%;overflow:hidden;background:#000;color:#b8ae9c;fon
 #c{display:block;image-rendering:pixelated;width:100vw;height:100vh}
 #hud{position:fixed;left:12px;bottom:10px}
 #seed{position:fixed;right:12px;bottom:10px;color:#7a7266}
+#stat{position:fixed;left:12px;bottom:34px;white-space:pre}
+#prompt{position:fixed;left:50%;bottom:22%;transform:translateX(-50%);text-align:center}
+#flash{position:fixed;left:50%;top:12px;transform:translateX(-50%);text-align:center}
+#x{position:fixed;left:50%;top:50%;width:2px;height:2px;margin:-1px 0 0 -1px;background:#b8ae9c}
 #msg{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;text-align:center}
 </style>
 <!--BODY-->
-<canvas id="c"></canvas><div id="hud"></div><div id="seed"></div><div id="msg">Loading... (needs a current desktop browser with WebGL2)</div>
+<canvas id="c"></canvas><div id="hud"></div><div id="seed"></div><div id="stat"></div><div id="prompt"></div><div id="flash"></div><div id="x"></div><div id="msg">Loading... (needs a current desktop browser with WebGL2)</div>
