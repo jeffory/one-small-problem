@@ -89,7 +89,7 @@ export function buildBaseMeshes(B) {
       box(P, x - hw + .04, y, z - hd + .04, x + hw - .04, tp - .05, z + hd - .04, MAT.crate); box(P, x - hw + .1, tp - .05, z - hd + .1, x + hw - .1, tp, z + hd - .1, MAT.soil);
       for (let k = 3 + rng.int(4); k > 0; k--) {
         const sx = x + rng.range(-hw + .4, hw - .4), sz = z + rng.range(-hd + .4, hd - .4), h = rng.range(.8, 1.5), lx = rng.range(-.25, .25), lz = rng.range(-.25, .25);
-        lathe(P, [sx, tp, sz], [sx + lx, tp + h, sz + lz], [[0, .05], [.5, .032], [1, .012]], 6, MAT.tent); blob(P, [sx + lx, tp + h + .05, sz + lz], [.07, .07, .07], 7, 5, MAT.eye, null);
+        lathe(P, [sx, tp, sz], [sx + lx, tp + h, sz + lz], [[0, .05], [.5, .032], [1, .012]], 6, MAT.tent); blob(P, [sx + lx, tp + h + .05, sz + lz], [.07, .07, .07], 7, 5, MAT.stalkEye, null);
       }
     } else if (p.kind === 'dish') {
       const top = topAt(x, z, 1), ax = [.5, .86, -.15], l = Math.hypot(ax[0], ax[1], ax[2]), d = ax.map(v => v / l), a = [x, top + .15, z], at = t => [a[0] + d[0] * t, a[1] + d[1] * t, a[2] + d[2] * t];

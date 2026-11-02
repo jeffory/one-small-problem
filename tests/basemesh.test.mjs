@@ -58,3 +58,11 @@ test('greenhouse beds are too tall to jump onto at any frame rate, and their sta
     const p = createPlayer({ x: b.x - sx * (hw + .6), z: b.z - sz * (hd + .6), dx: sx, dz: sz }, LB.ground); let top = 0;
     for (let t = 0; t < 2; t += dt) { stepPlayer(p, { fwd: 1, strafe: 0, run: true, jump: true }, dt, LB.ground, LB.bound, GRAVITY.base, LB.ceil); top = Math.max(top, LB.ground(p.x, p.z)); }
     assert.ok(top < .5, `${Math.round(1 / dt)} fps: stood on the bed at ${b.x}, ${b.z}`); } });
+test('greenhouse stalk eyes glow dimly, not as bright as plasma; aliens keep their bright eyes (I4)', async () => {
+  const gh = M.rooms.find(q => q.theme === 'greenhouse'), { buildModels } = await import('../src/game/models.js'); let n = 0;
+  assert.ok(MAT.stalkEye && MAT.stalkEye[0] === LAYER.eye && MAT.stalkEye[2] <= MAT.eye[2] / 4, 'a dim eye material');
+  for (let i = 0; i < props.mat.length; i += 4) { const v = i / 4, x = props.pos[v * 3], z = props.pos[v * 3 + 2];
+    if (props.mat[i] === LAYER.eye && M.room[Math.round(z + M.half) * M.n + Math.round(x + M.half)] === gh.id) { n++; assert.equal(props.mat[i + 2], Math.fround(MAT.stalkEye[2]), `eye at ${x}, ${z}`); } }
+  assert.ok(n > 0, 'greenhouse eyes');
+  const eyes = Object.values(buildModels()).flatMap(m => { const o = []; for (let i = 0; i < m.mat.length; i += 4) if (m.mat[i] === LAYER.eye) o.push(m.mat[i + 2]); return o; });
+  assert.ok(eyes.length && eyes.includes(Math.fround(MAT.eye[2])), 'aliens keep MAT.eye'); });

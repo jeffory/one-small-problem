@@ -8,4 +8,6 @@ export const MAT = { regolith: [0, .5, 0, 2], rock: [1, .7, 0, 1], foil: [2, 1.2
   eye: [8, 1, 2.2, 8], glowRing: [8, 2, 1.2, 16], wetEye: [4, 1, 0, 64], gunMetal: [10, 4, .6, 64], gunFlesh: [6, 3, 0, 64],
   wall: [10, .5, 0, 0], coil: [9, 3, .55, 16], coilB: [9, 3, 1.0, 16], tape: [11, 2, 0, 0], scorch: [12, .8, 0, 0], goo: [13, 1.5, .25, 72],
   crate: [10, 1, 0, 0], grate: [14, 1, 0, 0], pipes: [15, .5, 0, 0], amber: [16, 2, .75, 0], lamp: [9, 2, 1.2, 0], red: [17, 1, 1.5, 0], reactor: [18, .6, 1.4, 16],
-  golf: [19, 4, 0, 0], soil: [0, .8, 0, 2] };
+  golf: [19, 4, 0, 0], soil: [0, .8, 0, 2],
+  // I4: the greenhouse stalks' eyes, dim beside the aliens' (MAT.eye) and the plasma
+  stalkEye: [8, 1, .5, 8] };
