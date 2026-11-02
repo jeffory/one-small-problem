@@ -1,0 +1,593 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>One Small Problem look test</title>
+<style>
+html,body{margin:0;height:100%;background:#000;overflow:hidden;font:13px/1.45 ui-monospace,Menlo,Consolas,monospace;color:#b8ae9c}
+canvas{position:fixed;inset:0;width:100vw;height:100vh;display:block;cursor:crosshair}
+#tag{position:fixed;left:14px;top:12px;color:#7a7266;pointer-events:none;letter-spacing:.04em}
+#hud{position:fixed;left:14px;bottom:12px;pointer-events:none;text-shadow:0 1px 0 #000;max-width:70ch}
+#hud b{color:#e8dfcf;font-weight:600}
+#btns{position:fixed;right:14px;top:10px;display:flex;gap:6px}
+#btns button{font:inherit;background:#15130fcc;color:#cfc5b2;border:1px solid #3a352d;padding:5px 10px;cursor:pointer}
+#btns button.on{border-color:#7cf2c8;color:#7cf2c8}
+#xh{position:fixed;left:50%;top:50%;width:9px;height:9px;margin:-4px 0 0 -4px;pointer-events:none;opacity:.6;
+ background:linear-gradient(#cfc5b2,#cfc5b2) center/1px 9px no-repeat,linear-gradient(#cfc5b2,#cfc5b2) center/9px 1px no-repeat}
+#err{position:fixed;inset:0;display:none;white-space:pre-wrap;color:#f88;padding:20px;margin:0;background:#000e;overflow:auto;font-size:12px}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="tag">ONE SMALL PROBLEM · look test · throwaway</div>
+<div id="btns"><button id="b1" class="on">1 · Surface</button><button id="b2">2 · Base</button><button id="b3">3 · Line-up</button><button id="bC">C · Aliens: A</button></div>
+<div id="xh"></div>
+<div id="hud">Generating the Moon…</div>
+<pre id="err"></pre>
+<script>
+'use strict';
+const cv=document.getElementById('c'),hud=document.getElementById('hud'),errEl=document.getElementById('err');
+const b1=document.getElementById('b1'),b2=document.getElementById('b2'),b3=document.getElementById('b3'),bC=document.getElementById('bC');
+function fail(m){errEl.style.display='block';errEl.textContent=m;throw new Error(m);}
+window.addEventListener('error',e=>{if(errEl.style.display!=='block'){errEl.style.display='block';errEl.textContent=String(e.message||e);}});
+const gl=cv.getContext('webgl2',{antialias:false,stencil:false,powerPreference:'high-performance'});
+if(!gl)fail('WebGL2 is not available in this browser.');
+const hdrOK=!!gl.getExtension('EXT_color_buffer_float');
+
+// ---------------- math helpers ----------------
+const dot=(a,b)=>a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
+const cross=(a,b)=>[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];
+const norm=a=>{const l=Math.hypot(a[0],a[1],a[2])||1;return[a[0]/l,a[1]/l,a[2]/l];};
+const clamp=(x,a,b)=>Math.min(b,Math.max(a,x));
+function persp(f,a,n,fa){const t=1/Math.tan(f/2);return new Float32Array([t/a,0,0,0,0,t,0,0,0,0,(fa+n)/(n-fa),-1,0,0,2*fa*n/(n-fa),0]);}
+function mul(a,b){const o=new Float32Array(16);for(let c=0;c<4;c++)for(let r=0;r<4;r++){let s=0;for(let k=0;k<4;k++)s+=a[k*4+r]*b[c*4+k];o[c*4+r]=s;}return o;}
+function viewM(e,f,r,u){return new Float32Array([r[0],u[0],-f[0],0,r[1],u[1],-f[1],0,r[2],u[2],-f[2],0,-dot(r,e),-dot(u,e),dot(f,e),1]);}
+const I4=new Float32Array([1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1]),I3=new Float32Array([1,0,0,0,1,0,0,0,1]);
+const T=(x,y,z)=>new Float32Array([1,0,0,0,0,1,0,0,0,0,1,0,x,y,z,1]);
+const Rx=a=>{const c=Math.cos(a),s=Math.sin(a);return new Float32Array([1,0,0,0,0,c,s,0,0,-s,c,0,0,0,0,1]);};
+const Ry=a=>{const c=Math.cos(a),s=Math.sin(a);return new Float32Array([c,0,-s,0,0,1,0,0,s,0,c,0,0,0,0,1]);};
+const Rz=a=>{const c=Math.cos(a),s=Math.sin(a);return new Float32Array([c,s,0,0,-s,c,0,0,0,0,1,0,0,0,0,1]);};
+const Sc=s=>new Float32Array([s,0,0,0,0,s,0,0,0,0,s,0,0,0,0,1]);
+const MM=(...ms)=>ms.reduce((a,b)=>mul(a,b));
+function rot3(m){const o=new Float32Array(9);for(let c=0;c<3;c++){const l=Math.hypot(m[c*4],m[c*4+1],m[c*4+2])||1;for(let r=0;r<3;r++)o[c*3+r]=m[c*4+r]/l;}return o;}
+const xf=(m,p)=>[m[0]*p[0]+m[4]*p[1]+m[8]*p[2]+m[12],m[1]*p[0]+m[5]*p[1]+m[9]*p[2]+m[13],m[2]*p[0]+m[6]*p[1]+m[10]*p[2]+m[14]];
+
+// ---------------- seeded noise (JS) ----------------
+function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
+const rnd=mulberry32(4471);
+function h2(x,y){let h=Math.imul(x|0,374761393)+Math.imul(y|0,668265263)|0;h=Math.imul(h^h>>>13,1274126177);h^=h>>>16;return(h>>>0)/4294967296;}
+function h3(x,y,z){return h2((x|0)+Math.imul(z|0,1442695041),(y|0)^Math.imul(z|0,19349663));}
+function vn2(x,y){const xi=Math.floor(x),yi=Math.floor(y);let fx=x-xi,fy=y-yi;fx=fx*fx*(3-2*fx);fy=fy*fy*(3-2*fy);
+ const a=h2(xi,yi),b=h2(xi+1,yi),c=h2(xi,yi+1),d=h2(xi+1,yi+1);return a+(b-a)*fx+(c-a)*fy+(a-b-c+d)*fx*fy;}
+function fbm2(x,y,o){let s=0,a=.5,n=0;for(let i=0;i<o;i++){s+=a*vn2(x,y);n+=a;x=x*2.03+17.1;y=y*2.03+3.7;a*=.5;}return s/n;}
+function vn3(x,y,z){const xi=Math.floor(x),yi=Math.floor(y),zi=Math.floor(z);let fx=x-xi,fy=y-yi,fz=z-zi;
+ fx=fx*fx*(3-2*fx);fy=fy*fy*(3-2*fy);fz=fz*fz*(3-2*fz);const L=(a,b,t)=>a+(b-a)*t,c=(i,j,k)=>h3(xi+i,yi+j,zi+k);
+ return L(L(L(c(0,0,0),c(1,0,0),fx),L(c(0,1,0),c(1,1,0),fx),fy),L(L(c(0,0,1),c(1,0,1),fx),L(c(0,1,1),c(1,1,1),fx),fy),fz);}
+
+// ---------------- GL helpers ----------------
+function shader(type,src){const s=gl.createShader(type);gl.shaderSource(s,src);gl.compileShader(s);
+ if(!gl.getShaderParameter(s,gl.COMPILE_STATUS))fail(gl.getShaderInfoLog(s)+'\n\n'+src.split('\n').map((l,i)=>(i+1)+': '+l).join('\n'));return s;}
+function program(vs,fs){const p=gl.createProgram();gl.attachShader(p,shader(gl.VERTEX_SHADER,vs));gl.attachShader(p,shader(gl.FRAGMENT_SHADER,fs));gl.linkProgram(p);
+ if(!gl.getProgramParameter(p,gl.LINK_STATUS))fail(gl.getProgramInfoLog(p));const u={},n=gl.getProgramParameter(p,gl.ACTIVE_UNIFORMS);
+ for(let i=0;i<n;i++){const a=gl.getActiveUniform(p,i);u[a.name.replace(/\[0\]$/,'')]=gl.getUniformLocation(p,a.name);}p.u=new Proxy(u,{get:(o,k)=>o[k]??null});return p;}
+function tex2D(w,h,ifmt,fmt,type,filter){const t=gl.createTexture();gl.bindTexture(gl.TEXTURE_2D,t);gl.texImage2D(gl.TEXTURE_2D,0,ifmt,w,h,0,fmt,type,null);
+ gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,filter);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,filter);
+ gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);return t;}
+const emptyVAO=gl.createVertexArray();
+
+// ---------------- shaders ----------------
+const FSQ_VS=`#version 300 es
+out vec2 v;void main(){vec2 p=vec2((gl_VertexID<<1)&2,gl_VertexID&2);v=p;gl_Position=vec4(p*2.-1.,0.,1.);}`;
+
+// Texture generator: every material is a recipe evaluated once on the GPU at load.
+const BAKE_FS=`#version 300 es
+precision highp float;uniform int uLay;in vec2 v;
+layout(location=0) out vec4 oA;layout(location=1) out vec4 oE;
+float h21(vec2 p){vec3 q=fract(vec3(p.xyx)*.1031);q+=dot(q,q.yzx+33.33);return fract((q.x+q.y)*q.z);}
+vec2 h22(vec2 p){vec3 q=fract(vec3(p.xyx)*vec3(.1031,.103,.0973));q+=dot(q,q.yzx+33.33);return fract((q.xx+q.yz)*q.zy);}
+float vn(vec2 p,vec2 P){vec2 i=floor(p),f=fract(p);f=f*f*(3.-2.*f);
+ return mix(mix(h21(mod(i,P)),h21(mod(i+vec2(1,0),P)),f.x),mix(h21(mod(i+vec2(0,1),P)),h21(mod(i+1.,P)),f.x),f.y);}
+float fbm(vec2 u,vec2 P,int o){float s=0.,a=.5,n=0.;vec2 p=u*P;for(int k=0;k<7;k++){if(k>=o)break;s+=a*vn(p,P);n+=a;p*=2.;P*=2.;a*=.5;}return s/n;}
+vec3 wor(vec2 u,float P){vec2 p=u*P,i=floor(p),f=fract(p);float d1=9.,d2=9.,id=0.;
+ for(int y=-1;y<=1;y++)for(int x=-1;x<=1;x++){vec2 g=vec2(x,y),c=mod(i+g,P);float d=length(g+h22(c)-f);
+  if(d<d1){d2=d1;d1=d;id=h21(c+7.3);}else if(d<d2)d2=d;}return vec3(d1,d2,id);}
+vec4 panel(vec2 u,vec3 c0,vec3 c1,vec3 c2,float glow,out vec3 e){
+ vec2 g=u*4.,id=floor(g),f=fract(g);float r0=h21(id+3.1);
+ if(r0>.6){g=u*8.;id=floor(g)+40.;f=fract(g);}
+ float r=h21(id),ed=min(min(f.x,1.-f.x),min(f.y,1.-f.y));
+ float seam=smoothstep(0.,.035,ed),bev=smoothstep(0.,.1,ed),riv=0.;
+ for(int k=0;k<4;k++){vec2 cn=vec2(float(k&1),float(k>>1));riv=max(riv,smoothstep(.04,.015,length(f-mix(vec2(.09),vec2(.91),cn))));}
+ float gr=fbm(u,vec2(8.),5),fine=fbm(u,vec2(64.),2),stk=vn(vec2(u.x*96.,u.y*3.),vec2(96.,3.));
+ vec3 c=r<.4?c0:r<.75?c1:c2;
+ c*=.55+.7*gr;c*=mix(.45,1.,smoothstep(0.,.65,f.y));
+ c=mix(c,vec3(.13,.06,.025),smoothstep(.55,.9,stk)*(1.-f.y)*.85);
+ c*=.85+.3*fine;c*=mix(.2,1.,seam);c+=riv*.05;
+ float h=bev*.55+riv*.35+r*.1+gr*.15-(1.-seam)*.2;e=vec3(0);
+ if(glow>0.&&r>.94){float sx=step(.18,f.x)*step(f.x,.82)*step(abs(f.y-.5),.03);e=vec3(.2,.8,.45)*sx*(.5+.3*fine);c=mix(c,vec3(.05,.12,.08),sx);}
+ return vec4(c,h);}
+void main(){vec2 u=v;vec4 a=vec4(0);vec3 e=vec3(0);
+ if(uLay==0){ // regolith
+  float n1=fbm(u,vec2(6.),6),n2=fbm(u,vec2(28.),3);vec3 w=wor(u,22.);float peb=smoothstep(.32,.05,w.x)*step(.72,w.z);
+  vec3 w2=wor(u,7.);float clod=smoothstep(.45,0.,w2.x)*step(.6,w2.z),sp=h21(floor(u*256.));
+  float h=n1*.45+n2*.25+peb*.45+clod*.25+sp*.06;
+  vec3 c=mix(vec3(.085,.08,.072),vec3(.2,.188,.168),n1*.75+n2*.45);c*=.8+.35*peb+.15*clod;c*=.86+.28*sp;a=vec4(c,h);}
+ else if(uLay==1){ // rock
+  float rg=1.-abs(fbm(u,vec2(5.),5)*2.-1.);rg*=rg;vec3 w=wor(u,5.);float cr=smoothstep(0.,.07,w.y-w.x);
+  float n=fbm(u,vec2(12.),5),sp=h21(floor(u*256.)),h=(n*.6+rg*.4)*(.25+.75*cr);
+  vec3 c=mix(vec3(.05,.047,.043),vec3(.17,.155,.14),n*.7+rg*.5);c*=.5+.5*cr;c*=.85+.3*sp;a=vec4(c,h);}
+ else if(uLay==2){a=panel(u,vec3(.075,.075,.085),vec3(.11,.08,.05),vec3(.085,.06,.1),1.,e);}
+ else if(uLay==3){ // floor grate
+  vec2 q=fract(u*2.),s=vec2(fract(q.x*7.),q.y);float slot=step(.28,s.x)*step(.12,q.y)*step(q.y,.88);
+  float fr=min(min(q.x,1.-q.x),min(q.y,1.-q.y)),sc=smoothstep(.6,1.,vn(vec2(u.x*4.,u.y*160.),vec2(4.,160.))),gr=fbm(u,vec2(8.),5);
+  vec3 c=vec3(.085,.08,.075)*(.6+.7*gr)+sc*.05;c*=mix(.3,1.,smoothstep(0.,.05,fr));c=mix(c,vec3(.006,.008,.006),slot);
+  a=vec4(c,(1.-slot)*.7+gr*.2);}
+ else if(uLay==4){ // pipes
+  float y=fract(u.y*5.),pr=max(0.,1.-pow((y-.5)*2.3,2.)),pipe=sqrt(pr),row=floor(u.y*5.);
+  float ring=step(.93,fract(u.x*4.+h21(vec2(row)))),gr=fbm(u,vec2(8.),5);
+  vec3 c=mix(vec3(.13,.07,.035),vec3(.09,.09,.085),step(.5,h21(vec2(row,3.))))*(.4+.9*gr);
+  c*=.25+.75*pipe;c=mix(c,vec3(.2,.15,.06),ring*.7);c=mix(vec3(.004),c,step(.01,pr));a=vec4(c,pipe*.8+ring*.15);}
+ else if(uLay==5){ // crinkled gold foil
+  vec3 w=wor(u,7.);float n=fbm(u,vec2(16.),3),h=(1.-w.x)*.6+n*.25+w.z*.3;
+  a=vec4(mix(vec3(.22,.12,.025),vec3(.42,.27,.07),w.z)*(.7+.4*n),h);}
+ else if(uLay==6){ // alien flesh
+  vec2 wv=vec2(fbm(u,vec2(4.),4),fbm(u+.37,vec2(4.),4));float vv=fbm(u+.12*wv,vec2(5.),4),vein=smoothstep(.035,0.,abs(vv-.5));
+  float mo=fbm(u,vec2(10.),4);vec3 w=wor(u,9.);float bump=smoothstep(.5,0.,w.x);
+  vec3 c=mix(vec3(.06,.03,.04),vec3(.16,.09,.08),mo);c*=.75+.4*bump;c=mix(c,vec3(.24,.26,.05),vein*.85);
+  a=vec4(c,mo*.4+bump*.35+vein*.3);e=vec3(.03,.045,0.)*vein;}
+ else if(uLay==7){a=panel(u,vec3(.2,.195,.18),vec3(.17,.165,.15),vec3(.23,.22,.2),0.,e);} // lander hull
+ else if(uLay==8){a=vec4(.008,.009,.011,0.);}  // dark glass
+ else if(uLay==9){float n=fbm(u,vec2(4.),5);a=vec4(vec3(n),n);} // macro variation
+ else if(uLay==10){a=vec4(.02,.02,.01,0.);e=vec3(.95,1.,.3);} // eyes
+ else if(uLay==11){float g=step(.35,fract(u.y*6.));a=vec4(.04,.05,.045,g*.3);e=vec3(.3,1.,.7)*(.35+.65*g);} // lamp
+ else if(uLay==12){a=vec4(.05,.01,.01,0.);e=vec3(1.,.14,.05);} // red lamp
+ else if(uLay==13){float n=fbm(u,vec2(6.,3.),5),b=smoothstep(.3,.8,n);a=vec4(.03,.06,.05,n);e=vec3(.15,1.,.65)*(.35+.9*b);} // reactor
+ else if(uLay==14){float g=step(.35,fract(u.y*6.));a=vec4(.05,.045,.03,g*.3);e=vec3(1.,.5,.12)*(.35+.65*g);} // amber lamp
+ else if(uLay==15){ // chitin: dark glossy segmented shell
+  float b=fract(u.y*5.),seg=smoothstep(0.,.12,b)*smoothstep(1.,.85,b),n=fbm(u,vec2(10.),5);vec3 w=wor(u,12.);float pit=smoothstep(.15,0.,w.x);
+  vec3 c=mix(vec3(.04,.03,.022),vec3(.14,.095,.05),n*.8+seg*.3);c*=.55+.45*seg;c*=1.-pit*.5;a=vec4(c,seg*.6+n*.3-pit*.2);}
+ else if(uLay==16){ // grey leathery skin: wrinkles and faint veins
+  float n=fbm(u,vec2(8.),5),wr=1.-abs(fbm(u,vec2(6.,14.),4)*2.-1.);wr=pow(wr,6.);
+  vec2 wv=vec2(fbm(u,vec2(3.),3),fbm(u+.5,vec2(3.),3));float vv=fbm(u+.1*wv,vec2(4.),4),vein=smoothstep(.03,0.,abs(vv-.5));
+  vec3 c=mix(vec3(.1,.105,.085),vec3(.2,.2,.165),n);c*=1.-wr*.45;c=mix(c,vec3(.12,.07,.09),vein*.6);a=vec4(c,n*.5-wr*.3+vein*.15);}
+ oA=a;oE=vec4(e,1.);}`;
+
+const WORLD_VS=`#version 300 es
+layout(location=0) in vec3 aP;layout(location=1) in vec3 aN;layout(location=2) in vec4 aM;
+uniform mat4 uVP,uMod;uniform float uT,uCurv;uniform vec3 uCam;
+out vec3 vW,vO,vN,vNo;flat out vec4 vM;
+void main(){vec3 p=aP;int f=int(aM.w+.5);
+ if((f&8)!=0)p+=aN*.02*sin(uT*5.+p.y*8.+p.x*5.);
+ if((f&128)!=0){float k=max(0.,-p.y-.3);p.x+=sin(uT*1.9+p.y*2.5+p.z*3.)*.16*k;p.z+=cos(uT*1.6+p.y*2.1+p.x*3.)*.12*k;}
+ vec4 w=uMod*vec4(p,1.);vW=w.xyz;vO=p;vNo=aN;vN=mat3(uMod)*aN;vM=aM;
+ vec3 d=w.xyz-uCam;w.y-=dot(d.xz,d.xz)*uCurv;gl_Position=uVP*w;}`;
+
+const WORLD_FS=`#version 300 es
+precision highp float;precision highp sampler2DArray;
+uniform sampler2DArray uA,uE;uniform sampler2D uOcc;
+uniform vec3 uCam,uSun,uFog;uniform float uT,uFogD;uniform int uMode,uNL;
+uniform vec4 uL[16],uLC[16],uSph[8];uniform mat3 uRot;
+in vec3 vW,vO,vN,vNo;flat in vec4 vM;out vec4 o;
+float occ(vec2 p){return textureLod(uOcc,(p+256.5)/512.,0.).r;}
+float sunVis(vec3 p,float t0){
+ for(int i=0;i<8;i++){vec3 q=p-uSph[i].xyz;float b=dot(q,uSun),c=dot(q,q)-uSph[i].w*uSph[i].w;if(c>0.&&b<0.&&b*b>c)return 0.;}
+ float t=t0;for(int i=0;i<64;i++){vec3 q=p+uSun*t;if(occ(q.xz)>q.y+.04)return 0.;t=t*1.08+.06;if(t>130.)break;}return 1.;}
+void main(){
+ int f=int(vM.w+.5);float L=vM.x,s=vM.y;vec3 V=normalize(uCam-vW),Ng=normalize(vN);
+ vec3 Nf=normalize(cross(dFdx(vW),dFdy(vW)));vec3 N=(f&1)!=0?Nf:Ng;if(dot(N,V)<0.)N=-N;
+ vec3 an=abs(vNo);int ax=an.x>an.y&&an.x>an.z?0:an.y>an.z?1:2;
+ vec2 uv=(ax==0?vO.zy:ax==1?vO.xz:vO.xy)*s;
+ vec4 A=texture(uA,vec3(uv,L));vec3 E=texture(uE,vec3(uv,L)).rgb;
+ float e=max(1./256.,max(length(dFdx(uv)),length(dFdy(uv))));
+ float hx=texture(uA,vec3(uv+vec2(e,0.),L)).a,hy=texture(uA,vec3(uv+vec2(0.,e),L)).a;
+ vec2 g=vec2(hx-A.a,hy-A.a)/e;
+ vec4 R=texture(uA,vec3(uv*.61,1.)),A2=texture(uA,vec3(uv*.237+.31,L));float mac=texture(uA,vec3(vW.xz/96.,9.)).r;
+ if((f&2)!=0){A.rgb=mix(A.rgb,A2.rgb,.45)*mix(.62,1.25,mac);A=mix(A,R,smoothstep(.82,.6,Ng.y));}
+ vec3 T=ax==0?vec3(0,0,1):vec3(1,0,0),B=ax==1?vec3(0,0,1):vec3(0,1,0);
+ N=normalize(N-.022*(uRot*(g.x*T+g.y*B)));
+ vec3 dl=vec3(0),sp=vec3(0);
+ for(int i=0;i<16;i++){if(i>=uNL)break;vec3 d=uL[i].xyz-vW;float r=length(d),k=max(0.,1.-r/uL[i].w);d/=r;vec3 lc=uLC[i].rgb*k*k;
+  dl+=lc*max(dot(N,d),0.);sp+=lc*pow(max(dot(N,normalize(d+V)),0.),40.);}
+ float wet=(f&64)!=0?1.:0.;
+ vec3 col;
+ if(uMode==0){
+  float mu0=max(dot(N,uSun),0.),mu=max(dot(N,V),.05);
+  float vis=mu0>0.?sunVis(vW+Ng*.04,(f&1)!=0?1.:.3):0.;
+  float df=(f&2)!=0?mix(mu0,2.*mu0/(mu0+mu),.6):mu0;
+  vec3 sun=vec3(1.,.96,.9)*1.55;
+  col=A.rgb*(sun*df*vis+vec3(.018,.024,.04)+dl);
+  vec3 h=normalize(uSun+V);
+  if((f&4)!=0)col=col*vec3(1.,.8,.45)+sun*vis*pow(max(dot(N,h),0.),48.)*vec3(.8,.55,.15)*.9;
+  col+=wet*(sun*vis*pow(max(dot(N,h),0.),60.)*.35+sp*.4);
+ }else{
+  vec3 Lt=vec3(.012,.013,.012)+dl;Lt=floor(Lt*14.+.5)/14.;col=A.rgb*Lt+wet*sp*.4;
+ }
+ col+=E*vM.z*((f&16)!=0?.65+.35*sin(uT*3.1+vW.y*1.3):1.);
+ if(uMode==1)col=mix(uFog,col,exp(-length(uCam-vW)*uFogD));
+ o=vec4(col,1.);}`;
+
+const SKY_FS=`#version 300 es
+precision highp float;
+uniform vec3 uF,uR,uU,uSun;uniform float uTan,uAsp;in vec2 v;out vec4 o;
+float h(vec3 p){p=fract(p*.3183099+.1);p*=17.;return fract(p.x*p.y*p.z*(p.x+p.y+p.z));}
+float hh(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
+float n2(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.-2.*f);return mix(mix(hh(i),hh(i+vec2(1,0)),f.x),mix(hh(i+vec2(0,1)),hh(i+1.),f.x),f.y);}
+float fb(vec2 p){float s=0.,a=.5;for(int i=0;i<5;i++){s+=a*n2(p);p*=2.1;a*=.5;}return s;}
+void main(){vec2 q=v*2.-1.;vec3 d=normalize(uF+q.x*uTan*uAsp*uR+q.y*uTan*uU),c=vec3(0);
+ vec3 sc=d*220.,ci=floor(sc);float hs=h(ci);if(hs>.9975&&length(fract(sc)-.5)<.35)c=vec3(.5+.5*h(ci+3.))*vec3(.85,.88,1.)*.9;
+ vec3 Ed=normalize(vec3(.42,.42,-.8));float R=.075;vec3 rt=normalize(cross(Ed,vec3(0,1,0))),up=cross(rt,Ed);
+ vec2 xy=vec2(dot(d,rt),dot(d,up))/R;
+ if(dot(d,Ed)>0.&&dot(xy,xy)<1.){float z=sqrt(1.-dot(xy,xy));vec3 n=xy.x*rt+xy.y*up-z*Ed;float li=max(dot(n,uSun),0.);
+  vec2 ll=vec2(atan(n.z,n.x),asin(n.y));float land=fb(ll*vec2(1.6,2.4)+4.);
+  vec3 ec=land>.56?mix(vec3(.12,.11,.05),vec3(.2,.16,.08),fb(ll*6.)):vec3(.02,.05,.16);
+  ec=mix(ec,vec3(.75),smoothstep(.5,.78,fb(ll*vec2(3.,5.)+9.))*.85);
+  c=ec*li*2.2+vec3(.05,.12,.35)*pow(1.-z,4.)*smoothstep(-.2,.3,dot(n,uSun))*1.5;}
+ float sa=dot(d,uSun);if(sa>.99992)c=vec3(8.);c+=vec3(1.,.93,.8)*.12*pow(max(sa,0.),900.);
+ o=vec4(c,1.);}`;
+
+const BOLT_VS=`#version 300 es
+uniform mat4 uVP;uniform vec3 uC,uR,uU,uCam;uniform float uS,uCurv;out vec2 v;
+void main(){int i=gl_VertexID;vec2 c=vec2(i==1||i==2||i==4?1.:-1.,i==2||i==4||i==5?1.:-1.);v=c;
+ vec3 p=uC+(uR*c.x+uU*c.y)*uS,d=p-uCam;p.y-=dot(d.xz,d.xz)*uCurv;gl_Position=uVP*vec4(p,1.);}`;
+const BOLT_FS=`#version 300 es
+precision highp float;uniform vec3 uCol;in vec2 v;out vec4 o;
+void main(){float g=exp(-dot(v,v)*5.);o=vec4(uCol*g*1.6+vec3(1.)*pow(g,5.)*2.2*length(uCol),1.);}`;
+
+// Muddy, gritty fixed palette (sRGB). The final image is forced into these colours.
+const PAL='000000 0d0c0b 171513 211e1b 2c2824 38332e 453f38 534c44 635b51 746b60 877d70 9b9082 b2a695 d0c6b6 efe8dc 1a1c1f 2e3134 4a4e52 24150c 3a2112 552e17 70401c 8e5524 b07436 26240f 3d3a19 575224 766f35 1b1220 2d1d35 42294c 5c3a62 0c211c 133a30 1c5a46 2a8263 4fb685 9fe8b0 7ff0e0 e0fff8 5a6418 9aa62c 5a120a b8301a 1a305c 3d68a8 fff4dc 6e5220 9a7630 c49a44 e0c270'.split(' ');
+const palGLSL=PAL.map(h=>{const n=parseInt(h,16);return`vec3(${((n>>16&255)/255).toFixed(4)},${((n>>8&255)/255).toFixed(4)},${((n&255)/255).toFixed(4)})`;}).join(',');
+const POST_FS=`#version 300 es
+precision highp float;uniform sampler2D uS;uniform int uP;uniform float uX;out vec4 o;
+const vec3 P[${PAL.length}]=vec3[${PAL.length}](${palGLSL});
+void main(){ivec2 ip=ivec2(gl_FragCoord.xy);vec3 c=texelFetch(uS,ip,0).rgb*uX;c=1.-exp(-c);c=pow(c,vec3(1./2.2));
+ if(uP>0){int m[16]=int[16](0,8,2,10,12,4,14,6,3,11,1,9,15,7,13,5);
+  if(uP==1)c+=((float(m[(ip.y&3)*4+(ip.x&3)])+.5)/16.-.5)*.075;
+  float bd=1e9;vec3 bc=c;for(int i=0;i<${PAL.length};i++){vec3 d=P[i]-c;float k=dot(d*d,vec3(2.,4.,3.));if(k<bd){bd=k;bc=P[i];}}c=bc;}
+ o=vec4(c,1.);}`;
+
+const bakeP=program(FSQ_VS,BAKE_FS),worldP=program(WORLD_VS,WORLD_FS),skyP=program(FSQ_VS,SKY_FS),boltP=program(BOLT_VS,BOLT_FS),postP=program(FSQ_VS,POST_FS);
+
+// ---------------- mesh building ----------------
+const MT={regolith:[0,.5,0,2],rock:[1,.7,0,1],wall:[2,.5,1,0],grate:[3,1,0,0],pipes:[4,.5,0,0],foil:[5,1.2,0,4],flesh:[6,1.4,0,8],
+ hull:[7,.8,0,0],glass:[8,1,0,0],eye:[10,1,2.2,8],lamp:[11,2,1.2,0],amber:[14,2,.75,0],red:[12,1,1.5,0],reactor:[13,.6,1.4,16],
+ gunMetal:[2,4,.6,64],gunFlesh:[6,3,0,64],coil:[11,3,.55,16],
+ fleshS:[6,1.4,0,0],chitin:[15,1.2,0,64],chitinF:[15,1.2,0,65],grey:[16,1.3,0,8],greyS:[16,2,0,0],wetEye:[8,1,0,64],
+ tent:[6,1.6,0,128],spine:[6,2,0,128],glowRing:[10,2,1.2,16],coilB:[11,3,1.0,16],suit:[2,1.2,.8,0]};
+const Mesh=()=>({p:[],m:[],i:[]});
+function V(M,x,y,z,mt){M.p.push(x,y,z);M.m.push(mt[0],mt[1],mt[2],mt[3]);return M.p.length/3-1;}
+function Q(M,a,b,c,d){M.i.push(a,b,c,a,c,d);}
+function quad(M,A,B,C,D,mt){Q(M,V(M,A[0],A[1],A[2],mt),V(M,B[0],B[1],B[2],mt),V(M,C[0],C[1],C[2],mt),V(M,D[0],D[1],D[2],mt));}
+function box(M,x0,y0,z0,x1,y1,z1,mt){
+ quad(M,[x0,y0,z0],[x1,y0,z0],[x1,y1,z0],[x0,y1,z0],mt);quad(M,[x0,y0,z1],[x0,y1,z1],[x1,y1,z1],[x1,y0,z1],mt);
+ quad(M,[x0,y0,z0],[x0,y1,z0],[x0,y1,z1],[x0,y0,z1],mt);quad(M,[x1,y0,z0],[x1,y0,z1],[x1,y1,z1],[x1,y1,z0],mt);
+ quad(M,[x0,y1,z0],[x1,y1,z0],[x1,y1,z1],[x0,y1,z1],mt);quad(M,[x0,y0,z0],[x0,y0,z1],[x1,y0,z1],[x1,y0,z0],mt);}
+function beam(M,a,b,w,mt){const f=norm([b[0]-a[0],b[1]-a[1],b[2]-a[2]]),r=norm(cross(f,Math.abs(f[1])<.9?[0,1,0]:[1,0,0])),u=cross(r,f);
+ const P=(o,s,t)=>[o[0]+(r[0]*s+u[0]*t)*w,o[1]+(r[1]*s+u[1]*t)*w,o[2]+(r[2]*s+u[2]*t)*w],c=[[-1,-1],[1,-1],[1,1],[-1,1]];
+ for(let k=0;k<4;k++){const s0=c[k],s1=c[(k+1)%4];quad(M,P(a,s0[0],s0[1]),P(a,s1[0],s1[1]),P(b,s1[0],s1[1]),P(b,s0[0],s0[1]),mt);}
+ quad(M,P(a,-1,-1),P(a,-1,1),P(a,1,1),P(a,1,-1),mt);quad(M,P(b,-1,-1),P(b,1,-1),P(b,1,1),P(b,-1,1),mt);}
+function prism(M,cx,y0,cz,r,h,n,mt,rot=0){const pt=k=>{const a=rot+k/n*Math.PI*2;return[cx+Math.cos(a)*r,cz+Math.sin(a)*r];};
+ for(let k=0;k<n;k++){const A=pt(k),B=pt(k+1);quad(M,[A[0],y0,A[1]],[B[0],y0,B[1]],[B[0],y0+h,B[1]],[A[0],y0+h,A[1]],mt);}
+ const top=V(M,cx,y0+h,cz,mt),bot=V(M,cx,y0,cz,mt),ts=[],bs=[];
+ for(let k=0;k<n;k++){const A=pt(k);ts.push(V(M,A[0],y0+h,A[1],mt));bs.push(V(M,A[0],y0,A[1],mt));}
+ for(let k=0;k<n;k++){M.i.push(top,ts[k],ts[(k+1)%n],bot,bs[(k+1)%n],bs[k]);}}
+function blob(M,c,r,seg,rings,mt,disp,yaw=0){const base=M.p.length/3,cy=Math.cos(yaw),sy=Math.sin(yaw);
+ for(let j=0;j<=rings;j++){const th=j/rings*Math.PI;for(let i=0;i<=seg;i++){const ph=i/seg*Math.PI*2;
+  let x=Math.sin(th)*Math.cos(ph),y=Math.cos(th),z=Math.sin(th)*Math.sin(ph);const k=disp?disp(x,y,z):1;x*=r[0]*k;y*=r[1]*k;z*=r[2]*k;
+  V(M,c[0]+x*cy-z*sy,c[1]+y,c[2]+x*sy+z*cy,mt);}}
+ for(let j=0;j<rings;j++)for(let i=0;i<seg;i++){const a=base+j*(seg+1)+i,b=a+seg+1;Q(M,a,b,b+1,a+1);}}
+// lathe: spin a profile [[t,radius],...] around the segment a->b (rounded parts: guns, limbs, tentacles)
+function lathe(M,a,b,prof,n,mt){const d=[b[0]-a[0],b[1]-a[1],b[2]-a[2]],f=norm(d),r=norm(cross(f,Math.abs(f[1])<.9?[0,1,0]:[1,0,0])),u=cross(r,f),base=M.p.length/3;
+ const ring=(t,rad,i)=>{const an=i/n*Math.PI*2,ca=Math.cos(an)*rad,sa=Math.sin(an)*rad;return[a[0]+d[0]*t+r[0]*ca+u[0]*sa,a[1]+d[1]*t+r[1]*ca+u[1]*sa,a[2]+d[2]*t+r[2]*ca+u[2]*sa];};
+ for(const [t,rad] of prof)for(let i=0;i<=n;i++){const p=ring(t,rad,i);V(M,p[0],p[1],p[2],mt);}
+ for(let j=0;j<prof.length-1;j++)for(let i=0;i<n;i++){const p=base+j*(n+1)+i,q=p+n+1;Q(M,p,p+1,q+1,q);}
+ for(const e of[0,prof.length-1]){const [t,rad]=prof[e];if(rad<=0)continue;const c=V(M,a[0]+d[0]*t,a[1]+d[1]*t,a[2]+d[2]*t,mt),rg=[];
+  for(let i=0;i<n;i++){const p=ring(t,rad,i);rg.push(V(M,p[0],p[1],p[2],mt));}for(let i=0;i<n;i++)M.i.push(c,rg[i],rg[(i+1)%n]);}}
+function upload(M){const P=M.p,I=M.i,n=new Float32Array(P.length);
+ for(let k=0;k<I.length;k+=3){const a=I[k]*3,b=I[k+1]*3,c=I[k+2]*3,ux=P[b]-P[a],uy=P[b+1]-P[a+1],uz=P[b+2]-P[a+2],vx=P[c]-P[a],vy=P[c+1]-P[a+1],vz=P[c+2]-P[a+2];
+  const nx=uy*vz-uz*vy,ny=uz*vx-ux*vz,nz=ux*vy-uy*vx;n[a]+=nx;n[a+1]+=ny;n[a+2]+=nz;n[b]+=nx;n[b+1]+=ny;n[b+2]+=nz;n[c]+=nx;n[c+1]+=ny;n[c+2]+=nz;}
+ for(let k=0;k<n.length;k+=3){const l=Math.hypot(n[k],n[k+1],n[k+2])||1;n[k]/=l;n[k+1]/=l;n[k+2]/=l;}
+ const vao=gl.createVertexArray();gl.bindVertexArray(vao);
+ [[new Float32Array(P),3],[n,3],[new Float32Array(M.m),4]].forEach(([d,s],loc)=>{const b=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,b);gl.bufferData(gl.ARRAY_BUFFER,d,gl.STATIC_DRAW);
+  gl.enableVertexAttribArray(loc);gl.vertexAttribPointer(loc,s,gl.FLOAT,false,0,0);});
+ const ib=gl.createBuffer();gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,ib);gl.bufferData(gl.ELEMENT_ARRAY_BUFFER,new Uint32Array(I),gl.STATIC_DRAW);
+ gl.bindVertexArray(null);return{vao,count:I.length};}
+
+// ---------------- world generation ----------------
+const N=512,HALF=256,H=new Float32Array(N*N);
+function hAt(x,z){const fx=clamp(x+HALF,0,N-1.001),fz=clamp(z+HALF,0,N-1.001),i=Math.floor(fx),j=Math.floor(fz),tx=fx-i,tz=fz-j;
+ const a=H[j*N+i],b=H[j*N+i+1],c=H[(j+1)*N+i],d=H[(j+1)*N+i+1];return a+(b-a)*tx+(c-a)*tz+(a-b-c+d)*tx*tz;}
+const SUN=norm([-.9,.16,-.15]),SUN2=norm([-.6,.32,.75]); // line-up is lit from behind the camera
+let W={};
+
+function generate(){
+ for(let j=0;j<N;j++)for(let i=0;i<N;i++){const x=i-HALF,z=j-HALF;
+  H[j*N+i]=(fbm2(x/110,z/110,5)-.5)*14+(fbm2(x/22+40,z/22,4)-.5)*2.4+(vn2(x/5,z/5)-.5)*.5;}
+ const cand=[[40,-115,62],[-70,-40,22],[95,30,18],[-30,90,26]];
+ for(let k=0;k<14;k++)cand.push([rnd()*480-240,rnd()*480-240,7+rnd()*12]);
+ for(let k=0;k<260;k++)cand.push([rnd()*500-250,rnd()*500-250,.8+Math.pow(rnd(),2.2)*6]);
+ const craters=[];
+ for(const [cx,cz,R] of cand){
+  if(R>2.5&&Math.hypot(cx-2,cz+8)<R+14||Math.hypot(cx,cz+3)<R+6)continue;
+  craters.push([cx,cz,R]);
+  const depth=R*.32,rim=R*.075,ext=R*1.8;
+  for(let j=Math.max(0,Math.floor(cz-ext+HALF));j<=Math.min(N-1,Math.ceil(cz+ext+HALF));j++)
+  for(let i=Math.max(0,Math.floor(cx-ext+HALF));i<=Math.min(N-1,Math.ceil(cx+ext+HALF));i++){
+   const x=(i-HALF-cx)/R,z=(j-HALF-cz)/R,r=Math.sqrt(x*x+z*z);let d;
+   if(r<1){d=depth*(r*r-1)+rim*r*r*r*r;if(R>9)d=Math.max(d,-depth*.78);}else{const q=(r-1)*2.6;d=rim*Math.exp(-q*q);}
+   H[j*N+i]+=d;}}
+ const OCC=Float32Array.from(H);
+ const stamp=(x,z,R,top)=>{for(let j=Math.floor(z-R+HALF);j<=Math.ceil(z+R+HALF);j++)for(let i=Math.floor(x-R+HALF);i<=Math.ceil(x+R+HALF);i++){
+  if(i<0||j<0||i>=N||j>=N)continue;const dx=i-HALF-x,dz=j-HALF-z,q=1-(dx*dx+dz*dz)/(R*R);if(q>0)OCC[j*N+i]=Math.max(OCC[j*N+i],top(q));}};
+
+ // terrain mesh
+ const terr=Mesh();
+ for(let j=0;j<N;j++)for(let i=0;i<N;i++)V(terr,i-HALF,H[j*N+i],j-HALF,MT.regolith);
+ for(let j=0;j<N-1;j++)for(let i=0;i<N-1;i++){const a=j*N+i;Q(terr,a,a+N,a+N+1,a+1);}
+
+ // rocks, clustered on crater rims
+ const LX=5,LZ=-12,rocks=Mesh();
+ for(let k=0;k<460;k++){let x,z;
+  if(k<230){const c=craters[Math.floor(rnd()*Math.min(40,craters.length))],a=rnd()*6.283,r=c[2]*(.95+rnd()*.7);x=c[0]+Math.cos(a)*r;z=c[1]+Math.sin(a)*r;}
+  else{x=rnd()*480-240;z=rnd()*480-240;}
+  if(Math.abs(x)>250||Math.abs(z)>250||Math.hypot(x-LX,z-LZ)<5.5||Math.hypot(x,z-4)<2||Math.hypot(x,z+2)<7.5)continue;
+  const s=.12+Math.pow(rnd(),3.2)*2.6,sx=s*(.8+rnd()*.6),sy=s*(.45+rnd()*.4),sz=s*(.8+rnd()*.6),g=hAt(x,z),cy=g-sy*.3,sd=rnd()*100;
+  blob(rocks,[x,cy,z],[sx,sy,sz],s>.8?12:8,s>.8?8:6,MT.rock,(a,b,c)=>1+.35*(vn3(a*1.7+sd,b*1.7,c*1.7)-.5)+.12*(vn3(a*4+sd,b*4,c*4)-.5),rnd()*6.283);
+  stamp(x,z,Math.max(sx,sz)*.85,q=>cy+sy*Math.sqrt(q));}
+
+ // the lander
+ const lander=Mesh(),ly=hAt(LX,LZ);
+ prism(lander,LX,ly+1.0,LZ,2.0,1.45,8,MT.foil,Math.PI/8);
+ prism(lander,LX,ly+.5,LZ,.6,.55,10,MT.glass);
+ for(let k=0;k<4;k++){const a=Math.PI/4+k*Math.PI/2,ca=Math.cos(a),sa=Math.sin(a),fx=LX+ca*3.4,fz=LZ+sa*3.4,fg=hAt(fx,fz);
+  beam(lander,[LX+ca*1.7,ly+1.9,LZ+sa*1.7],[fx,fg+.25,fz],.07,MT.hull);
+  beam(lander,[LX+ca*1.9,ly+1.05,LZ+sa*1.9],[fx,fg+.35,fz],.045,MT.hull);
+  prism(lander,fx,fg-.05,fz,.42,.14,8,MT.hull);}
+ prism(lander,LX,ly+2.45,LZ,1.5,1.6,6,MT.hull,Math.PI/3);
+ box(lander,LX-.75,ly+3.35,LZ+1.27,LX-.2,ly+3.75,LZ+1.34,MT.glass);
+ box(lander,LX+.2,ly+3.35,LZ+1.27,LX+.75,ly+3.75,LZ+1.34,MT.glass);
+ box(lander,LX-.38,ly+2.5,LZ+1.27,LX+.38,ly+3.22,LZ+1.33,MT.hull);
+ prism(lander,LX,ly+4.05,LZ,.55,.35,8,MT.hull);
+ beam(lander,[LX-.6,ly+4.0,LZ-.4],[LX-1.1,ly+4.9,LZ-.6],.03,MT.hull);
+ prism(lander,LX-1.1,ly+4.9,LZ-.6,.45,.06,10,MT.hull);
+ for(const s of[-1,1])box(lander,LX+s*1.45-.15,ly+3.0,LZ-.2,LX+s*1.45+.15,ly+3.3,LZ+.2,MT.hull);
+ const FX=LX-4.5,FZ=LZ+3,fg=hAt(FX,FZ);
+ beam(lander,[FX,fg-.3,FZ],[FX,fg+2.1,FZ],.025,MT.hull);box(lander,FX,fg+1.42,FZ-.012,FX+.9,fg+2.02,FZ+.012,MT.hull);
+ stamp(LX,LZ,2.0,()=>ly+2.45);stamp(LX,LZ,1.35,()=>ly+4.05);
+
+ // original alien: lumpy, fleshy, hunched; three glowing eyes
+ const alien=Mesh(),lump=(sd,am=.32)=>(a,b,c)=>1+am*(vn3(a*2.2+sd,b*2.2,c*2.2)-.5)+am*.44*(vn3(a*5+sd,b*5,c*5)-.5);
+ blob(alien,[0,1.1,0],[.55,.62,.46],16,12,MT.flesh,lump(1));
+ blob(alien,[0,.92,.22],[.42,.36,.32],12,9,MT.flesh,lump(2));
+ blob(alien,[0,1.72,.24],[.33,.27,.35],14,10,MT.flesh,lump(3));
+ blob(alien,[0,1.6,.48],[.2,.08,.13],10,6,MT.glass,null);
+ for(const s of[-1,1]){blob(alien,[s*.62,1.18,.12],[.15,.5,.15],10,8,MT.flesh,lump(4+s));
+  blob(alien,[s*.68,.66,.22],[.13,.13,.18],8,6,MT.flesh,lump(6+s));blob(alien,[s*.24,.42,0],[.17,.45,.17],10,8,MT.flesh,lump(8+s));}
+ blob(alien,[-.12,1.8,.53],[.06,.06,.05],6,4,MT.eye,null);blob(alien,[.11,1.84,.52],[.05,.05,.04],6,4,MT.eye,null);blob(alien,[.02,1.68,.56],[.035,.035,.03],6,4,MT.eye,null);
+
+ // plasma pistol, held in first person (camera space: -z forward), built from lathed cylinders
+ const gun=Mesh();
+ lathe(gun,[0,0,.06],[0,0,-.46],[[0,.03],[.04,.052],[.14,.056],[.15,.047],[.19,.047],[.2,.056],[.56,.056],[.57,.044],[.82,.04],[.86,.05],[.9,.05],[.92,.034],[1,.028]],16,MT.gunMetal);
+ for(let k=0;k<3;k++)lathe(gun,[0,0,-.13-k*.075],[0,0,-.16-k*.075],[[0,.06],[.5,.069],[1,.06]],16,MT.coil);
+ blob(gun,[0,0,-.465],[.026,.026,.02],10,6,MT.coil,null);
+ blob(gun,[0,0,.05],[.058,.058,.07],12,8,MT.gunFlesh,lump(11));
+ lathe(gun,[0,-.035,.02],[0,-.2,.1],[[0,.03],[.5,.034],[1,.028]],10,MT.gunFlesh);
+ lathe(gun,[0,-.058,-.02],[0,-.052,-.36],[[0,.018],[.5,.022],[1,.014]],8,MT.gunFlesh);
+
+ // alien base: corridor opening into a reactor room
+ const cor=Mesh(),Wc=2.5,CH=4,CL=36,Z0=-36,Z1=-52,RW=7,RH=7,lights=[];
+ quad(cor,[-Wc,0,0],[Wc,0,0],[Wc,0,-CL],[-Wc,0,-CL],MT.grate);quad(cor,[-Wc,CH,0],[-Wc,CH,-CL],[Wc,CH,-CL],[Wc,CH,0],MT.pipes);
+ quad(cor,[-Wc,0,0],[-Wc,0,-CL],[-Wc,CH,-CL],[-Wc,CH,0],MT.wall);quad(cor,[Wc,0,0],[Wc,CH,0],[Wc,CH,-CL],[Wc,0,-CL],MT.wall);
+ quad(cor,[-Wc,0,0],[-Wc,CH,0],[Wc,CH,0],[Wc,0,0],MT.wall);
+ quad(cor,[-RW,0,Z0],[RW,0,Z0],[RW,0,Z1],[-RW,0,Z1],MT.grate);quad(cor,[-RW,RH,Z0],[-RW,RH,Z1],[RW,RH,Z1],[RW,RH,Z0],MT.pipes);
+ quad(cor,[-RW,0,Z0],[-RW,0,Z1],[-RW,RH,Z1],[-RW,RH,Z0],MT.wall);quad(cor,[RW,0,Z0],[RW,RH,Z0],[RW,RH,Z1],[RW,0,Z1],MT.wall);
+ quad(cor,[-RW,0,Z1],[RW,0,Z1],[RW,RH,Z1],[-RW,RH,Z1],MT.wall);
+ quad(cor,[-RW,0,Z0],[-Wc,0,Z0],[-Wc,RH,Z0],[-RW,RH,Z0],MT.wall);quad(cor,[Wc,0,Z0],[RW,0,Z0],[RW,RH,Z0],[Wc,RH,Z0],MT.wall);
+ quad(cor,[-Wc,CH,Z0],[Wc,CH,Z0],[Wc,RH,Z0],[-Wc,RH,Z0],MT.wall);
+ for(let k=0;k<9;k++){const z=-2-k*4,s=k%2?1:-1,teal=k%3===2;
+  box(cor,-Wc,0,z-.3,-Wc+.4,CH,z+.3,MT.wall);box(cor,Wc-.4,0,z-.3,Wc,CH,z+.3,MT.wall);box(cor,-Wc,CH-.45,z-.3,Wc,CH,z+.3,MT.wall);
+  box(cor,s>0?Wc-.5:-Wc+.4,2.4,z-.18,s>0?Wc-.4:-Wc+.5,2.9,z+.18,teal?MT.lamp:MT.amber);
+  lights.push(teal?[s*(Wc-.9),2.65,z,6,.35,1.3,.8,0]:[s*(Wc-.9),2.65,z,6,1.3,.8,.32,0]);}
+ beam(cor,[-Wc+.25,.35,0],[-Wc+.25,.35,-CL],.14,MT.pipes);beam(cor,[Wc-.25,.35,0],[Wc-.25,.35,-CL],.14,MT.pipes);beam(cor,[-Wc+.2,3.1,0],[-Wc+.2,3.1,-CL],.09,MT.pipes);
+ box(cor,Wc-.14,3.0,-34.6,Wc,3.4,-34.2,MT.red);lights.push([Wc-.6,3.2,-34.4,6,2.2,.25,.08,1]);
+ for(const [x,z] of[[-4,-40],[4,-40],[-4,-48],[4,-48]])box(cor,x-.45,0,z-.45,x+.45,RH,z+.45,MT.wall);
+ prism(cor,0,0,-44,1.9,.6,10,MT.wall);prism(cor,0,.6,-44,1.1,4.6,10,MT.reactor);prism(cor,0,5.2,-44,1.9,.5,10,MT.wall);beam(cor,[0,5.7,-44],[0,RH,-44],.3,MT.pipes);
+ lights.push([0,3,-44,17,.5,2.6,1.6,2]);
+ box(cor,-RW,5.2,-51.4,-RW+.12,5.8,-50.6,MT.lamp);box(cor,RW-.12,5.2,-51.4,RW,5.8,-50.6,MT.lamp);
+ lights.push([-6.2,5.5,-51,9,.35,1.3,.85,0],[6.2,5.5,-51,9,.35,1.3,.85,0]);
+
+ const occTex=gl.createTexture();gl.bindTexture(gl.TEXTURE_2D,occTex);gl.texImage2D(gl.TEXTURE_2D,0,gl.R16F,N,N,0,gl.RED,gl.FLOAT,OCC);
+ gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
+ gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
+
+ // ---- alien designs: each type is a set of parts; f(t) gives a part's animated local transform
+ const mk=fn=>{const m=Mesh();fn(m);return upload(m);},still=()=>I4;
+ // A · Crawlers
+ const aSkBody=mk(m=>{blob(m,[0,.55,-.25],[.4,.34,.48],14,10,MT.flesh,lump(21,.25));blob(m,[0,.5,.2],[.26,.2,.25],10,8,MT.chitinF,lump(22,.2));
+  for(const s of[-1,1])lathe(m,[s*.08,.44,.38],[s*.05,.36,.6],[[0,.045],[1,0]],6,MT.chitin);
+  for(const [x,y,z,r] of[[.07,.6,.42,.035],[-.07,.6,.42,.035],[.13,.55,.38,.025],[-.13,.55,.38,.025]])blob(m,[x,y,z],[r,r,r],6,4,MT.eye,null);});
+ const aSkLeg=mk(m=>{lathe(m,[0,0,0],[.35,.28,0],[[0,.05],[1,.04]],7,MT.chitin);blob(m,[.35,.28,0],[.055,.055,.055],7,5,MT.chitin,null);
+  lathe(m,[.35,.28,0],[.62,-.48,0],[[0,.04],[1,.012]],7,MT.chitin);});
+ const aSk={parts:[{m:aSkBody,f:still}],sph:[[0,.55,-.2,.4],[0,.5,.22,.24]],s:1,bob:t=>.03*Math.abs(Math.sin(t*9))};
+ for(let i=0;i<6;i++){const s=i<3?1:-1,k=i%3,by=[-.55,0,.55][k],hip=[s*.16,.5,.18-k*.18],ph=((k+(s>0?0:1))%2)*Math.PI;
+  aSk.parts.push({m:aSkLeg,f:t=>{const sw=.35*Math.sin(t*9+ph),li=.3*Math.max(0,Math.cos(t*9+ph));return MM(T(hip[0],hip[1],hip[2]),Ry(s>0?by+sw:Math.PI-(by+sw)),Rz(li));}});}
+ const aFlM=mk(m=>{lathe(m,[0,-.3,0],[0,.62,0],[[0,.5],[.12,.72],[.4,.78],[.7,.62],[.9,.36],[1,.05]],16,MT.flesh);
+  lathe(m,[0,-.3,0],[0,-.36,0],[[0,.52],[1,.4]],16,MT.glowRing);
+  blob(m,[0,-.4,0],[.17,.12,.17],10,7,MT.wetEye,null);blob(m,[0,-.5,0],[.07,.05,.07],8,5,MT.eye,null);
+  for(let k=0;k<7;k++){const a=k/7*6.283,c=Math.cos(a),s=Math.sin(a);lathe(m,[c*.38,-.3,s*.38],[c*.48,-1.55,s*.48],[[0,.07],[.5,.04],[1,.008]],6,MT.tent);}});
+ const aFl={parts:[{m:aFlM,f:t=>MM(Rz(.1*Math.sin(t*.9)),Rx(.07*Math.sin(t*1.3)))}],sph:[[0,.2,0,.72]],s:1,fly:true};
+ const aBrBody=mk(m=>{blob(m,[0,1.35,0],[.62,.58,.5],16,12,MT.flesh,lump(31,.25));blob(m,[0,1.62,-.18],[.74,.52,.58],14,10,MT.chitinF,lump(32,.3));
+  for(const s of[-1,1])blob(m,[s*.68,1.78,0],[.3,.24,.3],10,7,MT.chitinF,lump(33+s,.25));
+  blob(m,[0,1.5,.46],[.22,.2,.22],10,8,MT.fleshS,lump(35,.2));blob(m,[0,1.38,.62],[.15,.06,.1],8,5,MT.glass,null);
+  for(const s of[-1,1])blob(m,[s*.08,1.57,.66],[.04,.035,.03],6,4,MT.eye,null);
+  for(const s of[-1,1]){lathe(m,[s*.3,1.0,0],[s*.38,.1,.05],[[0,.2],[.5,.24],[1,.16]],10,MT.fleshS);blob(m,[s*.38,.08,.12],[.2,.1,.28],8,6,MT.chitinF,null);}});
+ const aBrClaw=mk(m=>{lathe(m,[0,0,0],[.22,-.62,.2],[[0,.16],[1,.12]],10,MT.fleshS);blob(m,[.22,-.62,.2],[.13,.13,.13],8,6,MT.fleshS,null);
+  blob(m,[.28,-.86,.36],[.17,.3,.17],10,8,MT.chitinF,lump(36,.2));blob(m,[.26,-1.0,.52],[.08,.2,.1],8,6,MT.chitinF,null);});
+ const aBrGun=mk(m=>{lathe(m,[0,0,0],[-.14,-.5,.22],[[0,.15],[1,.13]],10,MT.fleshS);
+  lathe(m,[-.14,-.52,.15],[-.14,-.56,.95],[[0,.17],[.25,.2],[.75,.15],[.8,.17],[.86,.17],[.88,.12],[1,.1]],12,MT.chitin);
+  lathe(m,[-.14,-.56,.93],[-.14,-.56,.97],[[0,.09],[1,.09]],12,MT.glowRing);});
+ const aBr={parts:[{m:aBrBody,f:still},{m:aBrClaw,f:t=>MM(T(.74,1.62,0),Rx(.22*Math.sin(t*1.7)-.15))},{m:aBrGun,f:t=>MM(T(-.74,1.62,0),Rx(.07*Math.sin(t*2.3)))}],
+  sph:[[0,1.4,0,.72],[0,1.9,-.1,.5]],s:1};
+ // B · Greys gone wrong
+ const bSkBody=mk(m=>{blob(m,[0,.56,0],[.16,.14,.3],10,8,MT.grey,lump(41,.15));blob(m,[0,.8,.36],[.31,.29,.35],14,10,MT.grey,lump(42,.12));
+  blob(m,[0,.63,.55],[.1,.1,.08],8,6,MT.greyS,null);for(const s of[-1,1])blob(m,[s*.13,.79,.66],[.11,.06,.07],10,6,MT.wetEye,null);});
+ const bSkLimb=mk(m=>{lathe(m,[0,0,0],[0,-.27,.1],[[0,.035],[1,.03]],7,MT.greyS);blob(m,[0,-.27,.1],[.035,.035,.035],6,4,MT.greyS,null);
+  lathe(m,[0,-.27,.1],[0,-.54,0],[[0,.03],[1,.02]],7,MT.greyS);blob(m,[0,-.55,.04],[.05,.02,.07],6,4,MT.greyS,null);});
+ const bSk={parts:[{m:bSkBody,f:still}],sph:[[0,.56,0,.2],[0,.8,.36,.32]],s:1,bob:t=>.05*Math.abs(Math.sin(t*10))};
+ for(const [x,y,z,ph] of[[.12,.56,.2,0],[-.12,.56,.2,.4],[.12,.56,-.22,Math.PI],[-.12,.56,-.22,Math.PI+.4]])
+  bSk.parts.push({m:bSkLimb,f:t=>MM(T(x,y,z),Rx(.55*Math.sin(t*10+ph)))});
+ const bFlM=mk(m=>{blob(m,[0,.2,0],[.6,.62,.68],18,14,MT.grey,lump(51,.14));blob(m,[0,-.28,.38],[.28,.22,.24],12,8,MT.grey,lump(52,.1));
+  for(const s of[-1,1]){blob(m,[s*.24,-.02,.6],[.2,.1,.09],12,7,MT.wetEye,null);blob(m,[s*.24,-.03,.68],[.04,.02,.02],6,4,MT.eye,null);}
+  blob(m,[0,-.36,.58],[.1,.025,.04],8,4,MT.glass,null);
+  for(let k=0;k<8;k++)blob(m,[0,-.5-k*.17,-.12],[.08-k*.006,.07,.08-k*.006],8,5,MT.spine,null);
+  for(const s of[-1,1])lathe(m,[s*.1,-.45,-.05],[s*.18,-1.5,-.1],[[0,.025],[1,.006]],5,MT.spine);});
+ const bFl={parts:[{m:bFlM,f:t=>MM(Rz(.12*Math.sin(t*.8)),Rx(.1*Math.sin(t*1.1)))}],sph:[[0,.15,0,.66]],s:1,fly:true};
+ const bBrBody=mk(m=>{for(const s of[-1,1]){lathe(m,[s*.24,1.0,0],[s*.27,.12,0],[[0,.17],[.45,.19],[.5,.15],[1,.13]],10,MT.suit);blob(m,[s*.27,.08,.08],[.15,.09,.24],8,6,MT.suit,null);}
+  lathe(m,[0,.92,0],[0,1.76,0],[[0,.42],[.18,.54],[.7,.58],[1,.4]],14,MT.suit);lathe(m,[0,1.72,0],[0,1.84,0],[[0,.36],[1,.33]],14,MT.hull);
+  blob(m,[0,2.17,.04],[.38,.4,.42],16,12,MT.grey,lump(61,.12));blob(m,[0,1.95,.3],[.15,.12,.12],10,7,MT.greyS,null);
+  for(const s of[-1,1])blob(m,[s*.15,2.11,.4],[.13,.07,.06],10,6,MT.wetEye,null);});
+ const bBrArms=mk(m=>{for(const s of[-1,1]){lathe(m,[s*.56,1.62,0],[s*.36,1.22,.34],[[0,.07],[1,.055]],8,MT.greyS);blob(m,[s*.36,1.22,.34],[.06,.06,.06],6,4,MT.greyS,null);
+   lathe(m,[s*.36,1.22,.34],[s*.1,1.26,.62],[[0,.055],[1,.045]],8,MT.greyS);}
+  lathe(m,[0,1.26,.25],[0,1.26,1.25],[[0,.07],[.08,.1],[.55,.1],[.57,.08],[.9,.08],[1,.055]],12,MT.chitin);
+  for(let k=0;k<2;k++)lathe(m,[0,1.26,.72+k*.1],[0,1.26,.76+k*.1],[[0,.1],[.5,.115],[1,.1]],12,MT.coilB);
+  blob(m,[0,1.26,1.26],[.04,.04,.03],8,5,MT.coilB,null);});
+ const bBr={parts:[{m:bBrBody,f:still},{m:bBrArms,f:t=>MM(T(0,1.6,0),Rx(.05*Math.sin(t*2)),T(0,-1.6,0))}],sph:[[0,1.35,0,.58],[0,2.17,0,.4]],s:1};
+ // where each type fires from (a point on one of its parts), how often, how fast, how big
+ const TEAL=[.3,1,.8],SICK=[.8,1,.3];
+ aSk.muzzle={part:0,p:[0,.38,.64],rate:1.3,spd:13,size:.18,col:TEAL};
+ aBr.muzzle={part:2,p:[-.14,-.56,1.0],rate:1.7,spd:11,size:.3,col:TEAL};
+ aFl.muzzle={part:0,p:[0,-.55,0],rate:2.4,spd:6,size:.38,col:SICK};
+ bSk.muzzle={part:0,p:[0,.62,.62],rate:1.3,spd:13,size:.18,col:TEAL};
+ bBr.muzzle={part:1,p:[0,1.26,1.3],rate:1.7,spd:11,size:.3,col:TEAL};
+ bFl.muzzle={part:0,p:[0,-.03,.72],rate:2.4,spd:6,size:.38,col:SICK};
+ // Original (for comparison)
+ const oldM=upload(alien),oP=[{m:oldM,f:still}],oS=[[0,1.1,0,.55],[0,1.75,0,.32]],oMz=c=>({part:0,p:[0,1.6,.55],rate:1.6,spd:11,size:.24,col:c});
+ const SETS=[{name:'A · Crawlers',types:[aSk,aBr,aFl]},{name:'B · Greys gone wrong',types:[bSk,bBr,bFl]},
+  {name:'Original',types:[{parts:oP,sph:oS,s:.7,muzzle:oMz(TEAL)},{parts:oP,sph:oS,s:1.5,muzzle:oMz(TEAL)},{parts:oP,sph:oS,s:.9,fly:true,muzzle:oMz(SICK)}]}];
+
+ const ga=hAt(-3,-19),gs=hAt(1.5,-15);
+ W={terr:upload(terr),rocks:upload(rocks),lander:upload(lander),SETS,gun:upload(gun),cor:upload(cor),occTex,lights,
+  bolts0:[{a:[-3,ga+1.6,-19],b:[12,hAt(12,10)+.8,10],dur:1.6,off:0},{a:[1.5,gs+.9,-15],b:[-9,hAt(-9,12)+1.2,12],dur:1.3,off:.6}],
+  bolts1:[{a:[-1,1.6,-42],b:[-.6,1.5,4],dur:2.6,off:0},{a:[.8,2.1,-42],b:[1.2,1.9,4],dur:2.6,off:.9},{a:[0,1.2,-42],b:[-1.4,1.4,4],dur:2.6,off:1.7}]};
+}
+
+// ---------------- texture bake on the GPU ----------------
+const TS=256,NL=17;
+function texArr(){const t=gl.createTexture();gl.bindTexture(gl.TEXTURE_2D_ARRAY,t);gl.texStorage3D(gl.TEXTURE_2D_ARRAY,Math.log2(TS)+1,gl.RGBA8,TS,TS,NL);
+ gl.texParameteri(gl.TEXTURE_2D_ARRAY,gl.TEXTURE_MAG_FILTER,gl.NEAREST);gl.texParameteri(gl.TEXTURE_2D_ARRAY,gl.TEXTURE_MIN_FILTER,gl.NEAREST_MIPMAP_LINEAR);return t;}
+const texA=texArr(),texE=texArr();
+function bake(){const fb=gl.createFramebuffer();gl.bindFramebuffer(gl.FRAMEBUFFER,fb);gl.drawBuffers([gl.COLOR_ATTACHMENT0,gl.COLOR_ATTACHMENT1]);
+ gl.viewport(0,0,TS,TS);gl.useProgram(bakeP);gl.bindVertexArray(emptyVAO);gl.disable(gl.DEPTH_TEST);
+ for(let l=0;l<NL;l++){gl.framebufferTextureLayer(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0,texA,0,l);gl.framebufferTextureLayer(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT1,texE,0,l);
+  gl.uniform1i(bakeP.u.uLay,l);gl.drawArrays(gl.TRIANGLES,0,3);}
+ gl.bindFramebuffer(gl.FRAMEBUFFER,null);gl.deleteFramebuffer(fb);
+ for(const t of[texA,texE]){gl.bindTexture(gl.TEXTURE_2D_ARRAY,t);gl.generateMipmap(gl.TEXTURE_2D_ARRAY);}}
+
+// ---------------- render targets ----------------
+const RES=[180,270,360];let resI=1,RWd=0,RHt=0,hdrTex,ldrTex,depthRB,fboH,fboL;
+function makeTargets(){const dpr=Math.min(2,window.devicePixelRatio||1);cv.width=Math.round(innerWidth*dpr);cv.height=Math.round(innerHeight*dpr);
+ RHt=RES[resI];RWd=Math.round(RHt*cv.width/cv.height);
+ for(const t of[hdrTex,ldrTex])if(t)gl.deleteTexture(t);if(depthRB)gl.deleteRenderbuffer(depthRB);for(const f of[fboH,fboL])if(f)gl.deleteFramebuffer(f);
+ hdrTex=hdrOK?tex2D(RWd,RHt,gl.RGBA16F,gl.RGBA,gl.HALF_FLOAT,gl.NEAREST):tex2D(RWd,RHt,gl.RGBA8,gl.RGBA,gl.UNSIGNED_BYTE,gl.NEAREST);
+ depthRB=gl.createRenderbuffer();gl.bindRenderbuffer(gl.RENDERBUFFER,depthRB);gl.renderbufferStorage(gl.RENDERBUFFER,gl.DEPTH_COMPONENT24,RWd,RHt);
+ fboH=gl.createFramebuffer();gl.bindFramebuffer(gl.FRAMEBUFFER,fboH);gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0,gl.TEXTURE_2D,hdrTex,0);
+ gl.framebufferRenderbuffer(gl.FRAMEBUFFER,gl.DEPTH_ATTACHMENT,gl.RENDERBUFFER,depthRB);
+ ldrTex=tex2D(RWd,RHt,gl.RGBA8,gl.RGBA,gl.UNSIGNED_BYTE,gl.NEAREST);fboL=gl.createFramebuffer();gl.bindFramebuffer(gl.FRAMEBUFFER,fboL);
+ gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0,gl.TEXTURE_2D,ldrTex,0);gl.bindFramebuffer(gl.FRAMEBUFFER,null);}
+
+// ---------------- input & camera ----------------
+const keys={};let scene=0,yaw=0,pitch=0,pos=[0,0,0],vy=0,lastInput=-1e9,palMode=1,exposure=1,bob=0,ready=false,setI=0,live=[],liveKey='',lastT=0;
+function setScene(s){scene=s;[b1,b2,b3].forEach((b,i)=>b.classList.toggle('on',i===s));
+ if(s===0){pos=[0,hAt(0,4)+1.7,4];yaw=-.3;pitch=.02;}else if(s===1){pos=[0,1.7,-1.2];yaw=0;pitch=0;}else{pos=[0,hAt(0,3.5)+1.7,3.5];yaw=0;pitch=-.1;}vy=0;lastInput=performance.now();}
+function nextSet(){setI=(setI+1)%3;bC.textContent='C · Aliens: '+['A','B','Original'][setI];}
+b1.onclick=()=>setScene(0);b2.onclick=()=>setScene(1);b3.onclick=()=>setScene(2);bC.onclick=nextSet;
+cv.addEventListener('click',()=>{if(document.pointerLockElement!==cv){const p=cv.requestPointerLock({unadjustedMovement:true});if(p&&p.catch)p.catch(()=>cv.requestPointerLock());}});
+document.addEventListener('mousemove',e=>{if(document.pointerLockElement!==cv)return;yaw-=e.movementX*.0022;pitch=clamp(pitch-e.movementY*.0022,-1.5,1.5);lastInput=performance.now();});
+addEventListener('keydown',e=>{keys[e.code]=true;lastInput=performance.now();
+ if(e.code==='Digit1')setScene(0);if(e.code==='Digit2')setScene(1);if(e.code==='Digit3')setScene(2);if(e.code==='KeyC')nextSet();
+ if(e.code==='KeyP')palMode=(palMode+1)%3; // 1 dithered -> 2 flat -> 0 off
+ if(e.code==='KeyR'){resI=(resI+1)%RES.length;makeTargets();}
+ if(e.code==='Minus')exposure=Math.max(.3,exposure-.1);if(e.code==='Equal')exposure=Math.min(3,exposure+.1);
+ if(e.code==='Space')e.preventDefault();});
+addEventListener('keyup',e=>{keys[e.code]=false;});
+addEventListener('resize',()=>{if(ready)makeTargets();});
+
+// ---------------- frame ----------------
+const FOV=62*Math.PI/180,lA=new Float32Array(64),lC=new Float32Array(64),sph=new Float32Array(32);let last=performance.now(),T0=last,fpsAcc=0,fpsN=0,hudT=0;
+function draw(m,mod,rot){gl.uniformMatrix4fv(worldP.u.uMod,false,mod);gl.uniformMatrix3fv(worldP.u.uRot,false,rot);gl.bindVertexArray(m.vao);gl.drawElements(gl.TRIANGLES,m.count,gl.UNSIGNED_INT,0);}
+function frame(now){
+ const t=(now-T0)/1000,dt=Math.min(.05,(now-last)/1000);last=now;fpsAcc+=dt;fpsN++;
+ const locked=document.pointerLockElement===cv;if(!locked&&now-lastInput>2500&&scene!==2)yaw+=dt*.035;const surf=scene!==1;
+ let mx=0,mz=0;if(keys.KeyW||keys.ArrowUp)mz++;if(keys.KeyS||keys.ArrowDown)mz--;if(keys.KeyA||keys.ArrowLeft)mx--;if(keys.KeyD||keys.ArrowRight)mx++;
+ const sp=(keys.ShiftLeft||keys.ShiftRight?2:1)*(scene?3.2:4.5),fw=[-Math.sin(yaw),0,-Math.cos(yaw)],rt=[Math.cos(yaw),0,-Math.sin(yaw)];
+ const oz=pos[2];pos[0]+=(fw[0]*mz+rt[0]*mx)*sp*dt;pos[2]+=(fw[2]*mz+rt[2]*mx)*sp*dt;if(mx||mz)bob+=dt*sp*1.6;
+ if(surf){pos[0]=clamp(pos[0],-235,235);pos[2]=clamp(pos[2],-235,235);const g=hAt(pos[0],pos[2])+1.7;
+  if(keys.Space&&pos[1]<=g+.01)vy=3.2;vy-=2.6*dt;pos[1]+=vy*dt;if(pos[1]<g){pos[1]=g;vy=0;}}
+ else{pos[2]=clamp(pos[2],-51.3,-.6);if(oz<=-36.3&&pos[2]>-36.3&&Math.abs(pos[0])>2)pos[2]=-36.3;pos[0]=pos[2]>-36.3?clamp(pos[0],-2,2):clamp(pos[0],-6.3,6.3);pos[1]=1.7;}
+ const cp=Math.cos(pitch),f=[-Math.sin(yaw)*cp,Math.sin(pitch),-Math.cos(yaw)*cp],r=[Math.cos(yaw),0,-Math.sin(yaw)],u=cross(r,f);
+ const VP=mul(persp(FOV,RWd/RHt,.05,700),viewM(pos,f,r,u)),curv=surf?1/1800:0,sunD=scene===2?SUN2:SUN;
+
+ // aliens: skitterer, brute, floater of the chosen design
+ const place=scene===0?[[1.5,-15],[-3,-19],[-8,-24]]:scene===1?[[1.2,-30],[-3,-41],[2.5,-46]]:[[-3.2,-3],[0,-4.5],[3.6,-3]],hov=scene===0?2.6:scene===1?3:1.9;
+ const am=W.SETS[setI].types.map((ty,i)=>{const [x,z]=place[i],y=(surf?hAt(x,z):0)+(ty.fly?hov+.2*Math.sin(t*1.3+i):0)+(ty.bob?ty.bob(t+i):0);
+  return{ty,base:MM(T(x,y,z),Ry(Math.atan2(pos[0]-x,pos[2]-z)),Sc(ty.s)),ph:i*1.7};});
+ sph.fill(0);let si=0;if(surf)for(const a of am)for(const s of a.ty.sph){if(si<8){const w=xf(a.base,s);sph.set([w[0],w[1],w[2],s[3]*a.ty.s],si*4);si++;}}
+
+ // alien fire: each shot leaves the alien's muzzle point and flies at (just past) the player
+ const key=scene+'/'+setI;if(key!==liveKey){live=[];liveKey=key;}
+ am.forEach((a,i)=>{const mz=a.ty.muzzle;if(!mz)return;const pm=mul(a.base,a.ty.parts[mz.part].f(t+a.ph)),p=xf(pm,mz.p);
+  const prev=Math.floor((lastT+a.ph*1.3)/mz.rate),cur=Math.floor((t+a.ph*1.3)/mz.rate);
+  if(cur>prev){const tg=[pos[0]+(h2(cur,i)-.5)*3,pos[1]-.3+(h2(i,cur)-.5)*1.2,pos[2]+(h2(cur+7,i+3)-.5)*3],d=norm([tg[0]-p[0],tg[1]-p[1],tg[2]-p[2]]);
+   live.push({p,v:[d[0]*mz.spd,d[1]*mz.spd,d[2]*mz.spd],c:mz.col,s:mz.size*a.ty.s,age:0});}});
+ lastT=t;for(const b of live){b.p[0]+=b.v[0]*dt;b.p[1]+=b.v[1]*dt;b.p[2]+=b.v[2]*dt;b.age+=dt;}live=live.filter(b=>b.age<3.5);
+ const bolts=live;
+
+ // lights: fixtures + plasma bolts
+ let nl=0;const addL=(x,y,z,rad,cr,cg,cb)=>{if(nl>=16)return;lA.set([x,y,z,rad],nl*4);lC.set([cr,cg,cb,0],nl*4);nl++;};
+ if(scene===1)for(const l of W.lights){let k=1;if(l[7]===1)k=(Math.sin(t*17)+Math.sin(t*5.3)>.6)?.12:1;if(l[7]===2)k=.7+.3*Math.sin(t*3.1);addL(l[0],l[1],l[2],l[3],l[4]*k,l[5]*k,l[6]*k);}
+ for(const b of bolts)addL(b.p[0],b.p[1],b.p[2],7,b.c[0]*1.3,b.c[1]*1.4,b.c[2]*1.2);
+
+ gl.bindFramebuffer(gl.FRAMEBUFFER,fboH);gl.viewport(0,0,RWd,RHt);
+ const fog=[.010,.014,.011];if(scene===1)gl.clearColor(fog[0],fog[1],fog[2],1);else gl.clearColor(0,0,0,1);
+ gl.depthMask(true);gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);gl.disable(gl.BLEND);gl.disable(gl.CULL_FACE);
+ if(surf){gl.disable(gl.DEPTH_TEST);gl.useProgram(skyP);const U=skyP.u;gl.uniform3fv(U.uF,f);gl.uniform3fv(U.uR,r);gl.uniform3fv(U.uU,u);gl.uniform3fv(U.uSun,sunD);
+  gl.uniform1f(U.uTan,Math.tan(FOV/2));gl.uniform1f(U.uAsp,RWd/RHt);gl.bindVertexArray(emptyVAO);gl.drawArrays(gl.TRIANGLES,0,3);}
+ gl.enable(gl.DEPTH_TEST);gl.depthFunc(gl.LEQUAL);
+ gl.useProgram(worldP);const U=worldP.u;
+ gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D_ARRAY,texA);gl.activeTexture(gl.TEXTURE1);gl.bindTexture(gl.TEXTURE_2D_ARRAY,texE);
+ gl.activeTexture(gl.TEXTURE2);gl.bindTexture(gl.TEXTURE_2D,W.occTex);gl.uniform1i(U.uA,0);gl.uniform1i(U.uE,1);gl.uniform1i(U.uOcc,2);
+ gl.uniformMatrix4fv(U.uVP,false,VP);gl.uniform3fv(U.uCam,pos);gl.uniform3fv(U.uSun,sunD);gl.uniform3fv(U.uFog,fog);gl.uniform1f(U.uFogD,.07);
+ gl.uniform1f(U.uT,t);gl.uniform1f(U.uCurv,curv);gl.uniform1i(U.uMode,surf?0:1);gl.uniform1i(U.uNL,nl);gl.uniform4fv(U.uL,lA);gl.uniform4fv(U.uLC,lC);gl.uniform4fv(U.uSph,sph);
+ if(surf){draw(W.terr,I4,I3);draw(W.rocks,I4,I3);draw(W.lander,I4,I3);}else draw(W.cor,I4,I3);
+ for(const a of am)for(const p of a.ty.parts){const mm=mul(a.base,p.f(t+a.ph));draw(p.m,mm,rot3(mm));}
+
+ // plasma bolts (additive)
+ gl.useProgram(boltP);gl.enable(gl.BLEND);gl.blendFunc(gl.ONE,gl.ONE);gl.depthMask(false);gl.bindVertexArray(emptyVAO);const BU=boltP.u;
+ gl.uniformMatrix4fv(BU.uVP,false,VP);gl.uniform3fv(BU.uR,r);gl.uniform3fv(BU.uU,u);gl.uniform3fv(BU.uCam,pos);gl.uniform1f(BU.uCurv,curv);
+ for(const b of bolts)for(let j=0;j<4;j++){gl.uniform3fv(BU.uC,[b.p[0]-b.v[0]*.03*j,b.p[1]-b.v[1]*.03*j,b.p[2]-b.v[2]*.03*j]);gl.uniform1f(BU.uS,b.s*[1,.7,.55,.42][j]);
+  const k=[1,.55,.35,.2][j]*(b.age<.06?1.8:1);gl.uniform3fv(BU.uCol,[b.c[0]*k,b.c[1]*k,b.c[2]*k]);gl.drawArrays(gl.TRIANGLES,0,6);}
+ gl.disable(gl.BLEND);gl.depthMask(true);
+
+ // first-person plasma pistol
+ gl.clear(gl.DEPTH_BUFFER_BIT);gl.useProgram(worldP);
+ const by=Math.sin(bob*2)*.006,bx=Math.cos(bob)*.005,gs=.42,go=(a,b,c)=>[pos[0]+r[0]*a+u[0]*b+f[0]*c,pos[1]+r[1]*a+u[1]*b+f[1]*c,pos[2]+r[2]*a+u[2]*b+f[2]*c],gp=go(.15+bx,-.16+by,.36);
+ draw(W.gun,new Float32Array([r[0]*gs,r[1]*gs,r[2]*gs,0,u[0]*gs,u[1]*gs,u[2]*gs,0,-f[0]*gs,-f[1]*gs,-f[2]*gs,0,gp[0],gp[1],gp[2],1]),new Float32Array([r[0],r[1],r[2],u[0],u[1],u[2],-f[0],-f[1],-f[2]]));
+
+ // palette + dither at low resolution, then nearest-neighbour upscale
+ gl.disable(gl.DEPTH_TEST);gl.bindFramebuffer(gl.FRAMEBUFFER,fboL);gl.viewport(0,0,RWd,RHt);gl.useProgram(postP);
+ gl.activeTexture(gl.TEXTURE3);gl.bindTexture(gl.TEXTURE_2D,hdrTex);gl.uniform1i(postP.u.uS,3);gl.uniform1i(postP.u.uP,palMode);gl.uniform1f(postP.u.uX,exposure);
+ gl.bindVertexArray(emptyVAO);gl.drawArrays(gl.TRIANGLES,0,3);
+ gl.bindFramebuffer(gl.READ_FRAMEBUFFER,fboL);gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER,null);
+ gl.blitFramebuffer(0,0,RWd,RHt,0,0,cv.width,cv.height,gl.COLOR_BUFFER_BIT,gl.NEAREST);gl.bindFramebuffer(gl.READ_FRAMEBUFFER,null);
+
+ hudT-=dt;if(hudT<=0){hudT=.5;const fps=Math.round(fpsN/Math.max(fpsAcc,1e-3));fpsAcc=0;fpsN=0;
+  hud.innerHTML=`<b>Click</b> to look around · <b>WASD</b> move · <b>Shift</b> run · <b>Space</b> low-g jump<br>`+
+  `<b>1</b>/<b>2</b>/<b>3</b> surface / base / line-up · <b>C</b> aliens: ${W.SETS[setI].name}<br>`+
+  `<b>P</b> palette: ${['off','dithered','flat'][palMode]} · <b>R</b> resolution: ${RWd}×${RHt} · <b>−</b>/<b>=</b> exposure ${exposure.toFixed(1)}<br>`+
+  `${fps} fps${hdrOK?'':' · no float targets, colours clipped'}`;}
+ requestAnimationFrame(frame);}
+
+setTimeout(()=>{const t0=performance.now();bake();generate();makeTargets();setScene(0);ready=true;
+ console.log('generated in',Math.round(performance.now()-t0),'ms');requestAnimationFrame(frame);},30);
+</script>
+</body>
+</html>

@@ -1,0 +1,8 @@
+# Brainstorming companion mockups and browser-test artefacts
+.superpowers/
+.playwright-mcp/
+
+# Build output
+dist/
+build/
+node_modules/
