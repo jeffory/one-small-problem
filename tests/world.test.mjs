@@ -28,3 +28,11 @@ test('passable: a full wall blocks, a gap lets through', () => {
   const g = new Float32Array(HALF); for (let j = 0; j < 16; j++) g[j * 16 + 8] = 5; assert.equal(passable(g, 16, [2, 2], [14, 14], 0.45), false);
   g[3 * 16 + 8] = 0; assert.equal(passable(g, 16, [2, 2], [14, 14], 0.45), true); });
 test('generation is quick', () => { const t = performance.now(); generateSurface('SPEED-0001'); assert.ok(performance.now() - t < 2000); });
+test('the lander cannot be walked over at any frame rate', async () => {
+  const { createPlayer, stepPlayer } = await import('../src/game/player.js'), ground = (x, z) => sampleGround(W, x, z), { lander: L, spawn: S } = W;
+  for (const dt of [1 / 60, 1 / 144]) {
+    const p = createPlayer({ x: L.x + 8 * S.dx, z: L.z + 8 * S.dz, dx: -S.dx, dz: -S.dz }, ground);
+    for (let t = 0; t < 4; t += dt) stepPlayer(p, { fwd: 1, strafe: 0, run: false, jump: false }, dt, ground, 232);
+    assert.ok(Math.hypot(p.x - L.x, p.z - L.z) >= 2.0 && p.y - L.y < 0.5, `dt ${dt}: dist ${Math.hypot(p.x - L.x, p.z - L.z)} y ${p.y - L.y}`);
+  }
+});

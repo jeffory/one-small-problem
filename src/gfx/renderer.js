@@ -79,7 +79,7 @@ export function createRenderer(gl, hdrOK, tex = bakeTextures(gl)) {
     gl.uniform1i(post.u.uP, F.palMode); gl.uniform1f(post.u.uX, F.exposure);
     gl.bindVertexArray(empty); gl.drawArrays(gl.TRIANGLES, 0, 3);
     gl.bindFramebuffer(gl.READ_FRAMEBUFFER, fboL); gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, null);
-    gl.blitFramebuffer(0, 0, w, h, 0, 0, canvas.width, canvas.height, gl.COLOR_BUFFER_BIT, gl.NEAREST);
+    gl.blitFramebuffer(0, 0, w, h, 0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight, gl.COLOR_BUFFER_BIT, gl.NEAREST);
     gl.bindFramebuffer(gl.READ_FRAMEBUFFER, null);
   }
 

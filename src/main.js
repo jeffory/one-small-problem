@@ -23,7 +23,7 @@ function boot() {
   const { gl, hdrOK } = createGL(canvas), renderer = createRenderer(gl, hdrOK);
   const world = generateSurface(seed), scene = buildSurfaceScene(gl, world), ground = (x, z) => sampleGround(world, x, z);
   const p = createPlayer(world.spawn, ground), input = createInput(canvas, p), RES = [180, 270, 360];
-  let resI = 1, palMode = 1, lost = false, raf = 0, helpShown = true, t0 = performance.now(), last = t0, fpsN = 0, fpsT = 0;
+  let resI = 1, palMode = 1, lost = false, shown = false, fp = DEBUG ? `#${seed} ${checksumWorld(world)}` : "", raf = 0, helpShown = true, t0 = performance.now(), last = t0, fpsN = 0, fpsT = 0;
 
   const resize = () => lost || renderer.resize(innerWidth, innerHeight, devicePixelRatio || 1, RES[resI]);
   addEventListener('resize', resize); resize();
@@ -46,9 +46,10 @@ function boot() {
     frame.t = (now - t0) / 1000; frame.palMode = palMode;
     frame.cam = { x: p.x, y: p.y + PLAYER.eye, z: p.z, yaw: p.yaw, pitch: p.pitch };
     renderer.render(frame);
+    if (!shown) { shown = true; hud.ready(); }
     if (DEBUG) {
       fpsN++; fpsT += el;
-      if (fpsT >= .5) { hud.debug(`${Math.round(fpsN / fpsT)} fps \u00b7 ${RES[resI]}p \u00b7 palette ${['off', 'dithered', 'flat'][palMode]}`); fpsN = fpsT = 0; }
+      if (fpsT >= .5) { hud.debug(`${fp} \u00b7 ${Math.round(fpsN / fpsT)} fps \u00b7 ${RES[resI]}p \u00b7 palette ${['off', 'dithered', 'flat'][palMode]}`); fpsN = fpsT = 0; }
     }
     window.ospTest ??= { ready: true, seed, checksum: checksumWorld(world), capture: () => renderer.capture(), player: () => ({ x: p.x, y: p.y, z: p.z }) };
     if (!lost) raf = requestAnimationFrame(tick);

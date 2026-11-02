@@ -23,3 +23,9 @@ test('jump pressed while airborne is ignored', () => { const g = () => 0, p = cr
   assert.ok(top > 1.9); assert.ok(top <= PLAYER.jumpV ** 2 / (2 * PLAYER.gSurface) + 0.06); });
 test('walls slide per axis instead of stopping dead', () => { const g = x => (x > 1 ? 2 : 0), p = createPlayer({ x: 0, z: 0, dx: 1, dz: -1 }, g);
   run(p, { ...idle, fwd: 1 }, 1, g); assert.ok(p.x <= 1.0001); assert.ok(p.z < -1); });
+test('a steep bilinear ramp is refused at any frame rate, walking or running', () => {
+  const g = x => Math.min(2.45, Math.max(0, (x - 1) * 2.45));
+  for (const dt of [1 / 30, 1 / 60, 1 / 144]) { const p = createPlayer(east, g); run(p, { ...idle, fwd: 1 }, 2, g, dt); assert.ok(p.y < 0.5 && p.x < 1.3, `dt ${dt}: x ${p.x} y ${p.y}`); }
+  const q = createPlayer(east, g); run(q, { ...idle, fwd: 1, run: true }, 2, g, 1 / 144); assert.ok(q.y < 0.5 && q.x < 1.3, `run: x ${q.x} y ${q.y}`); });
+test('a gentle ramp is still climbed', () => { const g = x => Math.max(0, (x - 1) * 0.5), p = createPlayer(east, g);
+  run(p, { ...idle, fwd: 1 }, 2, g, 1 / 60); assert.ok(p.x > 5 && Math.abs(p.y - g(p.x)) < 0.01, `x ${p.x} y ${p.y}`); });

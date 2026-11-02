@@ -3,10 +3,10 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <style>
 html,body{margin:0;height:100%;overflow:hidden;background:#000;color:#b8ae9c;font:13px/1.45 ui-monospace,Menlo,Consolas,monospace}
-#c{display:block;width:100vw;height:100vh}
+#c{display:block;image-rendering:pixelated;width:100vw;height:100vh}
 #hud{position:fixed;left:12px;bottom:10px}
 #seed{position:fixed;right:12px;bottom:10px;color:#7a7266}
-#msg{position:fixed;inset:0;display:none;align-items:center;justify-content:center;text-align:center}
+#msg{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;text-align:center}
 </style>
 <!--BODY-->
-<canvas id="c"></canvas><div id="hud"></div><div id="seed"></div><div id="msg"></div>
+<canvas id="c"></canvas><div id="hud"></div><div id="seed"></div><div id="msg">Loading... (needs a current desktop browser with WebGL2)</div>

@@ -6,6 +6,7 @@ export function createHud() {
     help: t => { help.textContent = t; },
     seed: t => { $('seed').textContent = t; },
     debug: t => { debug.textContent = t; },
+    ready: () => { msg.style.display = 'none'; },
     fatal: t => { msg.textContent = t; msg.style.display = 'flex'; },
   };
 }
