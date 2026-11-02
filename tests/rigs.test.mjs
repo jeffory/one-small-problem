@@ -1,0 +1,10 @@
+import test from 'node:test'; import assert from 'node:assert/strict'; import { RIGS, muzzleWorld, worldSpheres } from '../src/game/rigs.js';
+const A = (type, o = {}) => ({ type, x: 0, y: 0, z: 0, yaw: 0, t: 0, gait: 0, aim: 0, claw: 0, wave: 0, fall: 0, ...o }), r = v => v.map(x => Math.round(x * 1000) / 1000 + 0);
+test('muzzles sit where the look test put them', () => { assert.deepEqual(r(muzzleWorld(A('sk'))), [0, .38, .64]); assert.deepEqual(r(muzzleWorld(A('fl'))), [0, -.55, 0]);
+  assert.deepEqual(r(muzzleWorld(A('br'))), [-.88, 1.06, 1]); });
+test('turning and moving the alien carries the muzzle with it', () => { assert.deepEqual(r(muzzleWorld(A('sk', { yaw: Math.PI / 2 }))), [.64, .38, 0]);
+  assert.deepEqual(r(muzzleWorld(A('sk', { x: 3, y: 1, z: -2 }))), [3, 1.38, -1.36]); });
+test("raising the brute's aim raises its muzzle", () => { assert.ok(muzzleWorld(A('br', { aim: .3 }))[1] > muzzleWorld(A('br'))[1] + .1); });
+test('spheres follow the alien', () => { assert.deepEqual(r(worldSpheres(A('sk', { x: 3, z: -2, yaw: Math.PI }))[0]), [3, .55, -1.8, .4]); });
+test('rig parts name the six alien meshes', () => { assert.deepEqual([RIGS.sk.parts.length, RIGS.fl.parts.length, RIGS.br.parts.length], [7, 1, 3]);
+  for (const R of Object.values(RIGS)) for (const p of R.parts) assert.ok(['skBody', 'skLeg', 'flBody', 'brBody', 'brClaw', 'brGun'].includes(p.mesh)); });
