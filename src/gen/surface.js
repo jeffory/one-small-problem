@@ -1,6 +1,8 @@
 import { fbm2, valueNoise2 } from './noise.js';
+import { makeRng } from './rng.js';
+import { passable } from './passable.js';
 
-export const N = 512, HALF = 256, MAP_MARGIN = 24;
+export const N = 512, HALF = 256, MAP_MARGIN = 24, MAX_STEP = 0.45;
 
 function smoothstep(a, b, x) {
   let t = (x - a) / (b - a);
@@ -128,4 +130,70 @@ export function buildHeightfield(rng, L, route) {
     h[k] += (lander.y - h[k]) * w;
   }
   return { h, craters };
+}
+
+export function scatterRocks(rng, L, route, h, craters) {
+  const rocks = [], lim = HALF - MAP_MARGIN, nc = Math.min(40, craters.length);
+  for (let a = 0; a < 460; a++) {
+    let x, z;
+    if (a < 230) {
+      const c = craters[rng.int(nc)];
+      let ux, uz, l2;
+      do { ux = rng.range(-1, 1); uz = rng.range(-1, 1); l2 = ux * ux + uz * uz; } while (!(l2 > 1e-4 && l2 <= 1));
+      const l = Math.sqrt(l2), d = c[2] * (0.95 + 0.7 * rng.next());
+      x = c[0] + ux / l * d; z = c[1] + uz / l * d;
+    } else {
+      x = rng.range(-240, 240); z = rng.range(-240, 240);
+    }
+    if (x < -lim || x > lim || z < -lim || z > lim) continue;
+    let dx = x - L.lander.x, dz = z - L.lander.z;
+    if (dx * dx + dz * dz < 5.5 * 5.5) continue;
+    dx = x - L.spawn.x; dz = z - L.spawn.z;
+    if (dx * dx + dz * dz < 9) continue;
+    if (smoothstep(4, 16, distToPolyline(x, z, route)) < 0.6) continue;
+    const u = rng.next(), s = 0.12 + 2.6 * u * u * u;
+    const sx = s * (0.8 + 0.6 * rng.next()), sy = s * (0.45 + 0.4 * rng.next()), sz = s * (0.8 + 0.6 * rng.next());
+    const y = sampleBilinear(h, x, z) - 0.3 * sy;
+    rocks.push({ x, y, z, sx, sy, sz, yaw01: rng.next(), seed: rng.next() * 100 });
+  }
+  return rocks;
+}
+
+function stampDisc(occ, cx, cz, rad, fn) {
+  const i0 = Math.max(0, Math.floor(cx + HALF - rad)), i1 = Math.min(N - 1, Math.ceil(cx + HALF + rad));
+  const j0 = Math.max(0, Math.floor(cz + HALF - rad)), j1 = Math.min(N - 1, Math.ceil(cz + HALF + rad));
+  for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
+    const ox = i - HALF - cx, oz = j - HALF - cz, q = 1 - (ox * ox + oz * oz) / (rad * rad);
+    if (q <= 0) continue;
+    const v = fn(q), k = j * N + i;
+    if (v > occ[k]) occ[k] = v;
+  }
+}
+
+export function stampOccluders(h, L, rocks) {
+  const occ = new Float32Array(h);
+  for (const r of rocks) {
+    const m = 0.85 * Math.max(r.sx, r.sz);
+    stampDisc(occ, r.x, r.z, m, (q) => r.y + r.sy * Math.sqrt(q));
+  }
+  stampDisc(occ, L.lander.x, L.lander.z, 2.0, () => L.lander.y + 2.45);
+  stampDisc(occ, L.lander.x, L.lander.z, 1.35, () => L.lander.y + 4.05);
+  return occ;
+}
+
+export function sampleGround(world, x, z) { return sampleBilinear(world.occ, x, z); }
+
+export function generateSurface(seed) {
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const rng = makeRng(attempt ? seed + '#' + attempt : seed);
+    const L = pickLayout(rng), route = buildRoute(rng, L);
+    const { h, craters } = buildHeightfield(rng, L, route);
+    const rocks = scatterRocks(rng, L, route, h, craters);
+    const occ = stampOccluders(h, L, rocks);
+    const cell = (p) => [Math.round(p.x + HALF), Math.round(p.z + HALF)];
+    if (passable(occ, N, cell(L.spawn), cell(L.rim), MAX_STEP, MAP_MARGIN)) {
+      return { seed, attempt, N, half: HALF, h, occ, lander: L.lander, spawn: L.spawn, base: L.base, rim: L.rim, route, craters, rocks };
+    }
+  }
+  throw new Error('no passable layout for seed ' + seed);
 }
