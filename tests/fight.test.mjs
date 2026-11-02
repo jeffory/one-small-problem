@@ -33,6 +33,13 @@ test('shooting one canister sets off its cluster and hurts what stands nearby', 
   assert.ok(F.decals.filter(d => d.kind === 'scorch').length >= mates.length); assert.ok(a.hp < ALIENS[a.type].hp); });
 test('kills splash goo that arcs down and sticks', () => { const F = createFight(W, { gravity: 3 }), a = F.aliens[0]; shootAt(F, a); run(F, idle, .2);
   assert.ok(F.parts.some(p => p.kind === 'goo')); run(F, idle, 6); assert.equal(F.parts.filter(p => p.kind === 'goo').length, 0); assert.ok(F.decals.some(d => d.kind === 'goo')); });
+test('scorch and goo keep separate decal rings of 40 and 24; every 3rd landed goo particle sticks (M5)', () => { const F = createFight(W, { gravity: 3 }), S = W.spawn, g = sampleGround(W, S.x, S.z);
+  const goo = n => { for (let i = 0; i < n; i++) F.parts.push({ x: S.x - 3 + i * .05, y: g + .5, z: S.z - 3, vx: 0, vy: 0, vz: 0, kind: 'goo', life: 9 }); run(F, idle, 1.5); };
+  const count = k => F.decals.filter(d => d.kind === k).length;
+  goo(30); assert.equal(count('goo'), 10);
+  for (let i = 0; i < 50; i++) F.bolts.push({ x: S.x + 5 + (i % 10), y: g + 4, z: S.z + 5 + (i / 10 | 0), vx: 0, vy: -30, vz: 0, dmg: 1, r: .1, life: 1, col: [1, 1, 1], team: 1, src: 99 });
+  run(F, idle, .5); assert.equal(count('scorch'), 40); assert.equal(count('goo'), 10);
+  goo(120); assert.equal(count('goo'), 24); assert.equal(count('scorch'), 40); assert.equal(F.decals.length, 64); });
 test('brutes drop the scattergun; floaters drop cells', () => { const F = createFight(W, { gravity: 3 }), br = F.aliens.find(a => a.type === 'br'), fl = F.aliens.find(a => a.type === 'fl');
   shootAt(F, br); shootAt(F, fl); run(F, idle, 3); assert.ok(F.pickups.some(p => p.kind === 'scatter' && near(p, br, 1.5))); assert.ok(F.pickups.some(p => p.kind === 'cells' && near(p, fl, 2.5))); });
 test('duct tape heals only when you are hurt', () => { const F = createFight(W, { gravity: 3 }), t = F.pickups.find(p => p.kind === 'tape');

@@ -13,9 +13,9 @@ import { ALIENS, createAlien, stepAlien, hurtAlien, move, level } from './aliens
 export const PICKUP = { tape: 25, cells: 25, pistol: 20, scatter: 16, flCells: 15, pistolDrop: .3 };
 export const CANISTER = { hp: 15, radius: .45, blast: 5, dmg: 70, knock: 9, fuse: .2 };
 export const DEATH_TIME = 2.5;
-// WAKE: encounter wake radius; CORPSE: seconds a corpse lasts, the last SINK of them sinking 1 m; GRAB: flag reach;
-// REACH: pickup reach; CAN_Y: canister centre above its base; CAN_H: its height.
-const WAKE = 60, CORPSE = 8, SINK = 2, MAX_PARTS = 300, MAX_DECALS = 64, BOOM_LIFE = .6, FIELD_DT = .25, GRAB = 2.2, REACH = 1.2;
+// WAKE: encounter wake radius; CORPSE: seconds a corpse lasts, the last SINK of them sinking 1 m; DECALS: each kind's ring
+// (M5: goo can't evict scorch); GRAB: flag reach; REACH: pickup reach; CAN_Y: canister centre above its base; CAN_H: its height.
+const WAKE = 60, CORPSE = 8, SINK = 2, MAX_PARTS = 300, DECALS = { scorch: 40, goo: 24 }, BOOM_LIFE = .6, FIELD_DT = .25, GRAB = 2.2, REACH = 1.2;
 const CAN_Y = .4, CAN_H = .9, TAU = 2 * Math.PI, sqrt = Math.sqrt, STILL = { fwd: 0, strafe: 0, run: false, jump: false };
 
 export function createFight(world, { gravity }) {
@@ -24,7 +24,8 @@ export function createFight(world, { gravity }) {
     encs: [], aliens: [], bolts: [], pickups: [], canisters: [], parts: [], decals: [], booms: [],
     flag: { x: fs.x, y: G(fs.x, fs.z), z: fs.z, held: false }, entry: { owned: [false, false, false], cells: 0, flagHeld: false },
     state: 'play', deadT: 0, time: 0, kills: 0, shots: 0, shotT: 9, hurtT: 0, field: createField(), fieldT: 0, events: [], god: false,
-    _g: G, _di: 0 };
+    _g: G };
+  clearDecals(F);
   const C = F._ctx = { ground: G, px: 0, py: 0, pz: 0, field: F.field, rng: F.rng, others: F.aliens,
     los: a => lineOfSight(G, muzzleWorld(a), [C.px, C.py + PLAYER.eye, C.pz]),
     shoot: (a, m, d, s) => { F.bolts.push({ x: m[0], y: m[1], z: m[2], vx: d[0] * s.speed, vy: d[1] * s.speed, vz: d[2] * s.speed,
@@ -73,7 +74,7 @@ export function restartArea(F) {
   A.owned = E.owned.slice(); A.cells = E.cells; A.cool = 0; A.cur = A.owned.lastIndexOf(true);
   F.flag.held = E.flagHeld;
   populate(F);
-  F.bolts.length = F.parts.length = F.decals.length = F.booms.length = 0; F._di = 0;
+  F.bolts.length = F.parts.length = F.booms.length = 0; clearDecals(F);
   F.field = createField(); F.fieldT = 0;
   F.state = 'play'; F.deadT = 0; F.hurtT = 0; F.shotT = 9;
   F.events.push({ type: 'restart' });
@@ -294,13 +295,18 @@ function burst(F, kind, x, y, z, n, h, vy0, vy1, l0, l1) {
   if (P.length > MAX_PARTS) P.splice(0, P.length - MAX_PARTS);
 }
 
-// A ground mark facing the ground's normal (from its gradient), in a ring of MAX_DECALS.
+// F.decals is one dense list; each kind keeps a ring (the decals' indices in that list, oldest first) of DECALS[kind].
+function clearDecals(F) { F.decals.length = 0; F._dr = { scorch: { at: [], n: 0 }, goo: { at: [], n: 0 } }; F._gn = 0; }
+
+// A ground mark facing the ground's normal (from its gradient); past its kind's ring size it replaces that kind's oldest.
 function decal(F, kind, x, y, z, r) {
-  const G = F._g, gx = G(x + .5, z) - G(x - .5, z), gz = G(x, z + .5) - G(x, z - .5), l = Math.hypot(gx, 1, gz);
-  F.decals[F._di++ % MAX_DECALS] = { x, y, z, nx: -gx / l, ny: 1 / l, nz: -gz / l, r, yaw: F.rng.range(0, TAU), kind };
+  const G = F._g, gx = G(x + .5, z) - G(x - .5, z), gz = G(x, z + .5) - G(x, z - .5), l = Math.hypot(gx, 1, gz), R = F._dr[kind], n = R.n++ % DECALS[kind];
+  const d = { x, y, z, nx: -gx / l, ny: 1 / l, nz: -gz / l, r, yaw: F.rng.range(0, TAU), kind };
+  if (R.at.length < DECALS[kind]) { R.at.push(F.decals.length); F.decals.push(d); } else F.decals[R.at[n]] = d;
 }
 
-// Particles fall under the area's gravity. Goo that reaches the ground sticks as a decal; sparks and dust settle and fade.
+// Particles fall under the area's gravity. Every 3rd goo particle to reach the ground sticks as a decal (the rest vanish);
+// sparks and dust settle and fade.
 function stepParts(F, dt) {
   const P = F.parts, G = F._g, g = F.gravity; let w = 0;
   for (const q of P) {
@@ -308,7 +314,7 @@ function stepParts(F, dt) {
     q.vy -= g * dt; q.x += q.vx * dt; q.y += q.vy * dt; q.z += q.vz * dt;
     const gy = G(q.x, q.z);
     if (q.y <= gy) {
-      if (q.kind === 'goo') { decal(F, 'goo', q.x, gy, q.z, F.rng.range(.12, .3)); continue; }
+      if (q.kind === 'goo') { if (++F._gn % 3 === 0) decal(F, 'goo', q.x, gy, q.z, F.rng.range(.12, .3)); continue; }
       q.y = gy; q.vx = q.vy = q.vz = 0;
     }
     P[w++] = q;
