@@ -270,7 +270,7 @@ function explode(F, c) {
   }
   for (const o of F.canisters) if ((q = hit(o.x, o.y + CAN_Y, o.z))) { o.hp -= q[0]; if (!(o.fuse > 0)) o.fuse = B.fuse; }
   const G = F.lv.ground;
-  decal(F, 'scorch', x, G(x, z), z, 1.6, groundNormal(G, x, z));
+  decal(F, 'scorch', x, G(x, z), z, 1.6, groundNormal(G, x, z, F.lv.ceil ? undefined : Infinity)); // R11: the step clamp is indoor-only
   burst(F, 'spark', x, y, z, 30, 6, 1.5, 7, .3, .7);
   F.booms.push({ x, y, z, age: 0 });
   F.events.push({ type: 'boom', x, y, z });
@@ -342,7 +342,7 @@ function stepParts(F, dt) {
     if (Cl) { const c = Cl(q.x, q.z); if (q.y > c) { q.y = c; q.vy = Math.min(q.vy, 0); } }
     const gy = G(q.x, q.z);
     if (q.y <= gy) {
-      if (q.kind === 'goo') { if (++F._gn % 3 === 0) decal(F, 'goo', q.x, gy, q.z, F.rng.range(.12, .3), groundNormal(G, q.x, q.z)); continue; }
+      if (q.kind === 'goo') { if (++F._gn % 3 === 0) decal(F, 'goo', q.x, gy, q.z, F.rng.range(.12, .3), groundNormal(G, q.x, q.z, Cl ? undefined : Infinity)); continue; }
       q.y = gy; q.vx = q.vy = q.vz = 0;
     }
     P[w++] = q;

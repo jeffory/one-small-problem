@@ -35,3 +35,17 @@ test('a hit reported inside a wall (an alien muzzle buried in it) leaves no deca
   F.bolts.push({ x: .1 - M.half, y: 1.5, z: M.start.z, vx: 1, vy: 0, vz: 0, dmg: 1, r: .1, life: 2, col: [1, 1, 1], team: 1, src: 99 }); // the sealed edge
   stepFight(F, idle, 1 / 60); assert.equal(F.bolts.length, 0); run(F, idle, .5);
   for (const d of F.decals) assert.ok(F.lv.ground(d.x, d.z) < BASE.wall); for (const q of F.parts) assert.ok(F.lv.ground(q.x, q.z) < BASE.wall); });
+test('R11: on a steep surface slope bolt, blast and goo decals face the true slope; indoors a floor beside a wall still reads flat', () => {
+  // [x, z] on the level where the decals land: a bolt straight down, a canister blast and three settling goo drops (every 3rd sticks)
+  const mark = (F, x, z) => { const y = F.lv.ground(x, z); F.aliens.length = 0; F.canisters.length = 0;
+    F.bolts.push({ x, y: y + 1.5, z, vx: 0, vy: -30, vz: 0, dmg: 1, r: .1, life: 1, col: [1, 1, 1], team: 1, src: 99 });
+    F.canisters.push({ x, y, z, hp: 0, fuse: .01, id: -99, area: F.area }); for (let i = 0; i < 3; i++) F.parts.push({ x, y: y + .05, z, vx: 0, vy: 0, vz: 0, kind: 'goo', life: 9 });
+    run(F, idle, .5); const d = F.decals.filter(q => Math.hypot(q.x - x, q.z - z) < 1e-6); assert.equal(d.length, 3); return d; };
+  const S = createFight(W), G = S.lv.ground, slope = (x, z) => { const gx = G(x + .5, z) - G(x - .5, z), gz = G(x, z + .5) - G(x, z - .5), l = Math.hypot(gx, 1, gz); return [-gx / l, 1 / l, -gz / l]; };
+  let at = null; // the first sample past 35 deg whose step to a neighbour is beyond the indoor clamp (.35 m), away from the player
+  for (let j = -220; j <= 220 && !at; j++) for (let i = -220; i <= 220 && !at; i++) { const x = i + .3, z = j + .3, c = G(x, z);
+    if (slope(x, z)[1] < Math.cos(35 * Math.PI / 180) && [G(x + .5, z), G(x - .5, z), G(x, z + .5), G(x, z - .5)].some(g => Math.abs(g - c) > .5) && Math.hypot(x - S.player.x, z - S.player.z) > 5) at = [x, z]; }
+  assert.ok(at); const n = slope(...at); for (const d of mark(S, ...at)) assert.ok(Math.abs(d.nx - n[0]) + Math.abs(d.ny - n[1]) + Math.abs(d.nz - n[2]) < 1e-9, `${d.kind} ${[d.nx, d.ny, d.nz]} vs ${n}`);
+  const B = createFight(W, 2), s = areaStart(W, 2); let x = s.x, z = s.z; // walk back from the lift centre to just short of the back wall
+  while (B.lv.ground(x - s.dx * .6, z - s.dz * .6) < BASE.wall) { x -= s.dx * .1; z -= s.dz * .1; }
+  for (const d of mark(B, x, z)) assert.ok(d.ny === 1 && Math.abs(d.nx) + Math.abs(d.nz) === 0, `${d.kind} ${[d.nx, d.ny, d.nz]}`); });

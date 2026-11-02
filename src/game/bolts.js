@@ -3,10 +3,10 @@
 // (floor, wall face or ceiling); a target hit has a t and no n.
 const LIM = 256, RISE = .35;
 
-// The floor's normal from central differences at +-0.5 m. A neighbour more than RISE above or below the centre (a wall or a
-// ledge) counts as the centre's height, so a step isn't read as a slope.
-export function groundNormal(ground, x, z) {
-  const c = ground(x, z), at = (u, v) => { const g = ground(u, v); return Math.abs(g - c) > RISE ? c : g; };
+// The floor's normal from central differences at +-0.5 m. A neighbour more than `rise` above or below the centre (indoors, a
+// wall or a ledge) counts as the centre's height, so a step isn't read as a slope. Outdoors (rise Infinity) it is the true slope.
+export function groundNormal(ground, x, z, rise = RISE) {
+  const c = ground(x, z), at = (u, v) => { const g = ground(u, v); return Math.abs(g - c) > rise ? c : g; };
   const gx = at(x + .5, z) - at(x - .5, z), gz = at(x, z + .5) - at(x, z - .5), l = Math.hypot(gx, 1, gz);
   return [-gx / l, 1 / l, -gz / l];
 }
@@ -80,5 +80,5 @@ function levelHit(b, ground, ceil, ox, oy, oz, dx, dy, dz, s1, s0, at) {
     return { b, t: null, x, y, z, n: ax ? [dx > 0 ? -1 : 1, 0, 0] : [0, 0, dz > 0 ? -1 : 1] };
   }
   if (ceil && sy >= ceil(sx, sz)) return { b, t: null, x, y: c, z, n: [0, -1, 0] };
-  return { b, t: null, x, y: g, z, n: groundNormal(ground, x, z) };
+  return { b, t: null, x, y: g, z, n: groundNormal(ground, x, z, ceil ? RISE : Infinity) };
 }
