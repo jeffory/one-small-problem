@@ -32,14 +32,14 @@ export function createAlien({ type, x, y, z }, id, enc) {
 // Horizontal move. Walkers stay on the ground and refuse (per axis, so they slide) any move after which the ground at their
 // leading edge (radius R ahead) is more than STEP above the ground under their centre. That depends on where they stand, not on
 // how far one step is, so it doesn't change with frame rate, and it keeps their bodies off steep walls.
-// Floaters fly free outdoors; indoors (ctx.ceil) they refuse an axis whose leading edge has the floor within `below` of their
-// centre or the ceiling within `top` of it.
+// Floaters fly free outdoors; indoors (ctx.ceil) they refuse an axis when either of two points on their leading edge, R ahead
+// and FL_SIDE to each side, has the floor within `below` of their centre or the ceiling within `top` of it.
 export function move(a, ctx, dx, dz) {
   if (a.type === 'fl') {
     if (!ctx.ceil) { a.x += dx; a.z += dz; return Math.hypot(dx, dz); }
     const T = ALIENS.fl, R = T.radius, lo = a.y - T.below, hi = a.y + T.top; let m = 0;
-    if (dx && clear(ctx, a.x + dx + (dx > 0 ? R : -R), a.z, lo, hi)) { a.x += dx; m += dx * dx; }
-    if (dz && clear(ctx, a.x, a.z + dz + (dz > 0 ? R : -R), lo, hi)) { a.z += dz; m += dz * dz; }
+    if (dx) { const x = a.x + dx + (dx > 0 ? R : -R); if (clear(ctx, x, a.z - FL_SIDE, lo, hi) && clear(ctx, x, a.z + FL_SIDE, lo, hi)) { a.x += dx; m += dx * dx; } }
+    if (dz) { const z = a.z + dz + (dz > 0 ? R : -R); if (clear(ctx, a.x - FL_SIDE, z, lo, hi) && clear(ctx, a.x + FL_SIDE, z, lo, hi)) { a.z += dz; m += dz * dz; } }
     return Math.sqrt(m);
   }
   const R = ALIENS[a.type].radius; let g = ctx.ground(a.x, a.z), m = 0;
@@ -49,6 +49,10 @@ export function move(a, ctx, dx, dz) {
 }
 // A floater's room at (x, z): the floor no higher than lo and the ceiling no lower than hi.
 const clear = (ctx, x, z, lo, hi) => ctx.ground(x, z) <= lo && ctx.ceil(x, z) >= hi;
+// A floater's edge probes sit 2/3 of its radius (0.5 m) either side: exactly one 1 m tile apart, the widest spacing at which no
+// tile the edge touches can slip between them, so its centre stays over 0.5 m from any wall tile (a body-wide pair would
+// straddle a 1 m pillar head-on, and a centre probe alone lets it slide its body into corners).
+const FL_SIDE = ALIENS.fl.radius * 2 / 3;
 const walk = (a, ctx, h, v) => { a.yaw = h; return move(a, ctx, sin(h) * v, cos(h) * v); };
 const heading = (a, ctx, toP) => { const f = ctx.field && fieldDir(ctx.field, a.x, a.z); return f ? atan2(f[0], f[1]) : toP; };
 const reach = (a, ctx, r) => Math.hypot(ctx.px - a.x, ctx.pz - a.z) < r && Math.abs(ctx.py - a.y) < REACH[a.type];

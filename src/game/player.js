@@ -16,6 +16,15 @@ export function knock(p, vx, vy, vz) {
 
 // Is (x, z) blocked for feet at y: ground more than a step up, or a ceiling below the head?
 const blocked = (ground, ceil, x, z, y) => ground(x, z) - y > PLAYER.stepUp || ceil(x, z) < y + PLAYER.head;
+// Would a leading corner moving to (nx, nz) enter something it isn't already in? Only if that point is blocked and is worse
+// (higher ground or a lower ceiling) than (ox, oz), where that box corner is now. So an overlap you already have, like a
+// corner left over a bed you jumped beside, can be moved along or out of; a wall, which no box corner is ever in, never.
+const enters = (ground, ceil, nx, nz, ox, oz, y) => blocked(ground, ceil, nx, nz, y) && (ground(nx, nz) > ground(ox, oz) || ceil(nx, nz) < ceil(ox, oz));
+// Indoors, an axis move is refused if the middle (lx, lz) of the new leading edge is blocked (so an overlap is never deepened
+// until the centre is over it, which would climb it), or if either of its corners, (sx, sz) to each side, enters something
+// new; (ox, oz) is the middle of the box's edge on that side now.
+const refused = (ground, ceil, lx, lz, ox, oz, sx, sz, y) => blocked(ground, ceil, lx, lz, y) ||
+  enters(ground, ceil, lx - sx, lz - sz, ox - sx, oz - sz, y) || enters(ground, ceil, lx + sx, lz + sz, ox + sx, oz + sz, y);
 // The lowest ceiling over the box's four corners.
 const lowest = (ceil, x, z) => Math.min(ceil(x - E, z - E), ceil(x + E, z - E), ceil(x - E, z + E), ceil(x + E, z + E));
 
@@ -27,7 +36,7 @@ export function fits(p, x, z, ground, ceil) {
     !blocked(ground, ceil, x - E, z + E, p.y) && !blocked(ground, ceil, x + E, z + E, p.y);
 }
 
-// ceil (indoors only): each axis move probes both corners of the box's leading edge, and the head stops at the lowest ceiling
+// ceil (indoors only): each axis move probes the box's leading edge (see refused), and the head stops at the lowest ceiling
 // over the box. Outdoors (ceil null) one probe on the centre line, one radius ahead, as in Plan 2.
 export function stepPlayer(p, input, dt, ground, bound, g = PLAYER.gSurface, ceil = null) {
   const s = Math.sin(p.yaw), c = Math.cos(p.yaw), speed = input.run ? PLAYER.run : PLAYER.walk;
@@ -41,10 +50,10 @@ export function stepPlayer(p, input, dt, ground, bound, g = PLAYER.gSurface, cei
   const n = Math.max(1, Math.ceil(Math.hypot(p.vx + p.kx, p.vz + p.kz) * dt / PLAYER.substep)), h = dt / n;
   for (let i = 0; i < n; i++) {
     const mx = p.vx + p.kx, nx = p.x + mx * h, ex = nx + Math.sign(mx) * PLAYER.radius;
-    if (ceil ? blocked(ground, ceil, ex, p.z - E, p.y) || blocked(ground, ceil, ex, p.z + E, p.y) : ground(ex, p.z) - p.y > PLAYER.stepUp) p.vx = p.kx = 0;
+    if (ceil ? refused(ground, ceil, ex, p.z, p.x + Math.sign(mx) * E, p.z, 0, E, p.y) : ground(ex, p.z) - p.y > PLAYER.stepUp) p.vx = p.kx = 0;
     else p.x = nx;
     const mz = p.vz + p.kz, nz = p.z + mz * h, ez = nz + Math.sign(mz) * PLAYER.radius;
-    if (ceil ? blocked(ground, ceil, p.x - E, ez, p.y) || blocked(ground, ceil, p.x + E, ez, p.y) : ground(p.x, ez) - p.y > PLAYER.stepUp) p.vz = p.kz = 0;
+    if (ceil ? refused(ground, ceil, p.x, ez, p.x, p.z + Math.sign(mz) * E, E, 0, p.y) : ground(p.x, ez) - p.y > PLAYER.stepUp) p.vz = p.kz = 0;
     else p.z = nz;
   }
   p.x = Math.max(-bound, Math.min(bound, p.x));

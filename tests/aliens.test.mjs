@@ -54,3 +54,9 @@ test('walkers look a fixed distance ahead before climbing, so nothing scales the
 test('indoors a floater keeps under the ceiling and out of the walls', () => { const L = tileLevel(['#########', ...Array(7).fill('#.......#'), '#########'], { ceil: 4.5 });
   const a = createAlien({ type: 'fl', x: 2, y: 3.8, z: 2 }, 1, enc({ waved: true })), W = world([a], { ground: L.ground, ceil: L.ceil, px: 6, pz: 6 });
   stepAlien(a, W.ctx, 1 / 60); for (let t = 0; t < 8; t += 1 / 60) { stepAlien(a, W.ctx, 1 / 60); assert.ok(a.y + ALIENS.fl.top <= 4.5 + 1e-9, `y ${a.y}`); assert.ok(L.gap(a.x, a.z) >= ALIENS.fl.radius - .05, `in the wall at ${a.x}, ${a.z}`); } });
+test('indoors a floater circling past a 1 x 1 pillar keeps its centre at least 0.5 m from the corner, at 20, 60 and 144 fps (R5)', () => {
+  const room = Array.from({ length: 27 }, (_, j) => (j === 0 || j === 26 ? '#'.repeat(27) : '#' + '.'.repeat(25) + '#'));
+  for (const pi of [15, 16]) { const L = tileLevel(room.map((r, j) => (j === 2 ? r.slice(0, pi) + '#' + r.slice(pi + 1) : r)), { ceil: 5 });
+    for (const dt of [1 / 20, 1 / 60, 1 / 144]) { const a = createAlien({ type: 'fl', x: 13, y: 2, z: 2 }, 1, enc({ alerted: true, waved: true })), W = world([a], { ground: L.ground, ceil: L.ceil, px: 13, pz: 13, los: () => false });
+      a.state = 'hover'; let gap = 9; for (let t = 0; t < 8; t += dt) { stepAlien(a, W.ctx, dt); gap = Math.min(gap, L.gap(a.x, a.z)); }
+      assert.ok(gap >= .5 && gap < ALIENS.fl.radius, `pillar ${pi} at ${Math.round(1 / dt)} fps: ${gap}`); assert.ok(a.x > pi + 1, `pillar ${pi} at ${Math.round(1 / dt)} fps: held at ${a.x}`); } } });

@@ -61,3 +61,20 @@ test('fits: outdoors the ground at the centre is within a step; indoors all four
   assert.equal(fits(at(0), .4, 0, wall), true); assert.equal(fits(at(0), .6, 0, wall), false);
   assert.equal(fits(at(0), 1, 1, L.ground, L.ceil), true); assert.equal(fits(at(0), .85, 1, L.ground, L.ceil), false); // a corner in the wall
   assert.equal(fits(at(h - .05), 1.3, 1.3, L.ground, L.ceil), true); assert.equal(fits(at(h + .05), 1.3, 1.3, L.ground, L.ceil), false); }); // a corner under the lintel
+// A 0.5 m bed row (z 4.5..5.5, the greenhouse bed height): jump beside it, drift toward it, land with a box corner over it.
+const bedLevel = (end = 40) => { const ground = (x, z) => (Math.round(z) === 5 && x > -1 ? (x < end ? .5 : 99) : Math.round(z) >= 7 || Math.round(z) <= 0 ? 99 : 0);
+  return { ground, ceil: (x, z) => (ground(x, z) >= 99 ? 0 : 4) }; };
+test('landing with a box corner over a low bed never stops you running along it, and pushing in never climbs it (R6)', () => { const B = bedLevel();
+  for (const dt of FPS) { let overlapped = 0;
+    for (const drift of [.1, .2, .3]) { const p = createPlayer({ x: 2, z: 4.05, dx: 1, dz: 0 }, B.ground); let stuck = 0;
+      stepPlayer(p, { ...idle, fwd: 1, jump: true }, dt, B.ground, 1e9, 9, B.ceil);
+      for (let t = dt; t < 3; t += dt) { const x0 = p.x; stepPlayer(p, { ...idle, fwd: 1, strafe: t < drift ? 1 : 0 }, dt, B.ground, 1e9, 9, B.ceil); if (t > 1 && p.onGround && p.x === x0) stuck++; }
+      assert.equal(stuck, 0, `${Math.round(1 / dt)} fps, drift ${drift}: forward refused for ${stuck} frames`);
+      if (p.y === 0 && p.z + .38 > 4.5) { overlapped++; for (let t = 0; t < 1; t += dt) stepPlayer(p, { ...idle, strafe: 1 }, dt, B.ground, 1e9, 9, B.ceil);
+        assert.ok(p.y === 0 && p.z < 4.5, `${Math.round(1 / dt)} fps: pushed onto the bed, z ${p.z} y ${p.y}`); } }
+    assert.ok(overlapped, `${Math.round(1 / dt)} fps: never landed overlapping the bed`); } });
+test('an overlap never lets a corner into a wall: running along a bed into the wall at its end stops you clear (R6)', () => { const B = bedLevel(9.5);
+  for (const dt of FPS) { const p = createPlayer({ x: 2, z: 4.05, dx: 1, dz: 0 }, B.ground); let gap = 9;
+    stepPlayer(p, { ...idle, fwd: 1, jump: true }, dt, B.ground, 1e9, 9, B.ceil);
+    for (let t = dt; t < 3; t += dt) { stepPlayer(p, { ...idle, fwd: 1, strafe: t < .1 ? 1 : 0 }, dt, B.ground, 1e9, 9, B.ceil); gap = Math.min(gap, Math.hypot(Math.max(0, 9.5 - p.x), Math.max(0, 4.5 - p.z))); }
+    assert.ok(p.z + .38 > 4.5 && p.x > 8.5, `${Math.round(1 / dt)} fps: never ran along the bed overlapping it (${p.x}, ${p.z})`); assert.ok(gap >= .37, `${Math.round(1 / dt)} fps: ${gap}`); } });
