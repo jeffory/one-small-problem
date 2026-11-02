@@ -1,10 +1,11 @@
 #version 300 es
 // Shared world material: tri-planar texture-array lookup with height-channel bumps, sun shadows marched
 // through the occlusion height map (uOcc) plus up to 8 sphere occluders, up to 16 point lights.
-// uMode 0 = surface (sun), 1 = base (banded point lights and fog). L_ROCK and L_MACRO are injected defines.
+// uMode 0 = surface (sun), 1 = base (banded point lights and fog). uFl is the per-mesh hit flash (0-1).
+// L_ROCK and L_MACRO are injected defines.
 precision highp float;precision highp sampler2DArray;
 uniform sampler2DArray uA,uE;uniform sampler2D uOcc;
-uniform vec3 uCam,uSun,uFog;uniform float uT,uFogD;uniform int uMode,uNL;
+uniform vec3 uCam,uSun,uFog;uniform float uT,uFogD,uFl;uniform int uMode,uNL;
 uniform vec4 uL[16],uLC[16],uSph[8];uniform mat3 uRot;
 in vec3 vW,vO,vN,vNo;flat in vec4 vM;out vec4 o;
 float occ(vec2 p){return textureLod(uOcc,(p+256.5)/512.,0.).r;}
@@ -42,5 +43,6 @@ void main(){
   vec3 Lt=vec3(.012,.013,.012)+dl;Lt=floor(Lt*14.+.5)/14.;col=A.rgb*Lt+wet*sp*.4;
  }
  col+=E*vM.z*((f&16)!=0?.65+.35*sin(uT*3.1+vW.y*1.3):1.);
+ col+=uFl*vec3(.9,.75,.5);
  if(uMode==1)col=mix(uFog,col,exp(-length(uCam-vW)*uFogD));
  o=vec4(col,1.);}
