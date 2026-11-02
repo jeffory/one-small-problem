@@ -8,7 +8,11 @@ test('normalizeSeed tidies and never throws (Review Focus 1)', () => {
   assert.equal(normalizeSeed('#Eagle%20Has%20Landed!!'), 'EAGLEHASLANDED');
   assert.equal(normalizeSeed('#%E0%A4%A'), 'E0A4A');
   assert.equal(normalizeSeed('#' + 'a'.repeat(40)), 'A'.repeat(24));
-  assert.equal(normalizeSeed('#\u{1F680}\u{1F680}'), null);
   for (const v of ['#', '', null, undefined]) assert.equal(normalizeSeed(v), null);
 });
+test('any text is a seed: non-ASCII hashes to a stable X- code', () => {
+  const a = normalizeSeed('#ЛУНА'), b = normalizeSeed('#%D0%9B%D0%A3%D0%9D%D0%90');
+  assert.match(a, /^X-[0-9A-F]{8}$/); assert.equal(a, b); assert.equal(normalizeSeed('#' + a), a);
+  assert.notEqual(a, normalizeSeed('#МАРС')); assert.match(normalizeSeed('#\u{1F680}\u{1F680}'), /^X-[0-9A-F]{8}$/);
+  assert.equal(normalizeSeed('#%E0%A4%A'), 'E0A4A'); });
 test('seedName gives WORD-NNNN from the 32-word list', () => { assert.equal(SEED_WORDS.length, 32); const r = makeRng('names'); for (let i = 0; i < 200; i++) { const [w, n] = seedName(r).split('-'); assert.ok(SEED_WORDS.includes(w)); assert.match(n, /^\d{4}$/); } });

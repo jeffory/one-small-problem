@@ -36,3 +36,8 @@ test('the lander cannot be walked over at any frame rate', async () => {
     assert.ok(Math.hypot(p.x - L.x, p.z - L.z) >= 2.0 && p.y - L.y < 0.5, `dt ${dt}: dist ${Math.hypot(p.x - L.x, p.z - L.z)} y ${p.y - L.y}`);
   }
 });
+import { bermLift, BERM, BERM_H } from '../src/gen/surface.js'; import { edgeMargin } from './helpers.mjs';
+test('berm lift: nothing inside the band, full height at the edge, never rising inward', () => {
+  assert.equal(bermLift(BERM), 0); assert.equal(bermLift(BERM + 30), 0); assert.equal(bermLift(0), BERM_H);
+  for (let d = 0; d < BERM; d++) assert.ok(bermLift(d) >= bermLift(d + 1)); });
+test('the map edge hides behind the berm crest, seen from the movement bound', () => { const m = edgeMargin(W); assert.ok(m >= 0, `margin ${m}`); });

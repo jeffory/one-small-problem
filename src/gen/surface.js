@@ -70,6 +70,9 @@ export function craterProfile(r, R) {
   return 0;
 }
 
+export const BERM = 40, BERM_H = 30;
+export function bermLift(de) { const t = smoothstep(BERM, 0, de); return BERM_H * t * t; }
+
 export function sampleBilinear(arr, x, z) {
   let gx = x + HALF, gz = z + HALF;
   gx = gx < 0 ? 0 : gx > N - 1 ? N - 1 : gx;
@@ -128,6 +131,14 @@ export function buildHeightfield(rng, L, route) {
     if (d >= 7) continue;
     const w = 1 - smoothstep(4, 7, d), k = j * N + i;
     h[k] += (lander.y - h[k]) * w;
+  }
+  for (let j = 0; j < N; j++) {
+    const z = j - HALF, dj = Math.min(j, N - 1 - j);
+    for (let i = 0; i < N; i++) {
+      const de = Math.min(dj, i, N - 1 - i);
+      if (de >= BERM) continue;
+      h[j * N + i] += bermLift(de) * (0.75 + 0.5 * valueNoise2((i - HALF) / 9, z / 9, s3));
+    }
   }
   return { h, craters };
 }

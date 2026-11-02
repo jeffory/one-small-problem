@@ -42,6 +42,7 @@ export function normalizeSeed(raw) {
   let s = String(raw);
   if (s.charAt(0) === '#') s = s.slice(1);
   try { s = decodeURIComponent(s); } catch (e) { /* keep raw text */ }
+  if (/[^\x00-\x7e]/.test(s)) return 'X-' + xmur3(s)().toString(16).toUpperCase().padStart(8, '0');
   s = s.toUpperCase().replace(/[^A-Z0-9-]/g, '').slice(0, 24);
   return s.length ? s : null;
 }
