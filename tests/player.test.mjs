@@ -19,7 +19,7 @@ test('diagonal strafe-running is no faster than straight', () => { const g = () 
   const a = createPlayer({ x: 0, z: 0, dx: 0, dz: -1 }, g); run(a, { ...idle, fwd: 1, strafe: 1 }, 1, g); assert.ok(Math.abs(dist(a) - 4.5) < 0.1);
   const b = createPlayer({ x: 0, z: 0, dx: 0, dz: -1 }, g); run(b, { ...idle, fwd: 1, strafe: 1, run: true }, 1, g); assert.ok(Math.abs(dist(b) - 9) < 0.2); });
 test('jump pressed while airborne is ignored', () => { const g = () => 0, p = createPlayer({ x: 0, z: 0, dx: 0, dz: -1 }, g); let top = 0;
-  for (let i = 0; i < 30; i++) { stepPlayer(p, { ...idle, jump: true }, 1 / 60, g, 1e9); top = Math.max(top, p.y); }
-  assert.ok(!p.onGround); assert.ok(top <= PLAYER.jumpV ** 2 / (2 * PLAYER.gSurface) + 0.06); });
+  for (let i = 0; i < 150; i++) { stepPlayer(p, { ...idle, jump: true }, 1 / 60, g, 1e9); top = Math.max(top, p.y); }
+  assert.ok(top > 1.9); assert.ok(top <= PLAYER.jumpV ** 2 / (2 * PLAYER.gSurface) + 0.06); });
 test('walls slide per axis instead of stopping dead', () => { const g = x => (x > 1 ? 2 : 0), p = createPlayer({ x: 0, z: 0, dx: 1, dz: -1 }, g);
   run(p, { ...idle, fwd: 1 }, 1, g); assert.ok(p.x <= 1.0001); assert.ok(p.z < -1); });
