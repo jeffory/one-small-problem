@@ -22,7 +22,8 @@ test('a crowded fight clips to 16 lights, 8 spheres and 512 sprites, nearest fir
 test('the view model follows the weapon and is gone when dead', () => { const F = createFight(W, { gravity: 3 }), fr = frame();
   fillFrame(V, F, fr, 0); assert.equal(fr.view, null); put(F, F.flag.x + 1, F.flag.z); stepFight(F, { ...idle, use: true }, 1 / 60); fillFrame(V, F, fr, 0); assert.equal(fr.view.gpu, V.gpu.pole);
   give(F.ars, 1, 10); fillFrame(V, F, fr, 0); assert.equal(fr.view.gpu, V.gpu.pistol); F.hp = 1; hurtPlayer(F, 5, 0, 0, 0); fillFrame(V, F, fr, 0); assert.equal(fr.view, null); });
-test('the screen flashes red when hurt, then fades', () => { const F = createFight(W, { gravity: 3 }), fr = frame(); hurtPlayer(F, 10, 0, 0, 0); fillFrame(V, F, fr, 0);
-  assert.ok(fr.tint[0] > .1 && fr.tint[1] === 0); for (let i = 0; i < 60; i++) stepFight(F, idle, 1 / 60); fillFrame(V, F, fr, 1); assert.ok(fr.tint[0] < .02); });
+test('the screen flashes red when hurt, then fades; the tint is a bounded mix (R17)', () => { const F = createFight(W, { gravity: 3 }), fr = frame(); hurtPlayer(F, 10, 0, 0, 0); fillFrame(V, F, fr, 0);
+  assert.ok(fr.tint[0] > .05 && fr.tint[0] <= .18 && fr.tint[1] === 0 && fr.tint[2] === 0); for (let i = 0; i < 60; i++) stepFight(F, idle, 1 / 60); fillFrame(V, F, fr, 1); assert.ok(fr.tint[0] < .02);
+  hurtPlayer(F, 60, 0, 0, 0); fillFrame(V, F, fr, 2); assert.ok(fr.tint[0] <= .18 && fr.tint[0] > .15); F.hp = 1; hurtPlayer(F, 5, 0, 0, 0); fillFrame(V, F, fr, 3); assert.deepEqual(fr.tint, [.12, 0, 0]); });
 test('dispose frees the uploaded models only', () => { const g2 = fakeGL(), s2 = buildSurfaceScene(g2, W), before = g2.live.size, V2 = createFightView(g2, s2);
   assert.ok(g2.live.size > before); V2.dispose(); assert.equal(g2.live.size, before); });

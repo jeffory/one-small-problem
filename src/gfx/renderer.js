@@ -22,7 +22,7 @@ const FOV = 62 * Math.PI / 180, Z3 = [0, 0, 0];
  *   meshes: [{gpu: uploadMesh(), model: mat4, rot: mat3, flash?: 0-1 hit flash}], occTex (null = nothing casts terrain shadows),
  *   lights: {pos: vec4[16] xyz+radius, col: vec4[16], count}, spheres: vec4[8] xyz+radius, exposure, palMode: 0 off | 1 dithered | 2 flat,
  *   sprites?: {data: Float32Array(512 * 8) of x, y, z, size, r, g, b, 0 (opaque discs first, then glows), nOpaque, nGlow},
- *   view?: {gpu, model, rot} | null (drawn after a depth clear), tint?: [r, g, b] added before exposure}
+ *   view?: {gpu, model, rot} | null (drawn after a depth clear), tint?: [k, 0, 0] where k mixes the tone-mapped image toward blood red, capped at .18}
  * Missing sprites, view and tint mean none, none and zero.
  */
 export function createRenderer(gl, hdrOK, tex = bakeTextures(gl)) {

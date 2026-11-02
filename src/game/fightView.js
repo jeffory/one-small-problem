@@ -137,7 +137,8 @@ export function fillFrame(V, F, frame, t) {
     frame.view = { gpu: G[W.melee ? 'pole' : W.id], model: m, rot: rot3(m) };
   }
 
-  // 7. damage tint
+  // 7. damage tint (R17): tint[0] is how far the post pass mixes the tone-mapped image toward blood red (it caps that at .18);
+  // dead holds a mild fixed shift
   const K = frame.tint = V._tint;
-  K[0] = dead ? .25 : .35 * F.hurtT; K[1] = K[2] = 0;
+  K[0] = dead ? .12 : .18 * F.hurtT; K[1] = K[2] = 0;
 }
