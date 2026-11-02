@@ -7,11 +7,12 @@ export function checksumWorld(world) {
   if (world.plan) {
     const T = { sk: 0, fl: 1, br: 2 }, K = { tape: 0, cells: 1 }, f = [];
     for (const e of world.plan.encounters) {
-      f.push(e.x, e.z, e.p);
+      f.push(e.area, e.x, e.z, e.p);
       for (const a of e.aliens) f.push(T[a.type], a.x, a.y, a.z);
     }
-    for (const u of world.plan.pickups) f.push(K[u.kind], u.x, u.y, u.z);
-    for (const c of world.plan.canisters) f.push(c.x, c.y, c.z);
+    for (const u of world.plan.pickups) f.push(u.area, K[u.kind], u.x, u.y, u.z);
+    for (const c of world.plan.canisters) f.push(c.area, c.x, c.y, c.z);
+    for (const g of world.plan.golf) f.push(g.id, g.x, g.y, g.z);
     parts.push(new Float32Array(f));
   }
   if (world.crater) {
