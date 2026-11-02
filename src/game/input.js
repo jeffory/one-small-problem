@@ -8,12 +8,15 @@ export function createInput(canvas, player) {
   const down = (...codes) => codes.some(c => keys.has(c));
   const locked = () => document.pointerLockElement === canvas;
 
-  canvas.addEventListener('click', () => {
+  // Asks for the lock on the canvas (raw movement where the browser has it); a refusal is caught, never thrown. A click on the
+  // canvas asks, and so does the New Game button.
+  const lock = () => {
     if (locked()) return;
     const plain = () => canvas.requestPointerLock()?.catch?.(() => {});
     const raw = canvas.requestPointerLock({ unadjustedMovement: true });
     if (raw?.catch) raw.catch(plain);
-  });
+  };
+  canvas.addEventListener('click', lock);
   // Fire only counts a button pressed while already locked, so the click that captures the mouse never shoots.
   canvas.addEventListener('mousedown', e => { if (e.button === 0 && locked()) btn = true; });
   addEventListener('mouseup', e => { if (e.button === 0) btn = false; });
@@ -45,6 +48,6 @@ export function createInput(canvas, player) {
       jump: down('Space'),
       fire: btn && locked(), use: once.has('use'), weapon, wheel: Math.abs(scroll) < WHEEL ? 0 : Math.sign(scroll),
     }; once.clear(); weapon = -1; if (r.wheel) scroll = 0; return r; },
-    locked,
+    locked, lock,
   };
 }
