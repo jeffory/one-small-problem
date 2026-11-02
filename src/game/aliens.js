@@ -5,7 +5,7 @@ import { fieldDir } from './nav.js';
 import { TEAL, SICK } from './weapons.js';
 export const ALIENS = {
   sk: { hp: 30, speed: 5.5, radius: .45, sight: 35, range: 20, cool: 1.3, aimErr: .05, bolt: { speed: 13, dmg: 6, size: .18, col: TEAL },
-    lunge: 3, lungeSpeed: 9, lungeDmg: 10, gait: 2.2 },
+    lunge: 3, lungeSpeed: 9, lungeDmg: 10, gait: 2.2, bump: 1.0 },
   fl: { hp: 60, speed: 3.5, radius: .75, sight: 40, keep: [10, 20], tele: .7, cool: 2.4, aimErr: .03, bolt: { speed: 6, dmg: 18, size: .38, col: SICK } },
   br: { hp: 160, speed: 2.2, radius: .8, sight: 40, range: 25, tele: .8, cool: 2.0, recover: 1.2, fan: 5, fanSpread: .349, aimErr: .02,
     bolt: { speed: 11, dmg: 9, size: .3, col: TEAL }, claw: 2.6, clawDmg: 25, clawKnock: 8, staggerChance: .3, gait: 1.2 },
@@ -58,8 +58,10 @@ function skitterer(a, ctx, dt, d, toP) {
   const T = ALIENS.sk;
   switch (a.state) {
     case 'chase':
-      if (a.tumbleCD <= 0) for (const o of ctx.others) { // bump: the higher id of the pair tumbles
-        if (o === a || o.type !== 'sk' || o.state === 'dead' || o.tumbleCD > 0 || Math.hypot(o.x - a.x, o.z - a.z) >= .7) continue;
+      // bump: two chasing skitterers within T.bump; the higher id tumbles. T.bump must stay >= 2 * radius + .1, or separation
+      // (which holds pairs at the radius sum) keeps them from ever getting that close at high frame rates.
+      if (a.tumbleCD <= 0) for (const o of ctx.others) {
+        if (o === a || o.type !== 'sk' || o.state !== 'chase' || o.tumbleCD > 0 || Math.hypot(o.x - a.x, o.z - a.z) >= T.bump) continue;
         a.tumbleCD = o.tumbleCD = 4; go(a.id > o.id ? a : o, 'tumble'); break;
       }
       if (a.state !== 'chase') return 0;

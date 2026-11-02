@@ -35,3 +35,8 @@ test('hurt and kill: alerts, falls over, stops acting', () => { const e = enc(),
 test('aliens move at the same pace at 20, 60 and 144 fps (Review Focus 3)', () => { const d = [1 / 20, 1 / 60, 1 / 144].map(dt => {
   const a = createAlien({ type: 'sk', x: 0, y: 0, z: -20 }, 1, enc({ alerted: true, waved: true })), W = world([a]); a.state = 'chase'; sim(W, 1, dt); return Math.hypot(a.x, a.z); });
   assert.ok(Math.max(...d) - Math.min(...d) < .3, d.join()); });
+test('chasing skitterers that converge bump and tumble at 60 and 144 fps, despite separation', () => { assert.ok(ALIENS.sk.bump >= 2 * ALIENS.sk.radius + .1);
+  for (const dt of [1 / 60, 1 / 144]) { const e = enc({ alerted: true, waved: true }), a = createAlien({ type: 'sk', x: 1.5, y: 0, z: -20 }, 1, e), b = createAlien({ type: 'sk', x: -1.5, y: 0, z: -20 }, 3, e), W = world([a, b]);
+    for (const x of [a, b]) x.state = 'chase'; sim(W, 2, dt); assert.ok(W.states.get(b).has('tumble'), `dt ${dt}`); assert.ok(!W.states.get(a).has('tumble'), `dt ${dt}`); } });
+test('a bump never tumbles a mate that is not chasing', () => { const e = enc({ alerted: true, waved: true }), a = createAlien({ type: 'sk', x: 0, y: 0, z: -20 }, 1, e), b = createAlien({ type: 'sk', x: .5, y: 0, z: -20 }, 2, e), W = world([a, b]);
+  a.state = 'chase'; b.state = 'recover'; sim(W, 1 / 60); assert.notEqual(b.state, 'tumble'); assert.ok(b.tumbleCD <= 0); });
