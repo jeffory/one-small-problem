@@ -76,11 +76,17 @@ function boot() {
   // keep the lock on Esc, so this doesn't rely on the browser).
   function pause() {
     if (!pausable() || paused) return;
-    paused = true; menus.pause(true, S, HELP); document.exitPointerLock?.();
+    paused = true; menus.pause(true, S, HELP); input.unlock();
   }
   function resume() { unpause(); input.lock(); }
   function quit() { unpause(); toTitle(true); }
-  document.addEventListener('pointerlockchange', () => { if (!document.pointerLockElement && pausable() && !paused) { pause(); lockLostAt = performance.now(); } });
+  // The lock is held only while it is wanted, in play or the ending, unpaused (R6). One that arrives otherwise (a request still
+  // in flight when the game paused, finished or quit) is let go at once, so the menus' buttons take clicks (pre-flight F1);
+  // that release never pauses. Losing a wanted lock while playing pauses.
+  document.addEventListener('pointerlockchange', () => {
+    if (document.pointerLockElement) { if (!input.wanted() || paused || !pausable()) input.unlock(); }
+    else if (input.wanted() && pausable() && !paused) { pause(); lockLostAt = performance.now(); }
+  });
   addEventListener('keydown', e => {
     if (e.code !== 'Escape' || e.repeat || lost) return;
     if (!paused) pause(); else if (performance.now() - lockLostAt > 300) resume();
@@ -115,7 +121,7 @@ function boot() {
   // The title, with a fresh attract run behind it and the mouse let go (pre-flight F1). At boot the URL's seed stays, so a
   // shared link survives to New Game; Back to title clears it, so the next New Game rolls a fresh Moon.
   function toTitle(clear) {
-    stopRun(); unpause(); document.exitPointerLock?.();
+    stopRun(); unpause(); input.unlock();
     if (clear) try { history.replaceState(null, '', location.pathname + location.search); } catch {}
     startRun('attract', randomSeed());
     state = 'title';
@@ -129,7 +135,7 @@ function boot() {
     state = 'end'; unpause();
     menus.end({ time: F.time, kills: F.kills, golf: F.golf, link: shareLink(location.href, seed), seed, ...recordBest(store, seed, F.time) });
     hud.mode('none');
-    document.exitPointerLock?.();
+    input.unlock();
   }
 
   // dt seconds of the current state. Sub-steps are at most 0.05 s, and one-shot inputs (use, weapon, wheel) count on the

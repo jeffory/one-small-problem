@@ -17,3 +17,13 @@ test('mouse look accumulates while locked; look() applies it with sensitivity an
   const z = I.read(); assert.deepEqual([z.lookX, z.lookY], [0, 0]);
   const p = { yaw: 0, pitch: 0 }; look(p, 100, 50, 2, false); assert.ok(Math.abs(p.yaw + 100 * LOOK * 2) < 1e-12 && Math.abs(p.pitch + 50 * LOOK * 2) < 1e-12);
   const q = { yaw: 0, pitch: 0 }; look(q, 0, 50, 1, true); assert.ok(q.pitch > 0); look(q, 0, -1e6, 1, false); assert.equal(q.pitch, 1.5); });
+// R6: the plain fallback runs only while the lock is still wanted; a raw request refused after unlock() (late, as headless
+// Chromium does under load) never asks again, and one refused while wanted still falls back
+test('a raw pointer lock refused after unlock() never falls back to a plain request (R6)', async () => {
+  const calls = [], saved = canvas.requestPointerLock, tick = () => new Promise(r => setTimeout(r)); let refuse;
+  document.pointerLockElement = null; document.exitPointerLock = () => calls.push('exit');
+  canvas.requestPointerLock = o => { calls.push(o ? 'raw' : 'plain'); return o ? new Promise((_, no) => { refuse = no; }) : Promise.resolve(); };
+  I.lock(); assert.equal(I.wanted(), true); I.unlock(); assert.equal(I.wanted(), false); refuse(new Error('NotSupportedError')); await tick();
+  I.lock(); refuse(new Error('NotSupportedError')); await tick();
+  assert.deepEqual(calls, ['raw', 'exit', 'raw', 'plain']);
+  canvas.requestPointerLock = saved; document.pointerLockElement = canvas; });

@@ -16,13 +16,18 @@ export function createInput(canvas) {
   const locked = () => document.pointerLockElement === canvas;
 
   // Asks for the lock on the canvas (raw movement where the browser has it); a refusal is caught, never thrown. A click on the
-  // canvas asks, and so does the New Game button.
+  // canvas asks, and so do New Game and Resume. want is the intent (R6): lock() sets it and unlock() clears it. A refused raw
+  // request falls back to a plain one only while the lock is still wanted, since the refusal can come late (over a second in
+  // headless Chromium under load), after the game has paused, finished or quit.
+  let want = false;
   const lock = () => {
+    want = true;
     if (locked()) return;
-    const plain = () => canvas.requestPointerLock()?.catch?.(() => {});
+    const plain = () => { if (want) canvas.requestPointerLock()?.catch?.(() => {}); };
     const raw = canvas.requestPointerLock({ unadjustedMovement: true });
     if (raw?.catch) raw.catch(plain);
   };
+  const unlock = () => { want = false; document.exitPointerLock?.(); };
   canvas.addEventListener('click', lock);
   // Fire only counts a button pressed while already locked, so the click that captures the mouse never shoots.
   canvas.addEventListener('mousedown', e => { if (e.button === 0 && locked()) btn = true; });
@@ -54,6 +59,6 @@ export function createInput(canvas) {
       jump: down('Space'),
       fire: btn && locked(), use: once.has('use'), weapon, wheel: Math.abs(scroll) < WHEEL ? 0 : Math.sign(scroll), lookX: lx, lookY: ly,
     }; lx = ly = 0; once.clear(); weapon = -1; if (r.wheel) scroll = 0; return r; },
-    locked, lock,
+    locked, lock, unlock, wanted: () => want,
   };
 }

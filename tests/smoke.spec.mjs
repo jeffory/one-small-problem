@@ -203,3 +203,25 @@ test('the attract bot plays behind the title, starts a fresh Moon when its run e
   const s0 = (await page.evaluate(() => window.ospTest.attract())).seed; await page.evaluate(() => window.ospTest.ff(700));
   expect((await page.evaluate(() => window.ospTest.attract())).seed).not.toBe(s0); expect(await page.evaluate(() => location.hash)).toBe('');
   expect(await state(page)).toBe('title'); expect(errors).toEqual([]); });
+// R6: a pointer lock that arrives when the game doesn't want one (a request still in flight when it paused, finished or quit) is
+// released at once, so the menus' buttons take clicks (pre-flight F1). countLocks counts the locks that arrive, from a listener
+// added before the page's own (which lets go at once); askLockOn makes a click on element id ask for the lock, as a late request would.
+const countLocks = page => page.addInitScript(() => { window.LOCKS = 0; document.addEventListener('pointerlockchange', () => { if (document.pointerLockElement) window.LOCKS++; }); });
+const askLockOn = (page, id) => page.evaluate(i => document.getElementById(i).addEventListener('click', () => document.getElementById('c').requestPointerLock()?.catch?.(() => {}), { once: true }), id);
+test('a pointer lock that arrives on the end screen is released at once, so Back to title takes the click (R6)', async ({ page }) => {
+  await countLocks(page); const errors = watchErrors(page); await start(page); await page.evaluate(() => window.ospTest.finish()); await expect(page.locator('#end')).toBeVisible();
+  await askLockOn(page, 'stats'); await page.click('#stats');
+  await expect.poll(() => page.evaluate(() => window.LOCKS)).toBe(1); await expect.poll(() => page.evaluate(() => document.pointerLockElement)).toBe(null);
+  await page.click('#back'); await expect(page.locator('#title')).toBeVisible(); expect(await state(page)).toBe('title'); expect(errors).toEqual([]); });
+test('under the pause menu a raw lock refused late never falls back, and a lock that arrives is released, so Resume takes the click (R6)', async ({ page }) => {
+  // the raw request (unadjustedMovement) stays pending until the test refuses it, as headless Chromium does late under load
+  await page.addInitScript(() => { const rq = Element.prototype.requestPointerLock;
+    Element.prototype.requestPointerLock = function (o) { return o?.unadjustedMovement ? new Promise((_, no) => { window.refuseRaw = () => no(new DOMException('raw', 'NotSupportedError')); }) : rq.call(this, o); }; });
+  await countLocks(page); const errors = watchErrors(page); await start(page); await page.mouse.click(300, 300);
+  await expect.poll(() => page.evaluate(() => typeof window.refuseRaw)).toBe('function');
+  await page.keyboard.press('Escape'); await expect.poll(() => paused(page)).toBe(true);
+  await page.evaluate(() => window.refuseRaw()); await page.waitForTimeout(1000);
+  expect(await page.evaluate(() => [window.LOCKS, document.pointerLockElement])).toEqual([0, null]);
+  await askLockOn(page, 'controls'); await page.click('#controls');
+  await expect.poll(() => page.evaluate(() => window.LOCKS)).toBe(1); await expect.poll(() => page.evaluate(() => document.pointerLockElement)).toBe(null);
+  await page.click('#resume'); await expect.poll(() => paused(page)).toBe(false); expect(errors).toEqual([]); });
