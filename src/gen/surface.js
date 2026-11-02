@@ -1,6 +1,7 @@
 import { fbm2, valueNoise2 } from './noise.js';
 import { makeRng } from './rng.js';
 import { passable } from './passable.js';
+import { planFight } from './encounters.js';
 
 export const N = 512, HALF = 256, MAP_MARGIN = 24, MAX_STEP = 0.45;
 
@@ -199,6 +200,11 @@ function defaultAccept(w) {
   return passable(w.occ, N, cell(w.spawn), cell(w.rim), MAX_STEP, MAP_MARGIN);
 }
 
+export function flagSpot(world) {
+  const L = world.lander, dx = world.spawn.dx, dz = world.spawn.dz;
+  return { x: L.x - 4.5 * dz + 3 * dx, z: L.z + 4.5 * dx + 3 * dz };
+}
+
 export function generateSurface(seed, accept = defaultAccept) {
   for (let attempt = 0; attempt < 8; attempt++) {
     const rng = makeRng(attempt ? seed + '#' + attempt : seed);
@@ -207,7 +213,7 @@ export function generateSurface(seed, accept = defaultAccept) {
     const rocks = scatterRocks(rng, L, route, h, craters);
     const occ = stampOccluders(h, L, rocks);
     const world = { seed, attempt, N, half: HALF, h, occ, lander: L.lander, spawn: L.spawn, base: L.base, rim: L.rim, route, craters, rocks };
-    if (accept(world)) return world;
+    if (accept(world)) { world.plan = planFight(world); return world; }
   }
   throw new Error('no passable layout for seed ' + seed);
 }
