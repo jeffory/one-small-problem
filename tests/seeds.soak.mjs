@@ -4,7 +4,69 @@ import { generateWorld } from '../src/gen/world.js';
 import { CRATER } from '../src/gen/crater.js';
 import { budgetAt, COST, CRATER_P, CRATER_AT } from '../src/gen/encounters.js';
 import { reachMap } from '../src/gen/passable.js';
-import { generateBase, BASE, K as TILE } from '../src/gen/base.js';
+import { BASE, K as TILE } from '../src/gen/base.js';
+import { LIGHT_CAP, LEAK, BASE_SCALE } from '../src/gen/baseplan.js';
+// The base comes from generateWorld, one per seed: a layout that fails to construct or is rejected re-rolls, and that is
+// routine (pre-flight F7: printed, not gated). Only a seed that exhausts all BASE.attempts (32) attempts fails the soak,
+// because generateBase then throws (ruling R2).
+const bhist = {}; let brerolls = 0, ghDropped = 0;
+const THEME_ORDER = 'lift,hangar,lab,reactor,greenhouse,comms', inRange = (v, r) => v >= r[0] && v <= r[1];
+function checkBase(seed, B, golfSurface) {
+  const bad = (m) => { fail++; console.error(seed, 'base', m); };
+  {
+    const n = B.n, h = B.half, at = (o) => Math.round(o.z + h) * n + Math.round(o.x + h);
+    const reach = reachMap(B.floor, n, [Math.round(B.start.x + h), Math.round(B.start.z + h)], BASE.step, 0);
+    let lost = 0; for (let k = 0; k < n * n; k++) if (B.kind[k] === TILE.floor && reach[k] !== 1) lost++;
+    if (lost) bad(lost + ' floor tiles unreachable');
+    if (reach[at(B.commsDoor)] !== 1) bad('comms door unreachable');
+    if (!inRange(B.crit.length, BASE.crit) || !inRange(B.side.length, BASE.side) || !inRange(B.links.filter((l) => l.loop).length, BASE.loops)) bad('room counts');
+    if (B.crit.map((r) => B.rooms[r].theme).filter((t) => t !== 'plain').join() !== THEME_ORDER || B.side.some((r) => B.rooms[r].theme !== 'side')) bad('theme order');
+    const area = (r) => (r.x1 - r.x0) * (r.z1 - r.z0), c = B.rooms[B.crit[B.crit.length - 1]];
+    if (B.rooms.some((r) => r !== c && area(r) >= area(c))) bad('comms room not the largest');
+    if (B.spawnDoors.length < 3 || B.spawnDoors.length > 4) bad('spawn doors ' + B.spawnDoors.length);
+    for (const l of B.links) { // 3 across; the length (2 to 8) runs along whichever axis separates the two rooms (pre-flight F5)
+      const A = B.rooms[l.a], C = B.rooms[l.b], xl = A.x1 <= C.x0 || C.x1 <= A.x0, across = xl ? l.z1 - l.z0 : l.x1 - l.x0, len = xl ? l.x1 - l.x0 : l.z1 - l.z0;
+      if (across !== BASE.corridor || len < 2 || len > 8) bad(`corridor ${l.a}-${l.b} ${across} across, ${len} long`);
+    }
+    for (let i = 0; i < n; i++) if ([i, (n - 1) * n + i, i * n, i * n + n - 1].some((k) => B.kind[k] !== TILE.wall)) { bad('edge not sealed'); break; }
+    if (B.attempt > 0) brerolls++;
+    bhist[B.attempt] = (bhist[B.attempt] || 0) + 1;
+    const P = B.plan, L = B.crit.length, tile = (o) => Math.round(o.z + h) * n + Math.round(o.x + h), stand = (o, r) => B.room[tile(o)] === r && B.kind[tile(o)] === TILE.floor && reach[tile(o)] === 1;
+    if (P.encounters.length !== L - 2) bad('encounters ' + P.encounters.length);
+    P.encounters.forEach((e, i) => {
+      const k = i + 1, cost = e.aliens.reduce((s, a) => s + COST[a.type], 0);
+      if (e.room !== k || e.area !== 2) bad('encounter room ' + k);
+      if (Math.abs(e.p - (.5 + .5 * k / (L - 1))) > 1e-9) bad('base p ' + k);
+      if (cost !== Math.floor(budgetAt(e.p) * BASE_SCALE)) bad('base budget ' + k);
+      if (e.aliens.some((a) => a.type === 'br') !== (k % 2 === 0 || e.p >= .8)) bad('brute rule ' + k);
+      for (const a of e.aliens) {
+        if (!stand(a, k)) bad('alien off reachable floor, room ' + k);
+        if (a.type === 'fl' && B.ceil[tile(a)] - B.floor[tile(a)] < 4.5) bad('floater under a low ceiling, room ' + k);
+      }
+    });
+    const tapeIn = (r) => P.pickups.some((u) => u.kind === 'tape' && stand(u, r));
+    for (const r of B.side) if (!tapeIn(r)) bad('no tape in side room ' + r);
+    P.encounters.forEach((e, i) => { if (i > 0 && e.aliens.some((a) => a.type === 'br') && !tapeIn(i)) bad('no tape before brute room ' + (i + 1)); });
+    for (const q of [...P.pickups, ...P.canisters]) if (q.area !== 2 || !stand(q, B.room[tile(q)])) bad('pickup or canister off reachable floor');
+    if (P.golf.length !== 2 || P.golf.some((g, i) => g.id !== 3 + i || g.area !== 2 || !stand(g, B.side[i]))) bad('base golf');
+    if (golfSurface + P.golf.length !== 5) bad('golf balls in all');
+    // A cluster with fewer than 2 canisters is dropped by design; beds leave the greenhouse few clear tiles, so its drops are counted, not failed.
+    for (const t of ['hangar', 'reactor', 'greenhouse']) if (P.canisters.filter((c) => B.rooms[B.room[tile(c)]].theme === t).length < 2) { if (t === 'greenhouse') ghDropped++; else bad('canister cluster in ' + t); }
+    for (let k = 0; k < n * n; k++) if (B.kind[k] === TILE.floor) for (const up of [1.7, 2.4]) {
+      const x = k % n - h, z = (k - k % n) / n - h, y = B.floor[k] + up;
+      let c = 0; for (const l of B.lights) { const dx = l.x - x, dy = l.y - y, dz = l.z - z; if (dx * dx + dy * dy + dz * dz < l.r * l.r) c++; }
+      if (c > LIGHT_CAP) { bad('LIGHT_CAP exceeded ' + c); break; }
+    }
+    for (const l of B.lights) {
+      let c = Infinity;
+      for (let j = Math.max(0, Math.floor(l.z + h) - 14); j <= Math.min(n - 1, Math.floor(l.z + h) + 14); j++) for (let i = Math.max(0, Math.floor(l.x + h) - 14); i <= Math.min(n - 1, Math.floor(l.x + h) + 14); i++) {
+        if (B.kind[j * n + i] !== TILE.wall) continue;
+        const dx = Math.max(0, Math.abs(l.x - (i - h)) - .5), dz = Math.max(0, Math.abs(l.z - (j - h)) - .5); c = Math.min(c, Math.sqrt(dx * dx + dz * dz));
+      }
+      if (l.r > c + LEAK + 1e-9) { bad('lamp reaches through a wall'); break; }
+    }
+  }
+}
 const hist = {}; let rerolls = 0, fail = 0, worst = 0, worstCrater = 0, rockMin = Infinity, worstEdge = Infinity, rockMax = 0, golfAll = 0, golfRock = 0;
 for (let n = 0; n < 1000; n++) {
   const seed = 'SOAK-' + String(n).padStart(4, '0');
@@ -69,38 +131,14 @@ for (let n = 0; n < 1000; n++) {
     const C = P.canisters, gap = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
     if (C.some((c, i) => C.some((d, j) => j > i && gap(c, d) < 1.2))) bad('canisters closer than 1.2 m');
     if (C.some((c) => P.pickups.some((u) => gap(c, u) < 1))) bad('canister within 1 m of a pickup');
+    checkBase(seed, w.baseMap, P.golf.length);
     if (w.attempt > 0) rerolls++;
     hist[w.attempt] = (hist[w.attempt] || 0) + 1;
     rockMin = Math.min(rockMin, w.rocks.length); rockMax = Math.max(rockMax, w.rocks.length);
   } catch (e) { fail++; console.error(seed, e.message); }
 }
-// The base: a layout that fails to construct or is rejected re-rolls, and that is routine (pre-flight F7). Only a
-// seed that exhausts all BASE.attempts (32) attempts fails the soak, because generateBase then throws (ruling R2).
-const bhist = {}; let brerolls = 0;
-const THEME_ORDER = 'lift,hangar,lab,reactor,greenhouse,comms', inRange = (v, r) => v >= r[0] && v <= r[1];
-for (let q = 0; q < 1000; q++) {
-  const seed = 'SOAK-' + String(q).padStart(4, '0'), bad = (m) => { fail++; console.error(seed, 'base', m); };
-  try {
-    const B = generateBase(seed), n = B.n, h = B.half, at = (o) => Math.round(o.z + h) * n + Math.round(o.x + h);
-    const reach = reachMap(B.floor, n, [Math.round(B.start.x + h), Math.round(B.start.z + h)], BASE.step, 0);
-    let lost = 0; for (let k = 0; k < n * n; k++) if (B.kind[k] === TILE.floor && reach[k] !== 1) lost++;
-    if (lost) bad(lost + ' floor tiles unreachable');
-    if (reach[at(B.commsDoor)] !== 1) bad('comms door unreachable');
-    if (!inRange(B.crit.length, BASE.crit) || !inRange(B.side.length, BASE.side) || !inRange(B.links.filter((l) => l.loop).length, BASE.loops)) bad('room counts');
-    if (B.crit.map((r) => B.rooms[r].theme).filter((t) => t !== 'plain').join() !== THEME_ORDER || B.side.some((r) => B.rooms[r].theme !== 'side')) bad('theme order');
-    const area = (r) => (r.x1 - r.x0) * (r.z1 - r.z0), c = B.rooms[B.crit[B.crit.length - 1]];
-    if (B.rooms.some((r) => r !== c && area(r) >= area(c))) bad('comms room not the largest');
-    if (B.spawnDoors.length < 3 || B.spawnDoors.length > 4) bad('spawn doors ' + B.spawnDoors.length);
-    for (const l of B.links) { // 3 across; the length (2 to 8) runs along whichever axis separates the two rooms (pre-flight F5)
-      const A = B.rooms[l.a], C = B.rooms[l.b], xl = A.x1 <= C.x0 || C.x1 <= A.x0, across = xl ? l.z1 - l.z0 : l.x1 - l.x0, len = xl ? l.x1 - l.x0 : l.z1 - l.z0;
-      if (across !== BASE.corridor || len < 2 || len > 8) bad(`corridor ${l.a}-${l.b} ${across} across, ${len} long`);
-    }
-    for (let i = 0; i < n; i++) if ([i, (n - 1) * n + i, i * n, i * n + n - 1].some((k) => B.kind[k] !== TILE.wall)) { bad('edge not sealed'); break; }
-    if (B.attempt > 0) brerolls++;
-    bhist[B.attempt] = (bhist[B.attempt] || 0) + 1;
-  } catch (e) { fail++; console.error(seed, 'base', e.message); }
-}
 console.log('base attempt histogram', JSON.stringify(bhist), 'rerolls', brerolls, 'rate', brerolls / 1000);
+console.log('greenhouse canister clusters dropped', ghDropped + '/1000');
 console.log('golf balls beside a rock', golfRock + '/' + golfAll);
 const rate = rerolls / 1000;
 console.log('attempt histogram', JSON.stringify(hist), 'rerolls', rerolls, 'rate', rate);

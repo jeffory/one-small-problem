@@ -34,3 +34,33 @@ test('re-rolls run to 32 attempts, so no seed is left without a base (ruling R2)
   assert.equal(BASE.attempts, 32); const r = generateBase('APOLLO-4471', b => b.attempt >= 8); assert.ok(r.attempt >= 8 && r.attempt < BASE.attempts);
   for (const s of ['APOLLO-2428', 'EAGLE-7587', 'ORION-6034', 'CRATER-7635', 'MERCURY-5618', 'TITAN-0038']) { const b = generateBase(s); assert.equal(b.seed, s); assert.ok(b.attempt >= 8, `${s} attempt ${b.attempt}`); } });
 test('base generation is quick', () => { const t = performance.now(); for (let i = 0; i < 50; i++) generateBase('SPEED-' + i); assert.ok(performance.now() - t < 1000); });
+import { generateWorld } from '../src/gen/world.js'; import { checksumWorld } from '../src/gen/checksum.js';
+import { LIGHT, LIGHT_CAP, LEAK, BASE_SCALE } from '../src/gen/baseplan.js'; import { budgetAt, COST } from '../src/gen/encounters.js';
+const WW = generateWorld('APOLLO-4471'), M = WW.baseMap, P = M.plan, cost = e => e.aliens.reduce((s, a) => s + COST[a.type], 0);
+const tm = o => Math.round(o.z + M.half) * M.n + Math.round(o.x + M.half), rm = reachMap(M.floor, M.n, [Math.round(M.start.x + M.half), Math.round(M.start.z + M.half)], BASE.step, 0);
+const room = t => M.rooms.find(r => r.theme === t).id;
+test('one encounter per room between the lift and the comms room, p rising from .5 toward 1, scaled budgets, brutes in even rooms and late', () => {
+  const L = M.crit.length; assert.equal(P.encounters.length, L - 2);
+  P.encounters.forEach((e, i) => { const k = i + 1; assert.deepEqual([e.room, e.area, e.first], [k, 2, false]); assert.ok(Math.abs(e.p - (.5 + .5 * k / (L - 1))) < 1e-9);
+    assert.equal(cost(e), Math.floor(budgetAt(e.p) * BASE_SCALE)); assert.equal(e.aliens.some(a => a.type === 'br'), k % 2 === 0 || e.p >= .8, `room ${k}`); }); });
+test('aliens stand on reachable floor of their own room; floaters only under tall ceilings, well below them (Review Focus 3)', () => {
+  for (const e of P.encounters) for (const a of e.aliens) { const t = tm(a); assert.equal(M.room[t], e.room); assert.equal(M.kind[t], K.floor); assert.equal(rm[t], 1);
+    if (a.type === 'fl') { assert.ok(M.ceil[t] - M.floor[t] >= 4.5); assert.ok(a.y - M.floor[t] >= 1.8 && a.y - M.floor[t] <= 2.4); } else assert.equal(a.y, M.floor[t]); } });
+test('tape in every side room and before every brute room, cells in the hangar and reactor, canister clusters there and in the greenhouse', () => {
+  const n = (r, kind) => P.pickups.filter(q => q.kind === kind && M.room[tm(q)] === r).length;
+  for (const r of M.side) assert.ok(n(r, 'tape') >= 1, `side room ${r}`);
+  P.encounters.forEach((e, i) => { if (i > 0 && e.aliens.some(a => a.type === 'br')) assert.ok(n(i, 'tape') >= 1, `tape before room ${i + 1}`); });
+  assert.ok(n(room('hangar'), 'cells') >= 1 && n(room('reactor'), 'cells') >= 1);
+  for (const t of ['hangar', 'reactor', 'greenhouse']) assert.ok(P.canisters.filter(c => M.room[tm(c)] === room(t)).length >= 2, t);
+  for (const q of [...P.pickups, ...P.canisters]) { assert.equal(q.area, 2); assert.equal(rm[tm(q)], 1); } });
+test('two golf balls in the first two side rooms, reachable (Review Focus 3)', () => { assert.deepEqual(P.golf.map(g => [g.id, g.area]), [[3, 2], [4, 2]]);
+  P.golf.forEach((g, i) => { assert.equal(M.room[tm(g)], M.side[i]); assert.equal(rm[tm(g)], 1); assert.equal(g.y, M.floor[tm(g)]); }); });
+test('lamps: amber and teal pools, a pulsing core, red flicker at the spawn doors, at most LIGHT_CAP on any tile, no leak past LEAK', () => { const Ls = M.lights;
+  assert.ok(Ls.some(l => l.kind === 2 && M.room[tm(l)] === room('reactor'))); assert.ok(Ls.filter(l => l.kind === 1).length >= M.spawnDoors.length);
+  const cols = new Set(Ls.filter(l => !l.kind).map(l => l.col.join())); assert.ok(cols.has(LIGHT.amber.col.join()) && cols.has(LIGHT.teal.col.join()));
+  for (let k = 0; k < M.n * M.n; k++) if (M.kind[k] === K.floor) for (const up of [1.7, 2.4]) { const x = k % M.n - M.half, z = (k / M.n | 0) - M.half, y = M.floor[k] + up; // pre-flight F28
+    assert.ok(Ls.filter(l => Math.hypot(l.x - x, l.y - y, l.z - z) < l.r).length <= LIGHT_CAP, `tile ${x}, ${z} at +${up}`); }
+  for (const l of Ls) { let c = Infinity; for (let k = 0; k < M.n * M.n; k++) if (M.kind[k] === K.wall) { const dx = Math.max(0, Math.abs(l.x - (k % M.n - M.half)) - .5), dz = Math.max(0, Math.abs(l.z - ((k / M.n | 0) - M.half)) - .5); c = Math.min(c, Math.hypot(dx, dz)); }
+    assert.ok(l.r <= c + LEAK + 1e-9, `lamp at ${l.x}, ${l.z} reaches through a wall`); } });
+test('generateWorld carries the base, and the checksum covers it', () => { const a = generateWorld('APOLLO-4471'); assert.equal(checksumWorld(a), checksumWorld(WW));
+  a.baseMap.lights[0].r += .5; assert.notEqual(checksumWorld(a), checksumWorld(WW)); });

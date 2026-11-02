@@ -1,8 +1,10 @@
-// The one way to build a world: the surface (with its crater switchback), then the fight plan on top of it (later tasks add the base).
+// The one way to build a world: the surface (with its crater switchback), then the fight plan on top of it, then the base with its lamps and plan.
 import { generateSurface, surfaceAccept, N, HALF, MAX_STEP, MAP_MARGIN } from './surface.js';
 import { passable } from './passable.js';
 import { carveCrater } from './crater.js';
 import { planFight } from './encounters.js';
+import { generateBase } from './base.js';
+import { lightBase, planBase } from './baseplan.js';
 
 const cell = (p) => [Math.round(p.x + HALF), Math.round(p.z + HALF)];
 
@@ -15,5 +17,8 @@ function doorReachable(w) {
 export function generateWorld(seed) {
   const world = generateSurface(seed, (w) => surfaceAccept(w) && doorReachable(w));
   world.plan = planFight(world);
+  world.baseMap = generateBase(seed);
+  lightBase(world.baseMap);
+  world.baseMap.plan = planBase(world.baseMap);
   return world;
 }
