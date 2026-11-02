@@ -66,3 +66,10 @@ test('greenhouse stalk eyes glow dimly, not as bright as plasma; aliens keep the
   assert.ok(n > 0, 'greenhouse eyes');
   const eyes = Object.values(buildModels()).flatMap(m => { const o = []; for (let i = 0; i < m.mat.length; i += 4) if (m.mat[i] === LAYER.eye) o.push(m.mat[i + 2]); return o; });
   assert.ok(eyes.length && eyes.includes(Math.fround(MAT.eye[2])), 'aliens keep MAT.eye'); });
+
+test('greenhouse stalk eyes stay at least 4 cm clear of every lamp fixture, on the six seeds where they poked in (carry-over)', () => {
+  for (const seed of ['SOAK-0023', 'SOAK-0074', 'SOAK-0083', 'SOAK-0099', 'SOAK-0120', 'SOAK-0136']) {
+    const B = generateWorld(seed).baseMap, m = buildBaseMeshes(B).props, L = B.lights.filter(l => !l.kind); let g = 9;
+    for (let i = 0; i < m.pos.length; i += 3) { const k = i / 3 * 4; if (m.mat[k] !== MAT.stalkEye[0] || m.mat[k + 2] !== Math.fround(MAT.stalkEye[2])) continue;
+      for (const l of L) g = Math.min(g, Math.hypot(Math.max(0, Math.abs(m.pos[i] - l.x) - .16), Math.max(0, Math.abs(m.pos[i + 1] - l.y) - .1), Math.max(0, Math.abs(m.pos[i + 2] - l.z) - .16))); }
+    assert.ok(g >= .04, `${seed}: ${g}`); } });

@@ -88,7 +88,8 @@ export function buildBaseMeshes(B) {
       const hw = p.w / 2, hd = p.d / 2, tp = topAt(x, z, Math.max(p.w, p.d) / 2 + .1);
       box(P, x - hw + .04, y, z - hd + .04, x + hw - .04, tp - .05, z + hd - .04, MAT.crate); box(P, x - hw + .1, tp - .05, z - hd + .1, x + hw - .1, tp, z + hd - .1, MAT.soil);
       for (let k = 3 + rng.int(4); k > 0; k--) {
-        const sx = x + rng.range(-hw + .4, hw - .4), sz = z + rng.range(-hd + .4, hd - .4), h = rng.range(.8, 1.5), lx = rng.range(-.25, .25), lz = rng.range(-.25, .25);
+        const sx = x + rng.range(-hw + .4, hw - .4), sz = z + rng.range(-hd + .4, hd - .4), h0 = rng.range(.8, 1.5), lx = rng.range(-.25, .25), lz = rng.range(-.25, .25);
+        let h = h0; for (const l of B.lights) if (!l.kind && Math.abs(sx + lx - l.x) < .28 && Math.abs(sz + lz - l.z) < .28) h = Math.min(h, l.y - .27 - tp); // eye clears the fixture
         lathe(P, [sx, tp, sz], [sx + lx, tp + h, sz + lz], [[0, .05], [.5, .032], [1, .012]], 6, MAT.tent); blob(P, [sx + lx, tp + h + .05, sz + lz], [.07, .07, .07], 7, 5, MAT.stalkEye, null);
       }
     } else if (p.kind === 'dish') {

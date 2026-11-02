@@ -98,3 +98,11 @@ const descend = (dt, path) => { const F = createFight(W, 1), p = F.player, U = W
 test('the straight dive from the crater top to the door costs real health at every frame rate; the switchback costs none (R18)', () => {
   const dive = FPS3.map(dt => descend(dt, false)); assert.ok(Math.min(...dive) >= 8 && Math.max(...dive) - Math.min(...dive) <= 3, `dive cost ${dive}`);
   for (const dt of FPS3) assert.equal(descend(dt, true), 0, `${Math.round(1 / dt)} fps on the switchback`); });
+
+test('the outdoor follow cap holds only in the crater: running down a 1.2 slope launches you in area 1 but not in area 0 (carry-over)', () => {
+  const steep = x => -1.2 * Math.max(0, x - 1);
+  for (const [k, launch] of [[0, false], [1, true]]) for (const dt of [1 / 60, 1 / 144]) {
+    const F = createFight(W, k), p = F.player; F.aliens.length = F.canisters.length = 0; F.lv.ground = F._ctx.ground = steep;
+    Object.assign(p, { x: 0, z: 0, y: 0, vx: 0, vy: 0, vz: 0, kx: 0, kz: 0, yaw: -Math.PI / 2, pitch: 0, onGround: true }); let off = false;
+    for (let t = 0; t < 1.5; t += dt) { stepFight(F, { ...idle, fwd: 1, run: true }, dt); off ||= !p.onGround; }
+    assert.equal(off, launch, `area ${k} at ${Math.round(1 / dt)} fps`); assert.equal(F.area, k); } });

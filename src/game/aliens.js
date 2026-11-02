@@ -59,9 +59,12 @@ const reach = (a, ctx, r) => Math.hypot(ctx.px - a.x, ctx.pz - a.z) < r && Math.
 // Does a walker's cylinder share heights with the player's (feet to eye)?
 export const level = (a, py) => py < a.y + ALIENS[a.type].height && a.y < py + PLAYER.eye;
 
+// Indoors a muzzle that sits inside a wall fires from the alien's own centre line at the muzzle height instead.
+export function muzzleAt(a, ctx) { const m = muzzleWorld(a); return ctx.ceil && ctx.ground(m[0], m[2]) > m[1] ? [a.x, m[1], a.z] : m; }
+
 // Fire from the muzzle at the player's chest, tilted up to aimErr in a random direction; brutes fan `fan` bolts in yaw.
 function fire(a, ctx) {
-  const T = ALIENS[a.type], m = muzzleWorld(a);
+  const T = ALIENS[a.type], m = muzzleAt(a, ctx);
   let dx = ctx.px - m[0], dy = ctx.py + CHEST - m[1], dz = ctx.pz - m[2];
   const l = Math.hypot(dx, dy, dz) || 1; dx /= l; dy /= l; dz /= l;
   const h = Math.hypot(dx, dz), rx = h > 1e-9 ? dz / h : 1, rz = h > 1e-9 ? -dx / h : 0; // r: horizontal, perpendicular to d

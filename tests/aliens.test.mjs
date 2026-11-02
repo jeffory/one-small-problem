@@ -1,5 +1,5 @@
 import test from 'node:test'; import assert from 'node:assert/strict'; import { makeRng } from '../src/gen/rng.js';
-import { ALIENS, WAVE_TIME, createAlien, stepAlien, hurtAlien } from '../src/game/aliens.js'; import { muzzleWorld } from '../src/game/rigs.js'; import { PLAYER } from '../src/game/player.js'; import { tileLevel } from './helpers.mjs';
+import { ALIENS, WAVE_TIME, muzzleAt, createAlien, stepAlien, hurtAlien } from '../src/game/aliens.js'; import { muzzleWorld } from '../src/game/rigs.js'; import { PLAYER } from '../src/game/player.js'; import { tileLevel } from './helpers.mjs';
 const enc = (o = {}) => ({ x: 0, z: 0, alerted: false, waved: false, ...o });
 const world = (aliens, o = {}) => { const W = { shots: [], hits: [], states: new Map(), now: 0 }; W.ctx = { px: 0, py: 0, pz: 0, ground: () => 0, los: () => true, field: null, others: aliens, rng: makeRng('t'),
   shoot: (a, from, dir, spec) => W.shots.push({ a, from, dir, spec, t: W.ctx.now, at: muzzleWorld(a) }), melee: (a, dmg, k) => W.hits.push({ a, dmg, k, t: W.ctx.now }), now: 0, ...o }; return W; };
@@ -60,3 +60,11 @@ test('indoors a floater circling past a 1 x 1 pillar keeps its centre at least 0
     for (const dt of [1 / 20, 1 / 60, 1 / 144]) { const a = createAlien({ type: 'fl', x: 13, y: 2, z: 2 }, 1, enc({ alerted: true, waved: true })), W = world([a], { ground: L.ground, ceil: L.ceil, px: 13, pz: 13, los: () => false });
       a.state = 'hover'; let gap = 9; for (let t = 0; t < 8; t += dt) { stepAlien(a, W.ctx, dt); gap = Math.min(gap, L.gap(a.x, a.z)); }
       assert.ok(gap >= .5 && gap < ALIENS.fl.radius, `pillar ${pi} at ${Math.round(1 / dt)} fps: ${gap}`); assert.ok(a.x > pi + 1, `pillar ${pi} at ${Math.round(1 / dt)} fps: held at ${a.x}`); } } });
+
+test('indoors a muzzle inside the wall fires from the alien centre line at the muzzle height; outdoors nothing changes (carry-over)', () => {
+  for (const indoor of [true, false]) { const shots = [], a = createAlien({ type: 'br', x: 0, y: 0, z: 0 }, 1, enc({ alerted: true, waved: true }));
+    const ctx = { ground: x => (x < -.85 ? 99 : 0), ceil: indoor ? () => 9 : null, px: 0, py: 0, pz: 10, field: null, rng: makeRng('m'), others: [a], los: () => true,
+      shoot: (_, m) => shots.push(m), melee: () => {} };
+    a.state = 'aim'; a.st = ALIENS.br.tele; a.yaw = 0; stepAlien(a, ctx, 1 / 60); const m = muzzleWorld(a), want = indoor ? [a.x, m[1], a.z] : m;
+    assert.ok(m[0] < -.85, 'the rig muzzle is in the wall'); assert.equal(shots.length, ALIENS.br.fan);
+    for (const s of shots) assert.deepEqual(s, want); assert.deepEqual(muzzleAt(a, ctx), want); } });

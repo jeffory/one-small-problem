@@ -97,3 +97,8 @@ test('outdoors your feet follow falling ground at up to FALL.safe m/s; where it 
     const q = createPlayer(east, steep); for (let t = 0; t < 1.5; t += dt) { stepPlayer(q, { ...idle, fwd: 1 }, dt, steep, 1e9); assert.ok(q.onGround, `${Math.round(1 / dt)} fps: walking (5.4 m/s down) left the slope`); }
     const r = createPlayer(east, gentle); for (let t = 0; t < 1; t += dt) { stepPlayer(r, RUN, dt, gentle, 1e9); assert.ok(r.onGround); } }
   assert.ok(Math.max(...at) - Math.min(...at) < .5, `take-off points ${at}`); });
+
+test('without the follow cap your feet stay on a 1.2 slope while running at 60 and 144 fps, as in Plan 2 (carry-over)', () => {
+  const steep = x => -1.2 * Math.max(0, x - 1);
+  for (const dt of [1 / 60, 1 / 144]) { const p = createPlayer(east, steep);
+    for (let t = 0; t < 1.5; t += dt) { stepPlayer(p, RUN, dt, steep, 1e9, PLAYER.gSurface, null, Infinity); assert.ok(p.onGround, `${Math.round(1 / dt)} fps left the slope at x ${p.x}`); } } });

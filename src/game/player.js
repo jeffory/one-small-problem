@@ -42,8 +42,8 @@ export function fits(p, x, z, ground, ceil) {
 // ceil (indoors only): each axis move probes the box's leading edge (see refused), and the head stops at the lowest ceiling
 // over the box. Outdoors (ceil null) one probe on the centre line, one radius ahead, as in Plan 2. p.land is the speed (m/s down)
 // you landed at in this step, else 0. On the ground your feet follow it down a drop of at most .4 m; outdoors also at most FALL.safe
-// m/s, so running off a steep slope leaves it the same way at any frame rate (R18).
-export function stepPlayer(p, input, dt, ground, bound, g = PLAYER.gSurface, ceil = null) {
+// m/s (`follow`, Infinity for Plan 2's plain .4), so running off a steep slope leaves it the same way at any frame rate (R18).
+export function stepPlayer(p, input, dt, ground, bound, g = PLAYER.gSurface, ceil = null, follow = FALL.safe) {
   const s = Math.sin(p.yaw), c = Math.cos(p.yaw), speed = input.run ? PLAYER.run : PLAYER.walk;
   const len = Math.hypot(input.fwd, input.strafe), n0 = len > 1 ? 1 / len : 1, fwd = input.fwd * n0, str = input.strafe * n0;
   const dvx = (-s * fwd + c * str) * speed, dvz = (-c * fwd - s * str) * speed;
@@ -68,7 +68,7 @@ export function stepPlayer(p, input, dt, ground, bound, g = PLAYER.gSurface, cei
   if (ceil) { const top = lowest(ceil, p.x, p.z); if (p.y + PLAYER.head > top) { p.y = top - PLAYER.head; p.vy = Math.min(p.vy, 0); } }
   const gy = ground(p.x, p.z);
   if (p.y <= gy) { if (!p.onGround) p.land = Math.max(0, -p.vy); p.y = gy; p.vy = 0; p.onGround = true; }
-  else if (p.onGround && p.vy <= 0 && p.y - gy < (ceil ? 0.4 : Math.min(0.4, FALL.safe * dt))) { p.y = gy; p.vy = 0; }
+  else if (p.onGround && p.vy <= 0 && p.y - gy < (ceil ? 0.4 : Math.min(0.4, follow * dt))) { p.y = gy; p.vy = 0; }
   else p.onGround = false;
   if (p.onGround) { const d = Math.max(0, 1 - 6 * dt); p.kx *= d; p.kz *= d; }
 }

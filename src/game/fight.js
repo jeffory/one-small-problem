@@ -8,8 +8,8 @@ import { PLAYER, FALL, createPlayer, stepPlayer, knock, fits } from './player.js
 import { WEAPONS, MAX_CELLS, createArsenal, give, selectWeapon, cycleWeapon, coolWeapon, fireWeapon, meleeTargets } from './weapons.js';
 import { stepBolts, groundNormal } from './bolts.js';
 import { lineOfSight, createField, updateField } from './nav.js';
-import { muzzleWorld, worldSpheres } from './rigs.js';
-import { ALIENS, createAlien, stepAlien, hurtAlien, move, level } from './aliens.js';
+import { worldSpheres } from './rigs.js';
+import { ALIENS, createAlien, stepAlien, hurtAlien, move, level, muzzleAt } from './aliens.js';
 import { AREAS, AREA_TEXT, LEVEL, makeLevel, areaStart, advanceArea } from './areas.js';
 
 export const PICKUP = { tape: 25, cells: 25, pistol: 20, scatter: 16, flCells: 15, pistolDrop: .3 };
@@ -33,7 +33,7 @@ export function createFight(world, k = 0) {
     found: [], golf: 0 };
   clearDecals(F);
   const C = F._ctx = { ground: lv.ground, ceil: lv.ceil, px: 0, py: 0, pz: 0, field: F.field, rng: F.rng, others: F.aliens,
-    los: a => lineOfSight(F.lv.ground, muzzleWorld(a), [C.px, C.py + PLAYER.eye, C.pz], F.lv.ceil),
+    los: a => lineOfSight(F.lv.ground, muzzleAt(a, C), [C.px, C.py + PLAYER.eye, C.pz], F.lv.ceil),
     shoot: (a, m, d, s) => { F.bolts.push({ x: m[0], y: m[1], z: m[2], vx: d[0] * s.speed, vy: d[1] * s.speed, vz: d[2] * s.speed,
       dmg: s.dmg, r: s.size, life: 4, col: s.col, team: 1, src: a.id }); },
     melee: (a, dmg, k) => {
@@ -150,7 +150,7 @@ export function stepFight(F, input, dt) {
   F.time += dt; F.shotT += dt;
   if (F.state === 'dead') {
     F.deadT += dt;
-    stepPlayer(F.player, STILL, dt, F.lv.ground, F.lv.bound, F.gravity, F.lv.ceil);
+    stepPlayer(F.player, STILL, dt, F.lv.ground, F.lv.bound, F.gravity, F.lv.ceil, F.area === 1 ? FALL.safe : Infinity);
     flyBolts(F, dt); stepParts(F, dt); stepBooms(F, dt);
     if (F.deadT >= DEATH_TIME) restartArea(F);
     return;
@@ -172,7 +172,7 @@ export function stepFight(F, input, dt) {
   // 3. player, then the area you walked into (only the living get here: a dead body never changes area), then a hard landing's
   // cost (R18), after the area so a fatal fall over the rim restarts you at the crater top. Walking only ever advances within a
   // level (over the rim, through the comms door), so lv stays this step's level.
-  stepPlayer(p, input, dt, lv.ground, lv.bound, F.gravity, lv.ceil);
+  stepPlayer(p, input, dt, lv.ground, lv.bound, F.gravity, lv.ceil, F.area === 1 ? FALL.safe : Infinity);
   const k = advanceArea(F.world, F.area, p.x, p.z); if (k > F.area) enterArea(F, k);
   if (p.land > FALL.safe) hurtPlayer(F, FALL.dmg * (p.land - FALL.safe), 0, 0, 0, 'fall');
   // 4. distance field
