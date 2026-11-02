@@ -52,3 +52,12 @@ test('a crater restart takes away the surface canisters that were lit or shot ou
   const F = createFight(W); enterArea(F, 1); const [lit, spent, hit, ok] = F.canisters.filter(c => c.area === 0); lit.hp = 0; lit.fuse = .15; spent.hp = 0; hit.hp = 5;
   hurtPlayer(F, 999, 0, 0, 0); while (F.state === 'dead') stepFight(F, idle, 1 / 60);
   assert.deepEqual([lit, spent, hit, ok].map(c => F.canisters.includes(c)), [false, false, true, true]); assert.equal(hit.hp, 5); assert.ok(F.canisters.every(c => c.hp > 0 && !(c.fuse > 0))); });
+test('grabbing the flag from the crater adds only the flag weapon to the crater snapshot', () => {
+  const F = createFight(W); enterArea(F, 1); F.ars.cells = 25; grab(F); assert.equal(F.area, 1);
+  assert.deepEqual([F.entry.owned, F.entry.cells, F.entry.flagHeld], [[true, false, false], 0, true]);
+  hurtPlayer(F, 999, 0, 0, 0); while (F.state === 'dead') stepFight(F, idle, 1 / 60);
+  assert.deepEqual([F.ars.owned, F.ars.cells, F.flag.held], [[true, false, false], 0, true]); });
+test('a crater restart rebuilds the crater pickups once (never doubled per death) and keeps the surface golf balls you left', () => {
+  const F = createFight(W); grab(F); enterArea(F, 1); const balls = F.balls.map(b => [b.id, b.area]);
+  for (let i = 0; i < 2; i++) { hurtPlayer(F, 999, 0, 0, 0); while (F.state === 'dead') stepFight(F, idle, 1 / 60); } // pre-flight F13
+  assert.deepEqual(F.pickups.filter(q => q.area >= 1).map(q => q.kind), createFight(W, 1).pickups.map(q => q.kind)); assert.deepEqual(F.balls.map(b => [b.id, b.area]), balls); });

@@ -161,7 +161,7 @@ export function stepFight(F, input, dt) {
   if (input.wheel) cycleWeapon(A, input.wheel);
   if (input.use && F.lv.id === 'surface' && !F.flag.held && Math.hypot(p.x - F.flag.x, p.z - F.flag.z) <= GRAB) {
     give(A, 0, 0); F.flag.held = true;
-    F.entry = { owned: A.owned.slice(), cells: A.cells, flagHeld: true };
+    F.entry.owned[0] = true; F.entry.flagHeld = true; // R12: the checkpoint gains only the flag, never what you have picked up since
     F.events.push({ type: 'flag', text: WEAPONS[0].name, x: F.flag.x, y: F.flag.y, z: F.flag.z });
   }
   if (input.use && F.area === 1 && Math.hypot(p.x - U.x, p.z - U.z) <= DOOR_REACH) enterArea(F, 2);
