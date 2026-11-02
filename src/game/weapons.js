@@ -30,8 +30,8 @@ export function fireWeapon(a, eye, basis, aimPoint) {
   const w = a.cur;
   if (w < 0 || a.cool > 0) return null;
   const W = WEAPONS[w];
-  if (a.cells < W.cells) {
-    if (a.owned[0] && w !== 0) a.cur = 0;
+  if (a.cells < W.cells) { // M9: switch to the highest owned weapon the cells still pay for (the free flag pole last)
+    for (let i = WEAPONS.length; i--;) if (a.owned[i] && a.cells >= WEAPONS[i].cells) { a.cur = i; break; }
     return null;
   }
   a.cool += W.cool;

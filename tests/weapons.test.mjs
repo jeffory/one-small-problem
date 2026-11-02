@@ -22,6 +22,8 @@ test('holding fire for 2 s fires the same number of pistol shots at 20, 60 and 1
 test('idle banks at most one sub-step of cooldown, never below -0.05 (M3)', () => { const a = createArsenal(); give(a, 0, 0); give(a, 1, MAX_CELLS);
   for (let i = 0; i < 100; i++) coolWeapon(a, 1 / 144); assert.ok(a.cool >= -1 / 144 - 1e-12 && a.cool < 0); coolWeapon(a, 1); assert.ok(a.cool >= -.05);
   fireWeapon(a, eye, B, aim); assert.ok(Math.abs(a.cool - (WEAPONS[1].cool - .05)) < 1e-9); });
+test('a scattergun short of cells switches to the pistol, not the pole (M9)', () => { const a = createArsenal(); give(a, 0, 0); give(a, 1, 0); give(a, 2, 0); a.cells = WEAPONS[2].cells - 1;
+  assert.equal(a.cur, 2); assert.equal(fireWeapon(a, eye, B, aim), null); assert.equal(a.cur, 1); assert.equal(fireWeapon(a, eye, B, aim).bolts.length, 1); });
 test('weapon keys and the wheel only reach owned weapons (Review Focus 4)', () => { const a = createArsenal(); give(a, 0, 0);
   assert.equal(selectWeapon(a, 2), false); assert.equal(a.cur, 0); give(a, 2, 4); assert.equal(a.cur, 2); give(a, 0, 0); assert.equal(a.cur, 2); selectWeapon(a, 0);
   cycleWeapon(a, 1); assert.equal(a.cur, 2); cycleWeapon(a, 1); assert.equal(a.cur, 0); cycleWeapon(a, -1); assert.equal(a.cur, 2);
