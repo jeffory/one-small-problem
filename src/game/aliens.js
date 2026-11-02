@@ -3,11 +3,13 @@
 import { muzzleWorld } from './rigs.js';
 import { fieldDir } from './nav.js';
 import { TEAL, SICK } from './weapons.js';
+import { PLAYER } from './player.js';
+// radius and height: the walkers' collision cylinders (separation, and the player's in fight.js).
 export const ALIENS = {
-  sk: { hp: 30, speed: 5.5, radius: .45, sight: 35, range: 20, cool: 1.3, aimErr: .05, bolt: { speed: 13, dmg: 6, size: .18, col: TEAL },
+  sk: { hp: 30, speed: 5.5, radius: .45, height: .95, sight: 35, range: 20, cool: 1.3, aimErr: .05, bolt: { speed: 13, dmg: 6, size: .18, col: TEAL },
     lunge: 3, lungeSpeed: 9, lungeDmg: 10, gait: 2.2, bump: 1.0 },
   fl: { hp: 60, speed: 3.5, radius: .75, sight: 40, keep: [10, 20], tele: .7, cool: 2.4, aimErr: .03, bolt: { speed: 6, dmg: 18, size: .38, col: SICK } },
-  br: { hp: 160, speed: 2.2, radius: .8, sight: 40, range: 25, tele: .8, cool: 2.0, recover: 1.2, fan: 5, fanSpread: .349, aimErr: .02,
+  br: { hp: 160, speed: 2.2, radius: .8, height: 2.4, sight: 40, range: 25, tele: .8, cool: 2.0, recover: 1.2, fan: 5, fanSpread: .349, aimErr: .02,
     bolt: { speed: 11, dmg: 9, size: .3, col: TEAL }, claw: 2.6, clawDmg: 25, clawKnock: 8, staggerChance: .3, gait: 1.2 },
 };
 export const WAVE_TIME = 1.2, TUMBLE_TIME = 0.7;
@@ -27,7 +29,7 @@ export function createAlien({ type, x, y, z }, id, enc) {
 }
 
 // Horizontal move. Walkers stay on the ground and refuse (per axis, so they slide) any move that climbs more than STEP.
-function move(a, ctx, dx, dz) {
+export function move(a, ctx, dx, dz) {
   if (a.type === 'fl') { a.x += dx; a.z += dz; return Math.hypot(dx, dz); }
   let g = ctx.ground(a.x, a.z), m = 0;
   if (dx) { const h = ctx.ground(a.x + dx, a.z); if (h - g <= STEP) { a.x += dx; g = h; m += dx * dx; } }
@@ -37,6 +39,8 @@ function move(a, ctx, dx, dz) {
 const walk = (a, ctx, h, v) => { a.yaw = h; return move(a, ctx, sin(h) * v, cos(h) * v); };
 const heading = (a, ctx, toP) => { const f = ctx.field && fieldDir(ctx.field, a.x, a.z); return f ? atan2(f[0], f[1]) : toP; };
 const reach = (a, ctx, r) => Math.hypot(ctx.px - a.x, ctx.pz - a.z) < r && Math.abs(ctx.py - a.y) < REACH[a.type];
+// Does a walker's cylinder share heights with the player's (feet to eye)?
+export const level = (a, py) => py < a.y + ALIENS[a.type].height && a.y < py + PLAYER.eye;
 
 // Fire from the muzzle at the player's chest, tilted up to aimErr in a random direction; brutes fan `fan` bolts in yaw.
 function fire(a, ctx) {
@@ -70,9 +74,12 @@ function skitterer(a, ctx, dt, d, toP) {
         if (a.cool <= 0 && d < T.range && ctx.los(a)) { fire(a, ctx); a.cool = T.cool + ctx.rng.range(-.3, .3); }
         return m; }
     case 'lunge': { // committed: the dash keeps the heading it started with, so a sidestep makes it overshoot
-      const m = walk(a, ctx, a.yaw, T.lungeSpeed * dt);
+      // R16: it stops where its path first touches the player (radius sum R), never passing through, and the lunge ends there
+      const R = T.radius + PLAYER.radius, hx = sin(a.yaw), hz = cos(a.yaw), ox = ctx.px - a.x, oz = ctx.pz - a.z;
+      const s = ox * hx + oz * hz, e = ox * hz - oz * hx, gap = level(a, ctx.py) && s > 0 && e * e < R * R ? Math.max(0, s - Math.sqrt(R * R - e * e)) : 1 / 0;
+      const v = T.lungeSpeed * dt, m = walk(a, ctx, a.yaw, Math.min(v, gap));
       if (!a._bit && reach(a, ctx, T.radius + .5)) { a._bit = true; ctx.melee(a, T.lungeDmg, 4); }
-      if (a.st >= LUNGE_TIME) go(a, 'recover');
+      if (gap <= v || a.st >= LUNGE_TIME) go(a, 'recover');
       return m;
     }
     case 'recover': if (a.st >= SK_RECOVER) go(a, 'chase'); return 0;

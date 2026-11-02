@@ -1,5 +1,5 @@
 import test from 'node:test'; import assert from 'node:assert/strict'; import { makeRng } from '../src/gen/rng.js';
-import { ALIENS, WAVE_TIME, createAlien, stepAlien, hurtAlien } from '../src/game/aliens.js'; import { muzzleWorld } from '../src/game/rigs.js';
+import { ALIENS, WAVE_TIME, createAlien, stepAlien, hurtAlien } from '../src/game/aliens.js'; import { muzzleWorld } from '../src/game/rigs.js'; import { PLAYER } from '../src/game/player.js';
 const enc = (o = {}) => ({ x: 0, z: 0, alerted: false, waved: false, ...o });
 const world = (aliens, o = {}) => { const W = { shots: [], hits: [], states: new Map(), now: 0 }; W.ctx = { px: 0, py: 0, pz: 0, ground: () => 0, los: () => true, field: null, others: aliens, rng: makeRng('t'),
   shoot: (a, from, dir, spec) => W.shots.push({ a, from, dir, spec, t: W.ctx.now, at: muzzleWorld(a) }), melee: (a, dmg, k) => W.hits.push({ a, dmg, k, t: W.ctx.now }), now: 0, ...o }; return W; };
@@ -17,6 +17,10 @@ test('every shot leaves its muzzle and heads for your chest', () => { for (const
     assert.ok(Math.acos(Math.min(1, cos)) <= ALIENS[type].aimErr + (type === 'br' ? ALIENS.br.fanSpread : 0) + .01, type); } } });
 test('skitterers close in, lunge and bite once per lunge', () => { const a = createAlien({ type: 'sk', x: 0, y: 0, z: -12 }, 1, enc({ waved: true })), W = world([a]);
   sim(W, 6); assert.ok(W.hits.length >= 1); assert.ok(W.hits.every(h => h.dmg === ALIENS.sk.lungeDmg)); for (let i = 1; i < W.hits.length; i++) assert.ok(W.hits[i].t - W.hits[i - 1].t >= .4); });
+test('a lunge ends on contact: it bites once and never passes through you, at 20, 60 and 144 fps (R16)', () => { for (const dt of [1 / 20, 1 / 60, 1 / 144]) {
+  const a = createAlien({ type: 'sk', x: 0, y: 0, z: -12 }, 1, enc({ waved: true })), W = world([a]), R = ALIENS.sk.radius + PLAYER.radius; let dmin = 9, past = false;
+  for (let i = 0, n = Math.round(6 / dt); i < n; i++) { W.ctx.now += dt; stepAlien(a, W.ctx, dt); dmin = Math.min(dmin, Math.hypot(a.x, a.z)); past ||= a.z > 0; if (a.state === 'lunge') assert.ok(a.st < .4 + 1e-9); }
+  assert.ok(dmin >= R - 1e-6, `dt ${dt}: ${dmin}`); assert.ok(!past, `dt ${dt}`); assert.ok(W.hits.length >= 2, `dt ${dt}`); for (let i = 1; i < W.hits.length; i++) assert.ok(W.hits[i].t - W.hits[i - 1].t >= .4); } });
 test('bumping skitterers tumble and get pushed apart', () => { const e = enc({ alerted: true, waved: true }), a = createAlien({ type: 'sk', x: 0, y: 0, z: -20 }, 1, e), b = createAlien({ type: 'sk', x: .5, y: 0, z: -20 }, 2, e), W = world([a, b]);
   for (const x of [a, b]) x.state = 'chase'; sim(W, 1); assert.ok(W.states.get(a).has('tumble') || W.states.get(b).has('tumble')); assert.ok(Math.hypot(a.x - b.x, a.z - b.z) >= .8); });
 test('floaters hold their height and keep their distance', () => { const a = createAlien({ type: 'fl', x: 0, y: 3.5, z: -5 }, 1, enc({ waved: true })), W = world([a]);

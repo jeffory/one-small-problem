@@ -1,6 +1,6 @@
 import test from 'node:test'; import assert from 'node:assert/strict';
 import { generateSurface, sampleGround } from '../src/gen/surface.js'; import { PLAYER } from '../src/game/player.js'; import { give } from '../src/game/weapons.js';
-import { createFight, stepFight, hurtPlayer, PICKUP, DEATH_TIME } from '../src/game/fight.js'; import { ALIENS } from '../src/game/aliens.js';
+import { createFight, stepFight, hurtPlayer, PICKUP, CANISTER, DEATH_TIME } from '../src/game/fight.js'; import { ALIENS } from '../src/game/aliens.js';
 const W = generateSurface('APOLLO-4471'), idle = { fwd: 0, strafe: 0, run: false, jump: false, fire: false, use: false, weapon: -1, wheel: 0 };
 const run = (F, inp, secs, dt = 1 / 60) => { for (let t = 0; t < secs; t += dt) stepFight(F, typeof inp === 'function' ? inp(t) : inp, dt); };
 const put = (F, x, z) => { Object.assign(F.player, { x, z, y: sampleGround(W, x, z), vx: 0, vy: 0, vz: 0, kx: 0, kz: 0 }); };
@@ -33,6 +33,16 @@ test('brutes drop the scattergun; floaters drop cells', () => { const F = create
   shootAt(F, br); shootAt(F, fl); run(F, idle, 3); assert.ok(F.pickups.some(p => p.kind === 'scatter' && near(p, br, 1.5))); assert.ok(F.pickups.some(p => p.kind === 'cells' && near(p, fl, 2.5))); });
 test('duct tape heals only when you are hurt', () => { const F = createFight(W, { gravity: 3 }), t = F.pickups.find(p => p.kind === 'tape');
   put(F, t.x, t.z); stepFight(F, idle, 1 / 60); assert.ok(F.pickups.includes(t)); F.hp = 50; stepFight(F, idle, 1 / 60); assert.ok(!F.pickups.includes(t)); assert.equal(F.hp, 50 + PICKUP.tape); });
+test('walking into a brute that stands still stops you at the radius sum at 20, 60 and 144 fps (R16)', () => { for (const dt of [1 / 20, 1 / 60, 1 / 144]) {
+  const F = createFight(W, { gravity: 3 }), b = F.aliens.find(a => a.type === 'br'), R = ALIENS.br.radius + PLAYER.radius, x = b.x, z = b.z;
+  F.aliens.length = 0; F.aliens.push(b); F.canisters.length = 0; b.state = 'recover'; b.st = -99; // alone, and recovering for 100 s
+  const flat = k => { for (let s = 0; s <= 4; s += .25) if (Math.abs(sampleGround(W, x + s * Math.sin(k), z + s * Math.cos(k)) - b.y) > .3) return false; return true; };
+  const k = [0, 1, 2, 3, 4, 5, 6, 7].map(i => i * Math.PI / 4).find(flat); assert.ok(k !== undefined);
+  put(F, x + 4 * Math.sin(k), z + 4 * Math.cos(k)); face(F, x, F.player.y + PLAYER.eye, z); run(F, { ...idle, fwd: 1 }, 2, dt);
+  const d = Math.hypot(F.player.x - x, F.player.z - z); assert.ok(Math.abs(d - R) <= .05, `dt ${dt}: ${d}`); assert.equal(b.state, 'recover'); assert.deepEqual([b.x, b.z], [x, z]); } });
+test('you are pushed out of canisters, and corpses do not block (R16)', () => { const F = createFight(W, { gravity: 3 }), c = F.canisters[0], a = F.aliens[0];
+  put(F, c.x + .3, c.z); stepFight(F, idle, 1 / 60); assert.ok(Math.hypot(F.player.x - c.x, F.player.z - c.z) >= CANISTER.radius + PLAYER.radius - 1e-9);
+  assert.deepEqual([c.x, c.z], [W.plan.canisters[0].x, W.plan.canisters[0].z]); a.state = 'dead'; a._died = F.time; put(F, a.x + .2, a.z); stepFight(F, idle, 1 / 60); assert.ok(Math.hypot(F.player.x - a.x, F.player.z - a.z) < .3); });
 test('a fight replays identically from the same inputs', () => { const play = () => { const F = createFight(W, { gravity: 3 }); grab(F); give(F.ars, 1, 100); const e = F.encs[1];
   run(F, t => { face(F, e.x, F.player.y + 1.5, e.z); return { ...idle, fwd: 1, fire: Math.floor(t * 4) % 2 === 0 }; }, 20);
   return JSON.stringify([F.player.x, F.player.z, F.hp, F.kills, F.shots, F.bolts.length, F.aliens.map(a => [a.hp, a.x, a.z])]); };

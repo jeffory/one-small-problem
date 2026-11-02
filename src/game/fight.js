@@ -8,15 +8,15 @@ import { WEAPONS, MAX_CELLS, createArsenal, give, selectWeapon, cycleWeapon, coo
 import { stepBolts } from './bolts.js';
 import { lineOfSight, createField, updateField } from './nav.js';
 import { muzzleWorld, worldSpheres } from './rigs.js';
-import { createAlien, stepAlien, hurtAlien } from './aliens.js';
+import { ALIENS, createAlien, stepAlien, hurtAlien, move, level } from './aliens.js';
 
 export const PICKUP = { tape: 25, cells: 25, pistol: 20, scatter: 16, flCells: 15, pistolDrop: .3 };
 export const CANISTER = { hp: 15, radius: .45, blast: 5, dmg: 70, knock: 9, fuse: .2 };
 export const DEATH_TIME = 2.5;
 // WAKE: encounter wake radius; CORPSE: seconds a corpse lasts, the last SINK of them sinking 1 m; GRAB: flag reach;
-// REACH: pickup reach; CAN_Y: canister centre above its base.
+// REACH: pickup reach; CAN_Y: canister centre above its base; CAN_H: its height.
 const WAKE = 60, CORPSE = 8, SINK = 2, MAX_PARTS = 300, MAX_DECALS = 64, BOOM_LIFE = .6, FIELD_DT = .25, GRAB = 2.2, REACH = 1.2;
-const CAN_Y = .4, TAU = 2 * Math.PI, sqrt = Math.sqrt;
+const CAN_Y = .4, CAN_H = .9, TAU = 2 * Math.PI, sqrt = Math.sqrt;
 
 export function createFight(world, { gravity }) {
   const G = (x, z) => sampleGround(world, x, z), fs = flagSpot(world);
@@ -131,6 +131,8 @@ export function stepFight(F, input, dt) {
     const e = a.enc, dx = p.x - e.x, dz = p.z - e.z;
     if (e.alerted || dx * dx + dz * dz < WAKE * WAKE) stepAlien(a, C, dt); else a.t += dt;
   }
+  // 5b. the player can't stand inside a live walker or a canister
+  bodies(F);
   // 6. bolts, 7. deaths, 8. canisters
   flyBolts(F, dt);
   deaths(F);
@@ -142,6 +144,23 @@ export function stepFight(F, input, dt) {
   F.hurtT = Math.max(0, F.hurtT - 2 * dt);
   // 11. death check (hurtPlayer already enters death; this catches hp set directly)
   if (F.state === 'play' && F.hp <= 0) { if (F.god) F.hp = 1; else die(F); }
+}
+
+// R16: the player is pushed out of live walkers and canisters (horizontally, where their heights overlap). A push that would
+// climb more than PLAYER.stepUp, or cross the bound, shoves the walker instead (by its own climb rule); canisters never move.
+function bodies(F) {
+  const p = F.player, G = F._g, lim = HALF - MAP_MARGIN;
+  const out = (x, z, R, a) => {
+    let dx = p.x - x, dz = p.z - z; const l2 = dx * dx + dz * dz;
+    if (l2 >= R * R) return;
+    const l = sqrt(l2), d = R - l;
+    if (l > 1e-9) { dx /= l; dz /= l; } else { dx = Math.sin(p.yaw); dz = Math.cos(p.yaw); } // dead centre: back off
+    const nx = p.x + dx * d, nz = p.z + dz * d, gy = G(nx, nz);
+    if (Math.abs(nx) <= lim && Math.abs(nz) <= lim && gy - p.y <= PLAYER.stepUp) { p.x = nx; p.z = nz; p.y = Math.max(p.y, gy); }
+    else if (a) move(a, F._ctx, -dx * d, -dz * d);
+  };
+  for (const a of F.aliens) if (a.type !== 'fl' && a.state !== 'dead' && level(a, p.y)) out(a.x, a.z, ALIENS[a.type].radius + PLAYER.radius, a);
+  for (const c of F.canisters) if (p.y < c.y + CAN_H && c.y < p.y + PLAYER.eye) out(c.x, c.z, CANISTER.radius + PLAYER.radius, null);
 }
 
 function fire(F) {
