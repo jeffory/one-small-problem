@@ -1,5 +1,5 @@
-// Pure navigation: line of sight over the height field (and under the ceiling, indoors), and one windowed BFS distance field
-// from the player.
+// Pure navigation: line of sight over the height field (and under the ceiling, indoors), one windowed BFS distance field
+// from the player, and the step down a distance field.
 export const FIELD_N = 96, UNK = 65535;
 export function lineOfSight(ground, a, b, ceil = null) {
   const dx = b[0] - a[0], dy = b[1] - a[1], dz = b[2] - a[2], s = Math.ceil(Math.sqrt(dx * dx + dy * dy + dz * dz) / 0.75);
@@ -26,16 +26,22 @@ export function updateField(F, grid, N, half, px, pz, maxStep) {
     }
   }
 }
+// The step down a distance field from cell (i, j): the reached neighbour with the lowest value, as [di, dj, value], or null when
+// none is reached. get(a, b) is the field at (a, b), -1 where unreached or off the grid. A diagonal counts only if both its
+// orthogonal neighbours are reached; neighbours are scanned dj then di from -1 to 1, and a tie keeps the first.
+export function descend(get, i, j) {
+  let best = null;
+  for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) {
+    if (!di && !dj) continue; const v = get(i + di, j + dj); if (v < 0) continue;
+    if (di && dj && (get(i + di, j) < 0 || get(i, j + dj) < 0)) continue;
+    if (!best || v < best[2]) best = [di, dj, v];
+  }
+  return best;
+}
 export function fieldDir(F, x, z) {
   const n = F.n, d = F.d, i = Math.round(x + F.half) - F.ox, j = Math.round(z + F.half) - F.oz;
   if (i < 0 || j < 0 || i >= n || j >= n) return null;
   const c = d[j * n + i]; if (c === UNK || c === 0) return null;
-  const at = (a, b) => (a < 0 || b < 0 || a >= n || b >= n ? UNK : d[b * n + a]);
-  let best = UNK, bx = 0, bz = 0;
-  for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) {
-    if (!di && !dj) continue; const v = at(i + di, j + dj); if (v === UNK) continue;
-    if (di && dj && (at(i + di, j) === UNK || at(i, j + dj) === UNK)) continue;
-    if (v < best) { best = v; bx = di; bz = dj; }
-  }
-  if (best === UNK) return null; const l = Math.sqrt(bx * bx + bz * bz); return [bx / l, bz / l];
+  const b = descend((a, q) => (a < 0 || q < 0 || a >= n || q >= n || d[q * n + a] === UNK ? -1 : d[q * n + a]), i, j);
+  if (!b) return null; const l = Math.sqrt(b[0] * b[0] + b[1] * b[1]); return [b[0] / l, b[1] / l];
 }

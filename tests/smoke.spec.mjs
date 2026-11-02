@@ -194,3 +194,9 @@ test('Esc after a lost GPU context does not bring up the pause menu', async ({ p
   await start(page); await page.evaluate(() => document.getElementById('c').getContext('webgl2').getExtension('WEBGL_lose_context').loseContext());
   await expect(page.locator('#msg')).toContainText('Graphics context lost');
   await page.keyboard.press('Escape'); await page.waitForTimeout(200); await expect(page.locator('#pause')).toBeHidden(); await expect(page.locator('#msg')).toBeVisible(); });
+test('the attract bot plays behind the title, starts a fresh Moon when its run ends, and never touches the hash (Review Focus 5)', async ({ page }) => {
+  const errors = watchErrors(page); await page.goto(URLS[1][1]); await ready(page); const a = await page.evaluate(() => window.ospTest.player());
+  await expect.poll(async () => { const b = await page.evaluate(() => window.ospTest.player()); return Math.hypot(b.x - a.x, b.z - a.z); }, { timeout: 10_000 }).toBeGreaterThan(1);
+  const s0 = (await page.evaluate(() => window.ospTest.attract())).seed; await page.evaluate(() => window.ospTest.ff(700));
+  expect((await page.evaluate(() => window.ospTest.attract())).seed).not.toBe(s0); expect(await page.evaluate(() => location.hash)).toBe('');
+  expect(await state(page)).toBe('title'); expect(errors).toEqual([]); });

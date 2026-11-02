@@ -12,6 +12,7 @@ import { AREAS, areaStart } from './game/areas.js';
 import { WEAPONS } from './game/weapons.js';
 import { buildSurfaceScene } from './game/surfaceScene.js';
 import { buildBaseScene } from './game/baseScene.js';
+import { createBot, botStep } from './game/bot.js';
 import { createInput, look } from './game/input.js';
 import { createHud, HELP_TIME } from './ui/hud.js';
 import { createMenus } from './ui/menus.js';
@@ -37,7 +38,7 @@ function boot() {
   addEventListener('hashchange', () => location.reload());
 
   const { gl, hdrOK } = createGL(canvas), renderer = createRenderer(gl, hdrOK), V = createFightView(gl, { meshes: [] }), store = storage();
-  // run: the Moon on screen, {kind: 'attract' | 'play', seed, world, scene, F}. state: where the flow is (see the top).
+  // run: the Moon on screen, {kind: 'attract' | 'play', seed, world, scene, F, bot (attract only)}. state: where the flow is (see the top).
   let run = null, state = 'title';
   // S: the settings (loaded once, kept in memory even where the store refuses them). Paused: the pause menu is up, nothing
   // advances. lockLostAt: when a lost pointer lock paused the game, so the Esc that did it can't also resume it.
@@ -88,11 +89,11 @@ function boot() {
   // --- runs ---
   // The view draws the scene's meshes and lamps, and the frame takes its look.
   function useScene(scene) { setScene(V, scene); for (const k of SCENE) frame[k] = scene[k]; }
-  // A fresh Moon on the surface, at the wreck. Attract runs are immortal.
+  // A fresh Moon on the surface, at the wreck. Attract runs are immortal and played by the bot (never the opening).
   function startRun(kind, seed) {
     const world = generateWorld(seed), scene = buildSurfaceScene(gl, world), F = createFight(world);
-    if (kind === 'attract') F.god = true;
     run = { kind, seed, world, scene, F }; warpK = 0;
+    if (kind === 'attract') { F.god = true; run.bot = createBot(world, makeRng(seed + '/bot')); }
     useScene(scene);
     if (DEBUG) fp = `#${seed} ${checksumWorld(world)}`;
   }
@@ -132,12 +133,13 @@ function boot() {
   }
 
   // dt seconds of the current state. Sub-steps are at most 0.05 s, and one-shot inputs (use, weapon, wheel) count on the
-  // first only. The title steps the attract run with idle input; play and ending step yours, with flashes, status and prompt;
-  // the end screen steps nothing. A level swap is handled for whatever run is on screen, and the events are cleared here, so
-  // each call (a frame or an ff step) sees only its own (pre-flight F3).
+  // first only. The title steps the attract run with the bot's input; play and ending step yours, with flashes, status and
+  // prompt; the end screen steps nothing. A level swap is handled for whatever run is on screen, and the events are cleared
+  // here, so each call (a frame or an ff step) sees only its own (pre-flight F3). When the bot is done (the comms room, or
+  // stalled) a fresh attract Moon replaces it; the hash is never touched.
   function advance(dt, inp) {
-    const F = run.F, n = Math.max(1, Math.ceil(dt / .05)), h = dt / n, playing = state === 'play' || state === 'ending';
-    if (state === 'title') for (let k = 0; k < n; k++) stepFight(F, IDLE, h);
+    const F = run.F, B = run.bot, n = Math.max(1, Math.ceil(dt / .05)), h = dt / n, playing = state === 'play' || state === 'ending';
+    if (state === 'title') for (let k = 0; k < n && !B.done; k++) { const b = botStep(B, F, h); stepFight(F, k ? { ...b, use: false, weapon: -1, wheel: 0 } : b, h); }
     if (playing) for (let k = 0; k < n; k++) stepFight(F, k ? { ...inp, use: false, weapon: -1, wheel: 0 } : inp, h);
     for (const ev of F.events) if (ev.type === 'area' && ev.level) swap();
     if (playing) {
@@ -150,6 +152,7 @@ function boot() {
         : F.area === 1 && Math.hypot(p.x - U.x, p.z - U.z) <= DOOR_REACH ? '[E] enter the hangar' : '');
     }
     F.events.length = 0;
+    if (state === 'title' && B.done) { stopRun(); startRun('attract', randomSeed()); }
   }
 
   // --- test and debug hooks, acting on the current run ---
@@ -180,6 +183,7 @@ function boot() {
     get checksum() { return run.kind === 'play' ? checksumWorld(run.world) : null; },
     capture: () => renderer.capture(), frames: () => frames, fault: () => { fault = true; }, paused: () => paused, settings: () => ({ ...S }),
     state: () => state, play: () => newGame(), finish, ff,
+    attract: () => run.bot ? { seed: run.seed, stage: run.bot.stage, done: run.bot.done } : null,
     player: () => { const p = run.F.player; return { x: p.x, y: p.y, z: p.z }; },
     fight: () => { const F = run.F, p = F.player, s = areaStart(run.world, F.area);
       return { hp: F.hp, cells: F.ars.cells, cur: F.ars.cur, state: F.state, kills: F.kills, bolts: F.bolts.length, shots: F.shots, area: AREAS[F.area], golf: F.golf, time: F.time, atStart: Math.hypot(p.x - s.x, p.z - s.z) < 1 }; },
