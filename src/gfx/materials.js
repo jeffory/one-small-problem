@@ -10,4 +10,6 @@ export const MAT = { regolith: [0, .5, 0, 2], rock: [1, .7, 0, 1], foil: [2, 1.2
   crate: [10, 1, 0, 0], grate: [14, 1, 0, 0], pipes: [15, .5, 0, 0], amber: [16, 2, .75, 0], lamp: [9, 2, 1.2, 0], red: [17, 1, 1.5, 0], reactor: [18, .6, 1.4, 16],
   golf: [19, 4, 0, 0], soil: [0, .8, 0, 2],
   // I4: the greenhouse stalks' eyes, dim beside the aliens' (MAT.eye) and the plasma
-  stalkEye: [8, 1, .5, 8] };
+  stalkEye: [8, 1, .5, 8],
+  // R17: the crater's guide beacons, a dim teal glow
+  beacon: [9, 3, .8, 0] };

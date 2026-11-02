@@ -86,8 +86,8 @@ test('under pressure a lamp that holds you outranks 16 kept by hysteresis, and h
   p.x = x0; fillFrame(Vs, F, fr, 2 / 60); assert.ok(Vs._sel.includes(H), 'kept by hysteresis'); assert.ok(Vs._w[H] > 0);
   for (let i = 0; i < 30; i++) F.bolts.push({ x: x0 + .1 * i, y, z: p.z, vx: 1, vy: 0, vz: 0, dmg: 1, r: .2, life: 9, col: [.3, 1, .8], team: 1, src: 99 });
   fillFrame(Vs, F, fr, 3 / 60); assert.equal(fr.lights.count, 16); assert.equal(Vs._sel.length, 16 - MAX_DYN, 'plasma gets its MAX_DYN slots'); });
-test('by the hangar door a crowded surface fight gives the door lamp one slot (pre-flight F18)', () => { const F = createFight(W, 1), p = F.player, d = W.crater.door;
+test('by the hangar door a crowded surface fight ranks the door lamp first and leaves the bolts their slots (pre-flight F18, R17)', () => { const F = createFight(W, 1), p = F.player, d = W.crater.door;
   put(F, d.x + 3 * d.dx, d.z + 3 * d.dz); F.canisters.length = 0;
   for (let i = 0; i < 300; i++) F.bolts.push({ x: p.x + 1 + i, y: p.y + 1.7, z: p.z, vx: 1, vy: 0, vz: 0, dmg: 1, r: .2, life: 9, col: [.3, 1, .8], team: 1, src: 99 });
-  const fr = frame(), L = scene.lamps[0]; fillFrame(V, F, fr, 0); assert.deepEqual([...V._sel], [0]); assert.equal(fr.lights.count, 16);
-  assert.deepEqual([...fr.lights.pos.slice(0, 4)], [L.x, L.y, L.z, L.r].map(Math.fround)); assert.ok(fr.lights.pos[4 * 15] === Math.fround(p.x + 15)); }); // the lamp, then the 15 nearest bolts
+  const fr = frame(), L = scene.lamps[0]; fillFrame(V, F, fr, 0); const n = V._sel.length; assert.equal(V._sel[0], 0); assert.ok(n >= 1 && n <= 16 - MAX_DYN); assert.equal(fr.lights.count, 16);
+  assert.deepEqual([...fr.lights.pos.slice(0, 4)], [L.x, L.y, L.z, L.r].map(Math.fround)); assert.ok(fr.lights.pos[4 * 15] === Math.fround(p.x + 16 - n)); }); // the lamps (the door's first, then the nearby guides), then the nearest bolts
