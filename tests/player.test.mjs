@@ -1,7 +1,9 @@
 import test from 'node:test'; import assert from 'node:assert/strict';
-import { PLAYER, createPlayer, stepPlayer, knock } from '../src/game/player.js';
+import { PLAYER, createPlayer, stepPlayer, knock, fits } from '../src/game/player.js';
+import { tileLevel } from './helpers.mjs';
 const run = (p, inp, secs, g, dt = 1 / 60, bound = 1e9) => { for (let t = 0; t < secs; t += dt) stepPlayer(p, inp, dt, g, bound); };
 const idle = { fwd: 0, strafe: 0, run: false, jump: false }, east = { x: 0, z: 0, dx: 1, dz: 0 };
+const RUN = { fwd: 1, strafe: 0, run: true, jump: false }, FPS = [1 / 20, 1 / 60, 1 / 144];
 test('stands still on flat ground', () => { const p = createPlayer({ x: 0, z: 0, dx: 0, dz: -1 }, () => 0); run(p, idle, 1, () => 0); assert.equal(p.y, 0); assert.ok(p.onGround); });
 test('walks 4.5 m/s, runs 9 m/s toward -z at yaw 0', () => { const g = () => 0;
   const a = createPlayer({ x: 0, z: 0, dx: 0, dz: -1 }, g); run(a, { ...idle, fwd: 1 }, 1, g); assert.ok(Math.abs(a.z + 4.5) < 0.1);
@@ -38,3 +40,24 @@ test('an upward knock throws you and carries on in the air', () => { const g = (
   stepPlayer(p, idle, 1 / 60, g, 1e9); assert.equal(p.onGround, false); run(p, idle, 0.5, g); assert.ok(p.y > 0.5); assert.equal(p.kx, 4); });
 test('a knock into a wall stops at the wall', () => { const w = x => (x > 1 ? 2 : 0), p = createPlayer(east, () => 0); knock(p, 20, 0, 0); run(p, idle, 1, w);
   assert.ok(p.x <= 1.0001); assert.equal(p.kx, 0); });
+const box = (L, p) => Math.min(...[[-1, -1], [1, -1], [-1, 1], [1, 1]].map(([a, b]) => L.ceil(p.x + a * .38, p.z + b * .38)));
+test('indoors you keep clear of a convex wall corner instead of grazing it (Review Focus 5)', () => { const L = tileLevel(['#######', '#.....#', '#.....#', '#..####', '#..####', '#######']);
+  for (const dt of FPS) { const p = createPlayer({ x: 2, z: 2.3, dx: 1, dz: 0 }, L.ground); let gap = 9;
+    for (let t = 0; t < 1; t += dt) { stepPlayer(p, RUN, dt, L.ground, 1e9, 9, L.ceil); gap = Math.min(gap, L.gap(p.x, p.z)); } assert.ok(gap >= .37, `${Math.round(1 / dt)} fps: ${gap}`); } });
+test('indoors, running diagonally into a wall slides along it without sticking (Review Focus 5)', () => { const L = tileLevel(['#########', '#.......#', '#.......#', '#.......#', '#########']);
+  for (const dt of FPS) { const p = createPlayer({ x: 1.5, z: 2, dx: Math.SQRT1_2, dz: Math.SQRT1_2 }, L.ground); for (let t = 0; t < 1; t += dt) stepPlayer(p, RUN, dt, L.ground, 1e9, 9, L.ceil);
+    assert.ok(p.x >= 6.5, `${Math.round(1 / dt)} fps: x ${p.x}`); } });
+test('a blast that throws you up stops your head at the ceiling, at any frame rate (Review Focus 5)', () => { const L = tileLevel(['#####', '#...#', '#...#', '#...#', '#####'], { ceil: 3 });
+  for (const dt of FPS) { const p = createPlayer({ x: 2, z: 2, dx: 1, dz: 0 }, L.ground); knock(p, 0, 9, 0); let top = 0;
+    for (let t = 0; t < 2; t += dt) { stepPlayer(p, idle, dt, L.ground, 1e9, 9, L.ceil); top = Math.max(top, p.y + PLAYER.head); }
+    assert.ok(top <= 3 + 1e-9 && top > 2.9, `${Math.round(1 / dt)} fps: head ${top}`); assert.equal(p.onGround, true); } });
+test('thrown up beside a doorway lintel, your head never enters it, and you still walk through (Review Focus 5)', () => {
+  const L = tileLevel(['#####', '#...#', '#.l.#', '#...#', '#...#', '#####'], { ceil: 4 });
+  for (const dt of FPS) { const p = createPlayer({ x: 2, z: 1, dx: 0, dz: 1 }, L.ground); knock(p, 0, 6, 0);
+    for (let t = 0; t < 3; t += dt) { stepPlayer(p, { ...idle, fwd: 1 }, dt, L.ground, 1e9, 9, L.ceil); assert.ok(p.y + PLAYER.head <= box(L, p) + 1e-9, `${Math.round(1 / dt)} fps at z ${p.z}`); }
+    assert.ok(p.z > 3, `${Math.round(1 / dt)} fps: stuck at z ${p.z}`); } });
+test('fits: outdoors the ground at the centre is within a step; indoors all four box corners are, with headroom', () => {
+  const wall = x => (x > .5 ? 2 : 0), L = tileLevel(['#####', '#...#', '#.l.#', '#...#', '#####']), at = y => ({ y }), h = L.ceil(2, 2) - PLAYER.head;
+  assert.equal(fits(at(0), .4, 0, wall), true); assert.equal(fits(at(0), .6, 0, wall), false);
+  assert.equal(fits(at(0), 1, 1, L.ground, L.ceil), true); assert.equal(fits(at(0), .85, 1, L.ground, L.ceil), false); // a corner in the wall
+  assert.equal(fits(at(h - .05), 1.3, 1.3, L.ground, L.ceil), true); assert.equal(fits(at(h + .05), 1.3, 1.3, L.ground, L.ceil), false); }); // a corner under the lintel

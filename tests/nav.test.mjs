@@ -10,3 +10,5 @@ test('the field leads around a wall to the player', () => { const F = createFiel
 test('no direction outside the window or on unreachable cells', () => { const F = createField(); updateField(F, new Float32Array(512 * 512), 512, 256, 0, 0, 0.45);
   assert.equal(fieldDir(F, 100, 0), null); assert.equal(fieldDir(F, 0, 0), null); assert.ok(fieldDir(F, 10, 0)); });
 test('a field update is quick', () => { const F = createField(), G = new Float32Array(512 * 512), t = performance.now(); for (let i = 0; i < 100; i++) updateField(F, G, 512, 256, i, 0, 0.45); assert.ok(performance.now() - t < 300); });
+test('line of sight stops at a ceiling', () => { const lintel = x => (Math.abs(x) < .5 ? 2 : 1e9);
+  assert.equal(lineOfSight(() => 0, [-5, 3, 0], [5, 3, 0], lintel), false); assert.equal(lineOfSight(() => 0, [-5, 1.5, 0], [5, 1.5, 0], lintel), true); assert.equal(lineOfSight(() => 0, [-5, 3, 0], [5, 3, 0]), true); });

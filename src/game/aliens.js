@@ -4,11 +4,12 @@ import { muzzleWorld } from './rigs.js';
 import { fieldDir } from './nav.js';
 import { TEAL, SICK } from './weapons.js';
 import { PLAYER } from './player.js';
-// radius and height: the walkers' collision cylinders (separation, and the player's in fight.js).
+// radius and height: the walkers' collision cylinders (separation, and the player's in fight.js). A floater keeps its centre
+// at least `below` above the floor and `top` under the ceiling.
 export const ALIENS = {
   sk: { hp: 30, speed: 5.5, radius: .45, height: .95, sight: 35, range: 20, cool: 1.3, aimErr: .05, bolt: { speed: 13, dmg: 6, size: .18, col: TEAL },
     lunge: 3, lungeSpeed: 9, lungeDmg: 10, gait: 2.2, bump: 1.0 },
-  fl: { hp: 60, speed: 3.5, radius: .75, sight: 40, keep: [10, 20], tele: .7, cool: 2.4, aimErr: .03, bolt: { speed: 6, dmg: 18, size: .38, col: SICK } },
+  fl: { hp: 60, speed: 3.5, radius: .75, sight: 40, keep: [10, 20], tele: .7, cool: 2.4, aimErr: .03, bolt: { speed: 6, dmg: 18, size: .38, col: SICK }, top: 1.0, below: .8 },
   br: { hp: 160, speed: 2.2, radius: .8, height: 2.4, sight: 40, range: 25, tele: .8, cool: 2.0, recover: 1.2, fan: 5, fanSpread: .349, aimErr: .02,
     bolt: { speed: 11, dmg: 9, size: .3, col: TEAL }, claw: 2.6, clawDmg: 25, clawKnock: 8, staggerChance: .3, gait: 1.2 },
 };
@@ -31,13 +32,23 @@ export function createAlien({ type, x, y, z }, id, enc) {
 // Horizontal move. Walkers stay on the ground and refuse (per axis, so they slide) any move after which the ground at their
 // leading edge (radius R ahead) is more than STEP above the ground under their centre. That depends on where they stand, not on
 // how far one step is, so it doesn't change with frame rate, and it keeps their bodies off steep walls.
+// Floaters fly free outdoors; indoors (ctx.ceil) they refuse an axis whose leading edge has the floor within `below` of their
+// centre or the ceiling within `top` of it.
 export function move(a, ctx, dx, dz) {
-  if (a.type === 'fl') { a.x += dx; a.z += dz; return Math.hypot(dx, dz); }
+  if (a.type === 'fl') {
+    if (!ctx.ceil) { a.x += dx; a.z += dz; return Math.hypot(dx, dz); }
+    const T = ALIENS.fl, R = T.radius, lo = a.y - T.below, hi = a.y + T.top; let m = 0;
+    if (dx && clear(ctx, a.x + dx + (dx > 0 ? R : -R), a.z, lo, hi)) { a.x += dx; m += dx * dx; }
+    if (dz && clear(ctx, a.x, a.z + dz + (dz > 0 ? R : -R), lo, hi)) { a.z += dz; m += dz * dz; }
+    return Math.sqrt(m);
+  }
   const R = ALIENS[a.type].radius; let g = ctx.ground(a.x, a.z), m = 0;
   if (dx && ctx.ground(a.x + dx + (dx > 0 ? R : -R), a.z) - g <= STEP) { a.x += dx; g = ctx.ground(a.x, a.z); m += dx * dx; }
   if (dz && ctx.ground(a.x, a.z + dz + (dz > 0 ? R : -R)) - g <= STEP) { a.z += dz; g = ctx.ground(a.x, a.z); m += dz * dz; }
   a.y = g; return Math.sqrt(m);
 }
+// A floater's room at (x, z): the floor no higher than lo and the ceiling no lower than hi.
+const clear = (ctx, x, z, lo, hi) => ctx.ground(x, z) <= lo && ctx.ceil(x, z) >= hi;
 const walk = (a, ctx, h, v) => { a.yaw = h; return move(a, ctx, sin(h) * v, cos(h) * v); };
 const heading = (a, ctx, toP) => { const f = ctx.field && fieldDir(ctx.field, a.x, a.z); return f ? atan2(f[0], f[1]) : toP; };
 const reach = (a, ctx, r) => Math.hypot(ctx.px - a.x, ctx.pz - a.z) < r && Math.abs(ctx.py - a.y) < REACH[a.type];
@@ -163,7 +174,10 @@ export function stepAlien(a, ctx, dt) {
     if (a.st >= WAVE_TIME) go(a, ACTIVE[a.type]);
   } else moved += a.type === 'sk' ? skitterer(a, ctx, dt, d, toP) : fl ? floater(a, ctx, dt, dx, dz, d, toP) : brute(a, ctx, dt, d, toP);
   if (T.gait) a.gait += moved * T.gait;
-  if (fl) { const g = ctx.ground(a.x, a.z); a.y = Math.max(g + .8, ease(a.y, g + a.hover, 2 * dt)); } // never sinks into a rising slope
+  if (fl) { // never sinks into a rising slope; indoors, never rises into the ceiling
+    const g = ctx.ground(a.x, a.z), y = Math.max(g + T.below, ease(a.y, g + a.hover, 2 * dt));
+    a.y = ctx.ceil ? Math.min(ctx.ceil(a.x, a.z) - T.top, y) : y;
+  }
   // separation: live aliens at overlapping heights closer than their radii are pushed apart, half the overlap each
   for (const o of ctx.others) {
     if (o === a || o.state === 'dead') continue;

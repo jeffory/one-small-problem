@@ -1,8 +1,12 @@
-// Pure navigation: line of sight over the height field, and one windowed BFS distance field from the player.
+// Pure navigation: line of sight over the height field (and under the ceiling, indoors), and one windowed BFS distance field
+// from the player.
 export const FIELD_N = 96, UNK = 65535;
-export function lineOfSight(ground, a, b) {
+export function lineOfSight(ground, a, b, ceil = null) {
   const dx = b[0] - a[0], dy = b[1] - a[1], dz = b[2] - a[2], s = Math.ceil(Math.sqrt(dx * dx + dy * dy + dz * dz) / 0.75);
-  for (let i = 1; i < s; i++) { const f = i / s; if (ground(a[0] + dx * f, a[2] + dz * f) > a[1] + dy * f) return false; }
+  for (let i = 1; i < s; i++) {
+    const f = i / s, x = a[0] + dx * f, y = a[1] + dy * f, z = a[2] + dz * f;
+    if (ground(x, z) > y || (ceil && ceil(x, z) < y)) return false;
+  }
   return true;
 }
 export const createField = () => ({ ox: 0, oz: 0, half: 0, n: FIELD_N, d: new Uint16Array(FIELD_N * FIELD_N).fill(UNK) });

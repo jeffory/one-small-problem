@@ -1,5 +1,5 @@
 import test from 'node:test'; import assert from 'node:assert/strict'; import { makeRng } from '../src/gen/rng.js';
-import { ALIENS, WAVE_TIME, createAlien, stepAlien, hurtAlien } from '../src/game/aliens.js'; import { muzzleWorld } from '../src/game/rigs.js'; import { PLAYER } from '../src/game/player.js';
+import { ALIENS, WAVE_TIME, createAlien, stepAlien, hurtAlien } from '../src/game/aliens.js'; import { muzzleWorld } from '../src/game/rigs.js'; import { PLAYER } from '../src/game/player.js'; import { tileLevel } from './helpers.mjs';
 const enc = (o = {}) => ({ x: 0, z: 0, alerted: false, waved: false, ...o });
 const world = (aliens, o = {}) => { const W = { shots: [], hits: [], states: new Map(), now: 0 }; W.ctx = { px: 0, py: 0, pz: 0, ground: () => 0, los: () => true, field: null, others: aliens, rng: makeRng('t'),
   shoot: (a, from, dir, spec) => W.shots.push({ a, from, dir, spec, t: W.ctx.now, at: muzzleWorld(a) }), melee: (a, dmg, k) => W.hits.push({ a, dmg, k, t: W.ctx.now }), now: 0, ...o }; return W; };
@@ -51,3 +51,6 @@ test('walkers look a fixed distance ahead before climbing, so nothing scales the
     a.state = 'chase'; let top = 0; for (let t = 0; t < 6; t += dt) { stepAlien(a, W.ctx, dt); top = Math.max(top, a.y); } assert.ok(top < .6, `${type} at ${Math.round(1 / dt)} fps climbed to ${top}`); }
   const b = createAlien({ type: 'br', x: -5, y: 0, z: 0 }, 1, enc({ alerted: true, waved: true })), W = world([b], { ground: x => Math.max(0, x * .3), px: 10, los: () => false });
   b.state = 'chase'; sim(W, 4); assert.ok(b.x > 2, `a gentle ramp is still climbed: x ${b.x}`); });
+test('indoors a floater keeps under the ceiling and out of the walls', () => { const L = tileLevel(['#########', ...Array(7).fill('#.......#'), '#########'], { ceil: 4.5 });
+  const a = createAlien({ type: 'fl', x: 2, y: 3.8, z: 2 }, 1, enc({ waved: true })), W = world([a], { ground: L.ground, ceil: L.ceil, px: 6, pz: 6 });
+  stepAlien(a, W.ctx, 1 / 60); for (let t = 0; t < 8; t += 1 / 60) { stepAlien(a, W.ctx, 1 / 60); assert.ok(a.y + ALIENS.fl.top <= 4.5 + 1e-9, `y ${a.y}`); assert.ok(L.gap(a.x, a.z) >= ALIENS.fl.radius - .05, `in the wall at ${a.x}, ${a.z}`); } });

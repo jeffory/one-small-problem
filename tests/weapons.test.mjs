@@ -1,6 +1,7 @@
 import test from 'node:test'; import assert from 'node:assert/strict';
 import { WEAPONS, MAX_CELLS, createArsenal, give, selectWeapon, cycleWeapon, coolWeapon, fireWeapon, meleeTargets } from '../src/game/weapons.js';
-import { stepBolts } from '../src/game/bolts.js';
+import { stepBolts, groundNormal } from '../src/game/bolts.js';
+import { tileLevel } from './helpers.mjs';
 const B = { f: [0, 0, -1], r: [1, 0, 0], u: [0, 1, 0] }, eye = [0, 1.7, 0], aim = [0, 1.7, -50], flat = () => 0;
 const bolt = (o = {}) => ({ x: 0, y: 1, z: 0, vx: 0, vy: 0, vz: -60, dmg: 10, r: .12, life: 2, col: [1, 1, 1], team: 0, src: 0, ...o });
 test('nothing owned, nothing fires; the flag swings without cells', () => { const a = createArsenal(); assert.equal(fireWeapon(a, eye, B, aim), null);
@@ -37,3 +38,18 @@ test('bolts hit the ground, expire, and never hit their shooter', () => {
   assert.equal(h[0].t, null); assert.equal(h[0].y, 0);
   const e = [bolt({ life: 0.1 })]; stepBolts(e, 0.05, flat, []); stepBolts(e, 0.06, flat, []); assert.equal(e.length, 0);
   const s = [bolt({ src: 7 })]; assert.equal(stepBolts(s, 0.05, flat, [{ x: 0, y: 1, z: -0.5, r: .5, id: 7 }]).length, 0); });
+const r6 = v => Math.round(v * 1e6) / 1e6 + 0, fly = (b, L) => { const s = [b]; let h = []; for (let i = 0; i < 20 && !h.length; i++) h = stepBolts(s, .05, L.ground, [], L.ceil); return h[0]; };
+test('bolts stop at ceilings and wall faces and say which face they hit (Review Focus 5)', () => { const L = tileLevel(['#####', '#...#', '#...#', '#...#', '#####'], { ceil: 3 });
+  const up = fly(bolt({ x: 2, y: 1.5, z: 2, vx: 0, vy: 40, vz: 0 }), L); assert.equal(up.y, 3); assert.deepEqual(up.n.map(r6), [0, -1, 0]);
+  const side = fly(bolt({ x: 2, y: 1.5, z: 2, vx: 60, vy: 0, vz: 0 }), L); assert.ok(Math.abs(side.x - 3.5) < .01 && Math.abs(side.y - 1.5) < .01); assert.deepEqual(side.n.map(r6), [-1, 0, 0]);
+  const down = fly(bolt({ x: 2.2, y: 1.5, z: 3.3, vx: 0, vy: -40, vz: 0 }), L); assert.equal(down.y, 0); assert.deepEqual(down.n.map(r6), [0, 1, 0]);
+  const sof = fly(bolt({ x: 1, y: 3, z: 2, vx: 60, vy: 0, vz: 0 }), tileLevel(['#####', '#...#', '#.l.#', '#...#', '#####'], { ceil: 4 })); // pre-flight F15: into a lintel's soffit
+  assert.ok(Math.abs(sof.x - 1.5) < .01 && sof.y === 3, `soffit hit at ${sof.x}, ${sof.y}`); assert.deepEqual(sof.n.map(r6), [-1, 0, 0]); });
+test('groundNormal ignores a wall beside the floor but follows a slope', () => { const L = tileLevel(['#####', '#...#', '#...#', '#####']);
+  assert.deepEqual(groundNormal(L.ground, 2.2, 2.3).map(r6), [0, 1, 0]); const n = groundNormal(x => .3 * x, 0, 0); assert.ok(Math.abs(n[0] + .3 / Math.hypot(.3, 1)) < 1e-9); });
+test('a level hit is classed by what the bolt is inside: a ceiling over a ledge is no wall, a floor under a lintel no soffit', () => {
+  const ledge = x => (x >= 2.5 ? .2 : 0), cover = x => (x >= 2.5 ? 1.1 : 0), lintel = x => (x >= 2.5 ? 2.6 : 4);
+  const up = fly(bolt({ x: 1, y: 2.9, z: 0, vx: 60, vy: 0, vz: 0 }), { ground: cover, ceil: x => (x >= 2.5 ? 2.8 : 3) }); assert.equal(up.y, 3); assert.deepEqual(up.n.map(r6), [0, -1, 0]);
+  const low = fly(bolt({ x: 1, y: .1, z: 0, vx: 60, vy: 0, vz: 0 }), { ground: ledge, ceil: lintel }); assert.equal(low.y, 0); assert.ok(low.n[1] > .9, `n ${low.n}`); }); // a floor normal (the .2 m step reads as slope)
+test('a point-blank shot from a muzzle inside a wall marks the wall face on the shooter\'s side', () => { const L = tileLevel(['#######', '#.....#', '#.....#', '#######']);
+  const h = fly(bolt({ x: 5.65, y: 1.5, z: 2, vx: 60, vy: 0, vz: 0 }), L); assert.ok(Math.abs(h.x - 5.5) < .01 && h.y === 1.5, `at ${h.x}, ${h.y}`); assert.deepEqual(h.n.map(r6), [-1, 0, 0]); });
