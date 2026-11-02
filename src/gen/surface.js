@@ -183,17 +183,20 @@ export function stampOccluders(h, L, rocks) {
 
 export function sampleGround(world, x, z) { return sampleBilinear(world.occ, x, z); }
 
-export function generateSurface(seed) {
+function defaultAccept(w) {
+  const cell = (p) => [Math.round(p.x + HALF), Math.round(p.z + HALF)];
+  return passable(w.occ, N, cell(w.spawn), cell(w.rim), MAX_STEP, MAP_MARGIN);
+}
+
+export function generateSurface(seed, accept = defaultAccept) {
   for (let attempt = 0; attempt < 8; attempt++) {
     const rng = makeRng(attempt ? seed + '#' + attempt : seed);
     const L = pickLayout(rng), route = buildRoute(rng, L);
     const { h, craters } = buildHeightfield(rng, L, route);
     const rocks = scatterRocks(rng, L, route, h, craters);
     const occ = stampOccluders(h, L, rocks);
-    const cell = (p) => [Math.round(p.x + HALF), Math.round(p.z + HALF)];
-    if (passable(occ, N, cell(L.spawn), cell(L.rim), MAX_STEP, MAP_MARGIN)) {
-      return { seed, attempt, N, half: HALF, h, occ, lander: L.lander, spawn: L.spawn, base: L.base, rim: L.rim, route, craters, rocks };
-    }
+    const world = { seed, attempt, N, half: HALF, h, occ, lander: L.lander, spawn: L.spawn, base: L.base, rim: L.rim, route, craters, rocks };
+    if (accept(world)) return world;
   }
   throw new Error('no passable layout for seed ' + seed);
 }
