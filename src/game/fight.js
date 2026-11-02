@@ -288,11 +288,12 @@ function canisters(F, dt) {
 }
 
 function explode(F, c) {
-  const B = CANISTER, x = c.x, y = c.y + CAN_Y, z = c.z, p = F.player;
-  // [damage, knock x, y, z] for a point inside the blast, or null; knock points away from the canister
+  const B = CANISTER, x = c.x, y = c.y + CAN_Y, z = c.z, p = F.player, L = F.lv;
+  // [damage, knock x, y, z] for a point inside the blast, or null; knock points away from the canister. Indoors (M3) the blast only
+  // reaches what it can see, so it never hurts or sets off anything through a wall.
   const hit = (tx, ty, tz) => {
     const dx = tx - x, dy = ty - y, dz = tz - z, d = Math.hypot(dx, dy, dz);
-    if (d >= B.blast) return null;
+    if (d >= B.blast || (L.ceil && !lineOfSight(L.ground, [x, y, z], [tx, ty, tz], L.ceil))) return null;
     const k = 1 - d / B.blast, s = B.knock * k / (d || 1);
     return d > 1e-6 ? [B.dmg * k, dx * s, dy * s, dz * s] : [B.dmg * k, 0, B.knock * k, 0];
   };

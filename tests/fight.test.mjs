@@ -60,3 +60,21 @@ test('a fight replays identically from the same inputs', () => { const play = ()
   assert.equal(play(), play()); });
 test('twenty seconds of every encounter awake steps quickly', () => { const F = createFight(W); for (const e of F.encs) e.alerted = e.waved = true;
   const t = performance.now(); run(F, idle, 20); assert.ok(performance.now() - t < 1500, `${performance.now() - t} ms`); });
+import { lineOfSight } from '../src/game/nav.js'; import { K } from '../src/gen/base.js'; import { worldSpheres } from '../src/game/rigs.js';
+// M3: indoors a canister blast reaches only what it can see. Spots on walkable floor near a base canister, well inside its 5 m blast:
+// behind a wall (no sight line at any height from the blast centre; 2-4.7 m off, as a wall is 2 tiles thick) or in the open (2-3.5 m).
+const blastSpots = (F, c) => { const B = W.baseMap, o = [c.x, c.y + .4, c.z], L = F.lv, hid = [], seen = [];
+  for (let t = 0; t < B.n * B.n; t++) { if (B.kind[t] !== K.floor) continue; const x = t % B.n - B.half, z = (t / B.n | 0) - B.half, y = B.floor[t], d = Math.hypot(x - c.x, z - c.z);
+    if (d < 2 || d > 4.7) continue; const vis = [.3, .9, 1.5].map(h => lineOfSight(L.ground, o, [x, y + h, z], L.ceil));
+    if (vis.every(v => !v)) hid.push({ x, y, z, d }); else if (vis.every(v => v) && d <= 3.5) seen.push({ x, y, z, d }); }
+  return { hid: hid.sort((a, b) => a.d - b.d), seen: seen.sort((a, b) => a.d - b.d) }; };
+test('indoors a canister blast stops at walls: nothing behind one is hurt, knocked or set off; what it sees still is (M3)', () => {
+  const setup = () => { const F = createFight(W, 2), c = F.canisters.find(q => blastSpots(F, q).hid.length && blastSpots(F, q).seen.length); assert.ok(c, 'a canister with a wall near it');
+    F.canisters.length = 0; F.canisters.push(c); const a = F.aliens[0]; F.aliens.length = 0; F.aliens.push(a); a.state = 'recover'; a.st = -99; return { F, c, a, ...blastSpots(F, c) }; };
+  const boom = F => { F.canisters[0].hp = 0; run(F, idle, .3); assert.ok(F.events.some(e => e.type === 'boom')); };
+  { const { F, a, hid, seen } = setup(), h = hid[0], s = seen[0]; put(F, h.x, h.z); Object.assign(a, { x: s.x, y: s.y, z: s.z });
+    const hp = ALIENS[a.type].hp; boom(F); assert.equal(F.hp, 100, 'the player behind the wall'); assert.deepEqual([F.player.kx, F.player.kz], [0, 0]); assert.ok(a.hp < hp, 'the alien in sight'); }
+  { const { F, a, hid, seen } = setup(), h = hid[0], s = seen[0], o = { x: h.x, y: h.y, z: h.z, hp: CANISTER.hp, fuse: 0, id: -99, area: 2 };
+    put(F, s.x, s.z); Object.assign(a, { x: h.x, y: h.y, z: h.z }); F.canisters.push(o); const hp = ALIENS[a.type].hp;
+    assert.ok([.3, .9, 1.5].every(k => !lineOfSight(F.lv.ground, [F.canisters[0].x, F.canisters[0].y + .4, F.canisters[0].z], [worldSpheres(a)[0][0], h.y + k, worldSpheres(a)[0][2]], F.lv.ceil)));
+    boom(F); assert.ok(F.hp < 100, 'the player in sight'); assert.equal(a.hp, hp, 'the alien behind the wall'); assert.ok(F.canisters.includes(o) && o.hp === CANISTER.hp && !(o.fuse > 0), 'the canister behind the wall'); } });
