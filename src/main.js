@@ -68,7 +68,8 @@ function boot() {
   });
 
   // --- pause ---
-  const pausable = () => state === 'play' || state === 'ending';
+  // Never after a fatal error or a lost context: the message stays on top and nothing is left to resume.
+  const pausable = () => !lost && (state === 'play' || state === 'ending');
   function unpause() { paused = false; menus.pause(false); }
   // Esc or a lost pointer lock: the pause menu goes up, the frame keeps drawing, and the mouse is let go (headless browsers
   // keep the lock on Esc, so this doesn't rely on the browser).
@@ -80,7 +81,7 @@ function boot() {
   function quit() { unpause(); toTitle(true); }
   document.addEventListener('pointerlockchange', () => { if (!document.pointerLockElement && pausable() && !paused) { pause(); lockLostAt = performance.now(); } });
   addEventListener('keydown', e => {
-    if (e.code !== 'Escape' || e.repeat) return;
+    if (e.code !== 'Escape' || e.repeat || lost) return;
     if (!paused) pause(); else if (performance.now() - lockLostAt > 300) resume();
   });
 

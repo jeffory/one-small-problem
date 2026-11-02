@@ -29,7 +29,7 @@ h2{font-size:18px}
 #code{color:#b8ae9c;margin-right:8px}
 button{font:inherit;color:#b8ae9c;background:rgba(0,0,0,.6);border:1px solid #7a7266;padding:5px 16px;cursor:pointer}
 button:hover,button:focus-visible{border-color:#b8ae9c;outline:0}
-#msg{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;text-align:center}
+#msg{position:fixed;z-index:2;inset:0;display:flex;align-items:center;justify-content:center;text-align:center}
 </style>
 <!--BODY-->
 <canvas id="c"></canvas><div id="hud"></div><div id="seed"></div><div id="stat"></div><div id="prompt"></div><div id="flash"></div><div id="x"></div><div id="title"><h1 id="logo">ONE SMALL PROBLEM</h1><div id="mission"></div><button id="new">New Game</button></div><div id="end"><h2>MISSION REPORT</h2><div id="stats"></div><div id="share"><a id="link"></a><span id="code"></span><button id="copy">Copy</button></div><button id="back">Back to title</button></div><div id="pause"><h2>PAUSED</h2><label>Resolution<select id="res"><option value="0">180p</option><option value="1">270p</option><option value="2">360p</option><option value="3">Native</option></select></label><label>Palette<input id="pal" type="checkbox"></label><label>Volume<input id="vol" type="range" min="0" max="1" step=".1"></label><label>Mouse sensitivity<input id="sens" type="range" min=".25" max="3" step=".25"></label><label>Invert Y<input id="inv" type="checkbox"></label><div id="controls"></div><button id="resume">Resume</button><button id="quit">Quit to title</button></div><div id="msg">Loading... (needs a current desktop browser with WebGL2)</div>

@@ -186,3 +186,11 @@ test('an exception in a menu click shows the fatal message and stops the loop (R
   await page.evaluate(() => document.getElementById('new').click());
   await expect(page.locator('#msg')).toContainText('Something went wrong'); const a = await page.evaluate(() => window.ospTest.frames()); await page.waitForTimeout(300);
   expect(await page.evaluate(() => window.ospTest.frames())).toBe(a); });
+// Review fix: no pause menu over the fatal message
+test('Esc after an error in the frame loop does not bring up the pause menu', async ({ page }) => {
+  await start(page); await page.evaluate(() => window.ospTest.fault()); await expect(page.locator('#msg')).toContainText('Something went wrong');
+  await page.keyboard.press('Escape'); await page.waitForTimeout(200); await expect(page.locator('#pause')).toBeHidden(); await expect(page.locator('#msg')).toBeVisible(); });
+test('Esc after a lost GPU context does not bring up the pause menu', async ({ page }) => {
+  await start(page); await page.evaluate(() => document.getElementById('c').getContext('webgl2').getExtension('WEBGL_lose_context').loseContext());
+  await expect(page.locator('#msg')).toContainText('Graphics context lost');
+  await page.keyboard.press('Escape'); await page.waitForTimeout(200); await expect(page.locator('#pause')).toBeHidden(); await expect(page.locator('#msg')).toBeVisible(); });
