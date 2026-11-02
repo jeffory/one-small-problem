@@ -1,8 +1,10 @@
 // Keyboard (works with or without pointer lock) and pointer-lock mouse look, which turns the player directly.
-const LOOK = .0022;
+// M6: the wheel accumulates scroll (lines and pages as 40 and 800 px) and steps once per WHEEL px, at most once per read; the
+// remainder is dropped after a step, so a 100-120 px mouse notch is one step, and turning back starts over.
+const LOOK = .0022, WHEEL = 50;
 
 export function createInput(canvas, player) {
-  const keys = new Set(), once = new Set(); let btn = false, wheel = 0, weapon = -1;
+  const keys = new Set(), once = new Set(); let btn = false, scroll = 0, weapon = -1;
   const down = (...codes) => codes.some(c => keys.has(c));
   const locked = () => document.pointerLockElement === canvas;
 
@@ -15,7 +17,11 @@ export function createInput(canvas, player) {
   // Fire only counts a button pressed while already locked, so the click that captures the mouse never shoots.
   canvas.addEventListener('mousedown', e => { if (e.button === 0 && locked()) btn = true; });
   addEventListener('mouseup', e => { if (e.button === 0) btn = false; });
-  addEventListener('wheel', e => { if (locked() && e.deltaY) wheel = e.deltaY > 0 ? 1 : -1; }, { passive: true });
+  addEventListener('wheel', e => {
+    if (!locked() || !e.deltaY) return;
+    const d = e.deltaY * ([1, 40, 800][e.deltaMode] || 1);
+    scroll = scroll * d < 0 ? d : scroll + d;
+  }, { passive: true });
   document.addEventListener('mousemove', e => {
     if (!locked()) return;
     player.yaw -= e.movementX * LOOK;
@@ -36,8 +42,8 @@ export function createInput(canvas, player) {
       strafe: down('KeyD', 'ArrowRight') - down('KeyA', 'ArrowLeft'),
       run: down('ShiftLeft', 'ShiftRight'),
       jump: down('Space'),
-      fire: btn && locked(), use: once.has('use'), weapon, wheel,
-    }; once.clear(); weapon = -1; wheel = 0; return r; },
+      fire: btn && locked(), use: once.has('use'), weapon, wheel: Math.abs(scroll) < WHEEL ? 0 : Math.sign(scroll),
+    }; once.clear(); weapon = -1; if (r.wheel) scroll = 0; return r; },
     locked,
   };
 }
