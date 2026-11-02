@@ -75,7 +75,7 @@ for (let n = 0; n < 1000; n++) {
   } catch (e) { fail++; console.error(seed, e.message); }
 }
 // The base: a layout that fails to construct or is rejected re-rolls, and that is routine (pre-flight F7). Only a
-// seed that exhausts all 8 attempts fails the soak, because generateBase then throws.
+// seed that exhausts all BASE.attempts (32) attempts fails the soak, because generateBase then throws (ruling R2).
 const bhist = {}; let brerolls = 0;
 const THEME_ORDER = 'lift,hangar,lab,reactor,greenhouse,comms', inRange = (v, r) => v >= r[0] && v <= r[1];
 for (let q = 0; q < 1000; q++) {

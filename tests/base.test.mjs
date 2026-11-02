@@ -30,4 +30,7 @@ test('set pieces stand in their themed rooms; glow strips stay rare', () => { co
 test('re-roll: reseeds per attempt and throws when nothing is accepted (Review Focus 3)', () => {
   const r = generateBase('APOLLO-4471', b => b.attempt >= 2); assert.ok(r.attempt >= 2); assert.notDeepEqual(r.floor, B.floor); // pre-flight F23: attempt 2 may fail to construct
   assert.throws(() => generateBase('NOPE-0001', () => false), /no base layout for seed NOPE-0001/); });
+test('re-rolls run to 32 attempts, so no seed is left without a base (ruling R2)', () => {
+  assert.equal(BASE.attempts, 32); const r = generateBase('APOLLO-4471', b => b.attempt >= 8); assert.ok(r.attempt >= 8 && r.attempt < BASE.attempts);
+  for (const s of ['APOLLO-2428', 'EAGLE-7587', 'ORION-6034', 'CRATER-7635', 'MERCURY-5618', 'TITAN-0038']) { const b = generateBase(s); assert.equal(b.seed, s); assert.ok(b.attempt >= 8, `${s} attempt ${b.attempt}`); } });
 test('base generation is quick', () => { const t = performance.now(); for (let i = 0; i < 50; i++) generateBase('SPEED-' + i); assert.ok(performance.now() - t < 1000); });

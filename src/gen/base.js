@@ -1,10 +1,10 @@
 // The alien base: a room graph on an 8 x 8 coarse grid of 12-tile cells, laid out as 96 x 96 tiles of 1 m, each
 // with a floor and a ceiling height. Themes follow the critical path from the lift to the comms room. A layout that
-// fails to construct or is rejected re-rolls with a fresh rng, up to 8 attempts.
+// fails to construct or is rejected re-rolls with a fresh rng, up to BASE.attempts (32) attempts (ruling R2).
 import { makeRng } from './rng.js';
 import { reachMap } from './passable.js';
 
-export const BASE = { n: 96, cell: 12, grid: 8, wall: 99, step: .35, minHead: 2.6, corridor: 3, lintel: 2.7, cover: 1.1,
+export const BASE = { n: 96, cell: 12, grid: 8, wall: 99, step: .35, minHead: 2.6, corridor: 3, lintel: 2.7, cover: 1.1, attempts: 32,
   crit: [8, 12], side: [3, 5], loops: [1, 2],
   ceil: { lift: 3.5, side: 3.5, plain: [4, 5], hangar: 8, lab: 4.5, reactor: 9, greenhouse: 6, comms: 9, corridor: 3 },
   size: { lift: 6, hangar: 10, lab: 9, reactor: 10, greenhouse: 10, side: [5, 7], plain: [6, 9] } };
@@ -240,7 +240,7 @@ export function baseAccept(B) {
 }
 
 export function generateBase(seed, accept = baseAccept) {
-  for (let attempt = 0; attempt < 8; attempt++) {
+  for (let attempt = 0; attempt < BASE.attempts; attempt++) {
     const B = build(seed, attempt, makeRng(seed + '/base' + (attempt ? '#' + attempt : '')));
     if (B && accept(B)) return B;
   }
