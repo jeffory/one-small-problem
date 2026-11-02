@@ -1,0 +1,3 @@
+#version 300 es
+// Full-screen triangle from gl_VertexID; v is 0..1 across the screen.
+out vec2 v;void main(){vec2 p=vec2((gl_VertexID<<1)&2,gl_VertexID&2);v=p;gl_Position=vec4(p*2.-1.,0.,1.);}

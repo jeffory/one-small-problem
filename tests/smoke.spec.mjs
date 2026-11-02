@@ -7,3 +7,8 @@ export const ready = page => page.waitForFunction(() => window.ospTest?.ready ==
 for (const [name, url] of URLS) test(`boots from ${name}`, async ({ page }) => {
   const errors = watchErrors(page); await page.goto(url); await ready(page); expect(errors).toEqual([]);
 });
+for (const [name, url] of URLS) test(`renders a palette-true frame from ${name}`, async ({ page }) => {
+  const errors = watchErrors(page); await page.goto(url); await ready(page);
+  const s = await page.evaluate(() => window.ospTest.capture());
+  expect(s.inPalette).toBe(1); expect(s.colours).toBeGreaterThan(6); expect(s.black).toBeLessThan(0.9); expect(errors).toEqual([]);
+});
