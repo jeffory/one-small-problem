@@ -1,5 +1,5 @@
 // GPU scene for a generated surface: terrain, rocks, lander and flag, plus the shadow height texture and the sky lights.
-import { uploadMesh, createHeightTexture } from '../gfx/gl.js';
+import { uploadMesh, disposeMesh, createHeightTexture } from '../gfx/gl.js';
 import { createMesh, vtx, quadIdx, blob, finishMesh } from '../gfx/mesh.js';
 import { MAT } from '../gfx/materials.js';
 import { norm, xf, Ry, I4, I3 } from '../gfx/math.js';
@@ -25,11 +25,13 @@ export function buildSurfaceScene(gl, world) {
   buildLander(props, L.x, L.y, L.z, yaw, ground);
   buildFlag(props, L.x + f[0], L.z + f[2], ground);
 
+  const meshes = [terr, rocks, props].map(M => ({ gpu: uploadMesh(gl, finishMesh(M)), model: I4, rot: I3 })), occTex = createHeightTexture(gl, world.occ, N);
   return {
-    meshes: [terr, rocks, props].map(M => ({ gpu: uploadMesh(gl, finishMesh(M)), model: I4, rot: I3 })),
-    occTex: createHeightTexture(gl, world.occ, N),
+    sky: true, mode: 0, fog: [.010, .014, .011], fogDensity: .07, gravity: 3.0,
     sun: norm([-.43, .17, -.9]),
     earth: norm([.8 * dx, .42, .8 * dz]),
     curv: 1 / 1800,
+    meshes, occTex,
+    dispose() { meshes.forEach(m => disposeMesh(gl, m.gpu)); gl.deleteTexture(occTex); },
   };
 }

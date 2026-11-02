@@ -6,7 +6,7 @@ const BENIGN = /byte stream was erroneous according to the character encoding/i;
 export function watchErrors(page) { const e = []; page.on('pageerror', x => e.push(String(x))); page.on('console', m => m.type() === 'error' && !BENIGN.test(m.text()) && e.push(m.text())); return e; }
 export const ready = page => page.waitForFunction(() => window.ospTest?.ready === true, null, { timeout: 30_000 });
 for (const [name, url] of URLS) test(`boots from ${name}`, async ({ page }) => {
-  const errors = watchErrors(page); await page.goto(url); await ready(page); expect(errors).toEqual([]);
+  const errors = watchErrors(page); await page.goto(url); await ready(page); await page.waitForTimeout(1000); expect(errors).toEqual([]);
 });
 for (const [name, url] of URLS) test(`renders a palette-true frame from ${name}`, async ({ page }) => {
   const errors = watchErrors(page); await page.goto(url); await ready(page);
@@ -42,7 +42,19 @@ test('keyboard moves you without pointer lock (Review Focus 4)', async ({ page }
   const b = await page.evaluate(() => window.ospTest.player()); expect(Math.hypot(b.x - a.x, b.z - a.z)).toBeGreaterThan(1);
 });
 test('lost GPU context shows a reload message (Review Focus 5)', async ({ page }) => {
-  await page.goto(URLS[1][1] + '#APOLLO-4471'); await ready(page);
+  const errors = watchErrors(page); await page.goto(URLS[1][1] + '#APOLLO-4471'); await ready(page);
   await page.evaluate(() => document.getElementById('c').getContext('webgl2').getExtension('WEBGL_lose_context').loseContext());
   await expect(page.locator('#msg')).toContainText('Graphics context lost');
+  await page.waitForTimeout(500); expect(errors).toEqual([]);
 });
+test('falls back to RGBA8 without EXT_color_buffer_float', async ({ page }) => {
+  await page.addInitScript(() => { const g = WebGL2RenderingContext.prototype.getExtension;
+    WebGL2RenderingContext.prototype.getExtension = function (n) { return n === 'EXT_color_buffer_float' ? null : g.call(this, n); }; });
+  const errors = watchErrors(page); await page.goto(URLS[1][1] + '#APOLLO-4471'); await ready(page);
+  const [hdr, s] = await page.evaluate(() => [window.ospTest.hdr, window.ospTest.capture()]);
+  expect(hdr).toBe(false); expect(s.inPalette).toBe(1); expect(s.colours).toBeGreaterThan(8); expect(errors).toEqual([]); });
+test('an error inside the frame loop shows a message and stops the loop', async ({ page }) => {
+  const errors = watchErrors(page); await page.goto(URLS[1][1] + '#APOLLO-4471'); await ready(page);
+  await page.evaluate(() => window.ospTest.fault()); await expect(page.locator('#msg')).toContainText('Something went wrong');
+  const a = await page.evaluate(() => window.ospTest.frames()); await page.waitForTimeout(300);
+  expect(await page.evaluate(() => window.ospTest.frames())).toBe(a); expect(errors.some(e => /test fault/.test(e))).toBe(true); });

@@ -29,16 +29,20 @@ export function compileProgram(gl, vs, fs, defines = {}) {
 
 // data = finishMesh() output {pos, nrm, mat, idx}; attribute locations 0 = pos, 1 = nrm, 2 = mat.
 export function uploadMesh(gl, data) {
-  const vao = gl.createVertexArray();
+  const vao = gl.createVertexArray(), bufs = [];
   gl.bindVertexArray(vao);
   [[data.pos, 3], [data.nrm, 3], [data.mat, 4]].forEach(([d, size], loc) => {
-    gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer()); gl.bufferData(gl.ARRAY_BUFFER, d, gl.STATIC_DRAW);
+    const b = gl.createBuffer(); bufs.push(b);
+    gl.bindBuffer(gl.ARRAY_BUFFER, b); gl.bufferData(gl.ARRAY_BUFFER, d, gl.STATIC_DRAW);
     gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, size, gl.FLOAT, false, 0, 0);
   });
-  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, gl.createBuffer()); gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, data.idx, gl.STATIC_DRAW);
+  const ib = gl.createBuffer(); bufs.push(ib);
+  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ib); gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, data.idx, gl.STATIC_DRAW);
   gl.bindVertexArray(null);
-  return { vao, count: data.idx.length };
+  return { vao, count: data.idx.length, bufs };
 }
+
+export function disposeMesh(gl, gpu) { gpu.bufs.forEach(b => gl.deleteBuffer(b)); gl.deleteVertexArray(gpu.vao); }
 
 // n x n heights (row-major, z rows) as R16F, LINEAR, CLAMP_TO_EDGE: the world shader marches sun rays through it.
 export function createHeightTexture(gl, f32, n) {
