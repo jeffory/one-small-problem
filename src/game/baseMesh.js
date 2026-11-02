@@ -59,7 +59,11 @@ export function buildBaseMeshes(B) {
     const { x, y, z } = p;
     if (p.kind === 'lift') {
       lathe(P, [x, y, z], [x, y + .04, z], [[0, 1.5], [1, 1.5]], 20, MAT.grate);
-      for (let k = 0; k < 4; k++) { const a = Math.PI / 4 + k * Math.PI / 2, px = x + Math.cos(a) * 1.7, pz = z + Math.sin(a) * 1.7; beam(P, [px, y, pz], [px, y + 3.2, pz], .07, MAT.pipes); }
+      // M4: a floor-to-ceiling pipe centred on each concave room corner, so only a .09 m square shows and no body reaches it; a
+      // corner the doorway runs into is a straight wall there, so it gets none.
+      const r = rooms[room[tileOf(x, z)]];
+      for (const [ci, cj, oi, oj] of [[r.x0, r.z0, -1, -1], [r.x1 - 1, r.z0, 1, -1], [r.x0, r.z1 - 1, -1, 1], [r.x1 - 1, r.z1 - 1, 1, 1]])
+        if (!open(ci + oi, cj) && !open(ci, cj + oj)) beam(P, [ci + oi / 2 - half, y, cj + oj / 2 - half], [ci + oi / 2 - half, r.ceil, cj + oj / 2 - half], .09, MAT.pipes);
     } else if (p.kind === 'saucer') { // R4: 4 m wide, matching its footprint
       lathe(P, [x, y + .5, z], [x, y + 1.5, z], [[0, .7], [.2, 1.7], [.45, 2], [.65, 1.75], [.85, 1], [1, .5]], 24, MAT.hull);
       blob(P, [x, y + 1.4, z], [.65, .5, .65], 14, 8, MAT.glass, null);
@@ -84,7 +88,7 @@ export function buildBaseMeshes(B) {
       const hw = p.w / 2, hd = p.d / 2, tp = topAt(x, z, Math.max(p.w, p.d) / 2 + .1);
       box(P, x - hw + .04, y, z - hd + .04, x + hw - .04, tp - .05, z + hd - .04, MAT.crate); box(P, x - hw + .1, tp - .05, z - hd + .1, x + hw - .1, tp, z + hd - .1, MAT.soil);
       for (let k = 3 + rng.int(4); k > 0; k--) {
-        const sx = x + rng.range(-hw + .3, hw - .3), sz = z + rng.range(-hd + .3, hd - .3), h = rng.range(.8, 1.5), lx = rng.range(-.25, .25), lz = rng.range(-.25, .25);
+        const sx = x + rng.range(-hw + .4, hw - .4), sz = z + rng.range(-hd + .4, hd - .4), h = rng.range(.8, 1.5), lx = rng.range(-.25, .25), lz = rng.range(-.25, .25);
         lathe(P, [sx, tp, sz], [sx + lx, tp + h, sz + lz], [[0, .05], [.5, .032], [1, .012]], 6, MAT.tent); blob(P, [sx + lx, tp + h + .05, sz + lz], [.07, .07, .07], 7, 5, MAT.eye, null);
       }
     } else if (p.kind === 'dish') {

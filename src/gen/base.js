@@ -178,9 +178,10 @@ function build(seed, attempt, rng) {
       if (!feature(r, [[2, 2]], true, K.prop, 2.4, 'jarRover') || !feature(r, [[2, 2]], true, K.prop, 2.4, 'jarProbe')) return null;
       for (let k = 2 + rng.int(3); k > 0; k--) feature(r, [[1, 1]], false, K.prop, 1.8, 'jar');
     } else if (th === 'greenhouse') {
+      // M4: beds stand as tall as cover, so nobody jumps onto one and walks through its stalks.
       const beds = 2 + rng.int(3);
-      if (!feature(r, BED, true, K.prop, .5, 'bed')) return null;
-      for (let k = 1; k < beds; k++) feature(r, BED, false, K.prop, .5, 'bed');
+      if (!feature(r, BED, true, K.prop, BASE.cover, 'bed')) return null;
+      for (let k = 1; k < beds; k++) feature(r, BED, false, K.prop, BASE.cover, 'bed');
     } else if (th === 'plain') {
       if (w >= 7 && h >= 7 && rng.next() < .4) { const lift = rng.next() < .5 ? .3 : -.3; band(r, 2, (t) => { floor[t] = lift; }); }
       if (w >= 8 && h >= 8) for (let k = 0; k < 2; k++) feature(r, [[1, 1]], false, K.wall, 0);

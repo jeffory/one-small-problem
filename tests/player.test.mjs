@@ -61,7 +61,8 @@ test('fits: outdoors the ground at the centre is within a step; indoors all four
   assert.equal(fits(at(0), .4, 0, wall), true); assert.equal(fits(at(0), .6, 0, wall), false);
   assert.equal(fits(at(0), 1, 1, L.ground, L.ceil), true); assert.equal(fits(at(0), .85, 1, L.ground, L.ceil), false); // a corner in the wall
   assert.equal(fits(at(h - .05), 1.3, 1.3, L.ground, L.ceil), true); assert.equal(fits(at(h + .05), 1.3, 1.3, L.ground, L.ceil), false); }); // a corner under the lintel
-// A 0.5 m bed row (z 4.5..5.5, the greenhouse bed height): jump beside it, drift toward it, land with a box corner over it.
+// A 0.5 m bed row (z 4.5..5.5; greenhouse beds were this low until M4 raised them to BASE.cover): jump beside it, drift toward it,
+// land with a box corner over it.
 const bedLevel = (end = 40) => { const ground = (x, z) => (Math.round(z) === 5 && x > -1 ? (x < end ? .5 : 99) : Math.round(z) >= 7 || Math.round(z) <= 0 ? 99 : 0);
   return { ground, ceil: (x, z) => (ground(x, z) >= 99 ? 0 : 4) }; };
 test('landing with a box corner over a low bed never stops you running along it, and pushing in never climbs it (R6)', () => { const B = bedLevel();

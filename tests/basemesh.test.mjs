@@ -30,3 +30,31 @@ test('the parked saucer is 4 m wide and its rim never overhangs a walkable tile'
   assert.ok(rim > 1.95 && rim < 2.05, `rim ${rim}`);
   for (let k = 0; k < M.n * M.n; k++) { if (M.kind[k] !== K.floor && M.kind[k] !== K.cover) continue;
     const x = k % M.n - M.half - s.x, z = (k / M.n | 0) - M.half - s.z; if (Math.abs(x) < 4 && Math.abs(z) < 4) assert.ok(Math.max(Math.abs(x), Math.abs(z)) - .5 >= 0 && Math.hypot(Math.max(0, Math.abs(x) - .5), Math.max(0, Math.abs(z) - .5)) >= rim - 1e-3, `overhangs tile ${k}`); } });
+// M4: props with no collision stand where nobody can be. The lift's pipes stand in the room's concave corners; a body that fits
+// anywhere in the lift (all four box corners clear, as player.fits checks) keeps its radius clear of every pipe face.
+import { PLAYER, fits, createPlayer, stepPlayer } from '../src/game/player.js'; import { makeLevel, GRAVITY } from '../src/game/areas.js';
+const WM = generateWorld('APOLLO-4471'), LB = makeLevel(WM, 'base');
+const segD = (px, pz, ax, az, bx, bz) => { const ex = bx - ax, ez = bz - az, l = ex * ex + ez * ez, t = l ? Math.max(0, Math.min(1, ((px - ax) * ex + (pz - az) * ez) / l)) : 0; return Math.hypot(px - ax - ex * t, pz - az - ez * t); };
+test('the lift pipes stand flush in the lift room corners, so nobody standing in the lift overlaps one (M4)', () => {
+  const r = M.rooms[0], x0 = r.x0 - .5 - M.half, x1 = r.x1 - .5 - M.half, z0 = r.z0 - .5 - M.half, z1 = r.z1 - .5 - M.half, segs = [];
+  // the pipe faces in the lift reaching below 2.4 m (lamp drops hang higher), as horizontal segments
+  for (let i = 0; i < props.idx.length; i += 3) { const v = [0, 1, 2].map(k => props.idx[i + k] * 3), P = v.map(a => [props.pos[a], props.pos[a + 1], props.pos[a + 2]]);
+    if (props.mat[props.idx[i] * 4] !== LAYER.pipes || Math.min(...P.map(p => p[1])) > 2.4) continue;
+    if (P.some(p => p[0] < x0 - .2 || p[0] > x1 + .2 || p[2] < z0 - .2 || p[2] > z1 + .2)) continue;
+    for (let k = 0; k < 3; k++) segs.push([P[k][0], P[k][2], P[(k + 1) % 3][0], P[(k + 1) % 3][2]]); }
+  assert.ok(segs.length >= 3 * 12, 'pipes in the lift');
+  for (const s of segs) for (const [ax, az] of [[s[0], s[1]], [s[2], s[3]]]) assert.ok(Math.min(Math.hypot(ax - x0, az - z0), Math.hypot(ax - x0, az - z1), Math.hypot(ax - x1, az - z0), Math.hypot(ax - x1, az - z1)) < .15, `pipe at ${ax}, ${az} is not in a corner`);
+  for (let x = x0; x <= x1; x += .05) for (let z = z0; z <= z1; z += .05) { if (!fits({ y: 0 }, x, z, LB.ground, LB.ceil)) continue;
+    for (const s of segs) assert.ok(segD(x, z, ...s) >= PLAYER.radius - 1e-9, `a body at ${x.toFixed(2)}, ${z.toFixed(2)} overlaps a pipe`); } });
+test('greenhouse beds are too tall to jump onto at any frame rate, and their stalks grow only over the bed (M4)', () => {
+  // every stalk and eye vertex in the greenhouse stands 2 cm or more inside a bed (SOAK-0944's stalks used to lean past the edge)
+  for (const B of [M, generateWorld('SOAK-0944').baseMap]) { const gh = B.rooms.find(q => q.theme === 'greenhouse'), P = B === M ? props : buildBaseMeshes(B).props;
+    const onBed = (x, z) => { const t = Math.round(z + B.half) * B.n + Math.round(x + B.half); return B.room[t] === gh.id && B.kind[t] === K.prop; };
+    for (let i = 0; i < P.pos.length; i += 3) { const x = P.pos[i], z = P.pos[i + 2], m = P.mat[i / 3 * 4];
+      if ((m === LAYER.flesh || m === LAYER.eye) && B.room[Math.round(z + B.half) * B.n + Math.round(x + B.half)] === gh.id) assert.ok(onBed(x - .02, z - .02) && onBed(x + .02, z + .02), `${B.seed}: stalk vertex at ${x}, ${z} is at a bed edge`); } }
+  const beds = M.props.filter(p => p.kind === 'bed');
+  // run and jump at the bed's long side from the floor tile beside its middle
+  for (const b of beds) for (const dt of [1 / 20, 1 / 60, 1 / 144]) { const hw = b.w / 2, hd = b.d / 2, along = hw >= hd, sx = along ? 0 : 1, sz = along ? 1 : 0;
+    const p = createPlayer({ x: b.x - sx * (hw + .6), z: b.z - sz * (hd + .6), dx: sx, dz: sz }, LB.ground); let top = 0;
+    for (let t = 0; t < 2; t += dt) { stepPlayer(p, { fwd: 1, strafe: 0, run: true, jump: true }, dt, LB.ground, LB.bound, GRAVITY.base, LB.ceil); top = Math.max(top, LB.ground(p.x, p.z)); }
+    assert.ok(top < .5, `${Math.round(1 / dt)} fps: stood on the bed at ${b.x}, ${b.z}`); } });
