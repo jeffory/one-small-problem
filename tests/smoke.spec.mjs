@@ -95,8 +95,8 @@ const toBase = async page => { await page.evaluate(() => { const o = window.ospT
   await expect(page.locator('#prompt')).toContainText('enter the hangar'); await page.evaluate(() => window.ospTest.enter());
   await expect.poll(() => page.evaluate(() => window.ospTest.area()), { timeout: 10_000 }).toBe('base'); };
 // M6: the fog alone keeps black low, so the lamps are checked by the frame's mean brightness (0-255). At the lift this frame measures
-// 30.0 in chromium and firefox with R16's lamps, and 23.6 with the old wall-clearance radii.
-const BASE_MEAN = 27;
+// 29.0 in chromium and firefox with R16's lamps (and M4's corner pipes), and 23.6 with the old wall-clearance radii.
+const BASE_MEAN = 26;
 test('walking into the base renders palette-true with no errors, and lit', async ({ page }) => {
   const errors = watchErrors(page); await page.goto(URLS[1][1] + '#APOLLO-4471'); await ready(page); await toBase(page); await page.waitForTimeout(500);
   const s = await page.evaluate(() => window.ospTest.capture()); expect(s.inPalette).toBe(1); expect(s.colours).toBeGreaterThan(6); expect(s.black).toBeLessThan(.9);
