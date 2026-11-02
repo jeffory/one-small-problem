@@ -153,10 +153,13 @@ test('the help line shows at the start of a run, hides after HELP_TIME s of play
   await page.evaluate(() => { window.ospTest.finish(); window.ospTest.play(); }); await expect(help).toContainText('Esc pause'); expect(errors).toEqual([]); });
 export const paused = page => page.evaluate(() => window.ospTest.paused());
 test('Esc pauses and releases the mouse; nothing moves while paused; Esc again resumes (pause)', async ({ page }) => {
-  const errors = watchErrors(page); await start(page); await page.mouse.click(300, 300); await page.waitForTimeout(200);
+  // R5: Esc only once the click's lock is held (under load the raw request is refused late and the plain fallback locks later
+  // still), and the release is polled, since browsers let go of the lock asynchronously
+  const errors = watchErrors(page); await start(page); await page.mouse.click(300, 300);
+  await expect.poll(() => page.evaluate(() => document.pointerLockElement !== null), { timeout: 15_000 }).toBe(true);
   await page.keyboard.press('Escape'); await expect.poll(() => paused(page)).toBe(true); await expect(page.locator('#pause')).toBeVisible();
   await expect(page.locator('#controls')).toContainText('WASD move'); // R3: the controls stay reachable after the help line hides
-  expect(await page.evaluate(() => document.pointerLockElement)).toBe(null);
+  await expect.poll(() => page.evaluate(() => document.pointerLockElement)).toBe(null);
   const t = await page.evaluate(() => window.ospTest.fight().time); await page.waitForTimeout(400); expect(await page.evaluate(() => window.ospTest.fight().time)).toBe(t);
   await page.keyboard.press('Escape'); await expect.poll(() => paused(page)).toBe(false); await expect(page.locator('#pause')).toBeHidden();
   await expect.poll(() => page.evaluate(() => window.ospTest.fight().time)).toBeGreaterThan(t); expect(errors).toEqual([]); });
