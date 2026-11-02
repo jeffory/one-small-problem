@@ -1,0 +1,19 @@
+{
+  "name": "one-small-problem",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "dev": "node build.mjs --dev && node tools/serve.mjs 4173",
+    "test": "node --test tests/*.test.mjs",
+    "test:seeds": "node tests/seeds.soak.mjs",
+    "test:smoke": "node build.mjs && playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.64.1",
+    "esbuild": "^0.28.2",
+    "jspackcompress": "^0.1.1",
+    "terser": "^5.51.2"
+  }
+}
