@@ -1,12 +1,15 @@
 // Low-gravity player controller. Pure maths, no DOM. Units: metres, y up.
 // At yaw 0 the player faces -z. y is the feet height; the eye is y + PLAYER.eye and the top of the head y + PLAYER.head.
 export const PLAYER = { eye: 1.7, head: 1.85, walk: 4.5, run: 9, gSurface: 3.0, jumpV: 3.5, airControl: 2, stepUp: 0.35, substep: 0.25, radius: 0.4 };
+// R18: landing faster than safe (m/s) costs dmg health per m/s over it. Outdoors your feet also follow falling ground down at up to
+// safe m/s; where it drops away faster, you leave it and fall.
+export const FALL = { safe: 7, dmg: 8 };
 // Indoors the body is a box: its corners sit E either side of the centre (just inside the radius, so a box flush against a
 // wall doesn't read the wall's tile at its sides).
 const E = PLAYER.radius - .02;
 
 export function createPlayer({ x, z, dx, dz }, ground) {
-  return { x, y: ground(x, z), z, vx: 0, vy: 0, vz: 0, yaw: Math.atan2(-dx, -dz), pitch: 0, onGround: true, kx: 0, kz: 0 };
+  return { x, y: ground(x, z), z, vx: 0, vy: 0, vz: 0, yaw: Math.atan2(-dx, -dz), pitch: 0, onGround: true, kx: 0, kz: 0, land: 0 };
 }
 
 export function knock(p, vx, vy, vz) {
@@ -37,7 +40,9 @@ export function fits(p, x, z, ground, ceil) {
 }
 
 // ceil (indoors only): each axis move probes the box's leading edge (see refused), and the head stops at the lowest ceiling
-// over the box. Outdoors (ceil null) one probe on the centre line, one radius ahead, as in Plan 2.
+// over the box. Outdoors (ceil null) one probe on the centre line, one radius ahead, as in Plan 2. p.land is the speed (m/s down)
+// you landed at in this step, else 0. On the ground your feet follow it down a drop of at most .4 m; outdoors also at most FALL.safe
+// m/s, so running off a steep slope leaves it the same way at any frame rate (R18).
 export function stepPlayer(p, input, dt, ground, bound, g = PLAYER.gSurface, ceil = null) {
   const s = Math.sin(p.yaw), c = Math.cos(p.yaw), speed = input.run ? PLAYER.run : PLAYER.walk;
   const len = Math.hypot(input.fwd, input.strafe), n0 = len > 1 ? 1 / len : 1, fwd = input.fwd * n0, str = input.strafe * n0;
@@ -59,11 +64,11 @@ export function stepPlayer(p, input, dt, ground, bound, g = PLAYER.gSurface, cei
   p.x = Math.max(-bound, Math.min(bound, p.x));
   p.z = Math.max(-bound, Math.min(bound, p.z));
 
-  p.y += p.vy * dt;
+  p.y += p.vy * dt; p.land = 0;
   if (ceil) { const top = lowest(ceil, p.x, p.z); if (p.y + PLAYER.head > top) { p.y = top - PLAYER.head; p.vy = Math.min(p.vy, 0); } }
   const gy = ground(p.x, p.z);
-  if (p.y <= gy) { p.y = gy; p.vy = 0; p.onGround = true; }
-  else if (p.onGround && p.vy <= 0 && p.y - gy < 0.4) { p.y = gy; p.vy = 0; }
+  if (p.y <= gy) { if (!p.onGround) p.land = Math.max(0, -p.vy); p.y = gy; p.vy = 0; p.onGround = true; }
+  else if (p.onGround && p.vy <= 0 && p.y - gy < (ceil ? 0.4 : Math.min(0.4, FALL.safe * dt))) { p.y = gy; p.vy = 0; }
   else p.onGround = false;
   if (p.onGround) { const d = Math.max(0, 1 - 6 * dt); p.kx *= d; p.kz *= d; }
 }

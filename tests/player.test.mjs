@@ -1,5 +1,5 @@
 import test from 'node:test'; import assert from 'node:assert/strict';
-import { PLAYER, createPlayer, stepPlayer, knock, fits } from '../src/game/player.js';
+import { PLAYER, FALL, createPlayer, stepPlayer, knock, fits } from '../src/game/player.js';
 import { tileLevel } from './helpers.mjs';
 const run = (p, inp, secs, g, dt = 1 / 60, bound = 1e9) => { for (let t = 0; t < secs; t += dt) stepPlayer(p, inp, dt, g, bound); };
 const idle = { fwd: 0, strafe: 0, run: false, jump: false }, east = { x: 0, z: 0, dx: 1, dz: 0 };
@@ -79,3 +79,21 @@ test('an overlap never lets a corner into a wall: running along a bed into the w
     stepPlayer(p, { ...idle, fwd: 1, jump: true }, dt, B.ground, 1e9, 9, B.ceil);
     for (let t = dt; t < 3; t += dt) { stepPlayer(p, { ...idle, fwd: 1, strafe: t < .1 ? 1 : 0 }, dt, B.ground, 1e9, 9, B.ceil); gap = Math.min(gap, Math.hypot(Math.max(0, 9.5 - p.x), Math.max(0, 4.5 - p.z))); }
     assert.ok(p.z + .38 > 4.5 && p.x > 8.5, `${Math.round(1 / dt)} fps: never ran along the bed overlapping it (${p.x}, ${p.z})`); assert.ok(gap >= .37, `${Math.round(1 / dt)} fps: ${gap}`); } });
+// R18: the step you land in reports your landing speed (p.land, m/s down), every other step 0.
+const fall = (ground, ceil, g, dt, p, secs = 6, inp = idle) => { const L = []; for (let t = 0; t < secs; t += dt) { stepPlayer(p, inp, dt, ground, 1e9, g, ceil); if (p.land) L.push(p.land); } return L; };
+test('the step you land in reports your landing speed; ordinary jumps and a 1 m base drop land well under FALL.safe (R18)', () => {
+  for (const dt of FPS) { const g = () => 0, open = { fwd: 0, strafe: 0, run: false, jump: false };
+    for (const [grav, ceil] of [[PLAYER.gSurface, null], [9, () => 4]]) { const p = createPlayer({ x: 0, z: 0, dx: 0, dz: -1 }, g);
+      assert.deepEqual(fall(g, ceil, grav, dt, p, 1, { ...open, fwd: 1 }), [], 'walking never lands');
+      stepPlayer(p, { ...open, jump: true }, dt, g, 1e9, grav, ceil); const L = fall(g, ceil, grav, dt, p, 3);
+      assert.equal(L.length, 1); assert.ok(Math.abs(L[0] - PLAYER.jumpV) <= grav * dt + 1e-9 && L[0] < FALL.safe, `${Math.round(1 / dt)} fps, g ${grav}: ${L[0]}`); }
+    const ledge = x => (x < 2 ? 1 : 0), p = createPlayer(east, ledge), L = fall(ledge, () => 4, 9, dt, p, 2, { ...open, fwd: 1 });
+    assert.equal(L.length, 1); assert.ok(Math.abs(L[0] - Math.sqrt(2 * 9)) < .3 && L[0] < FALL.safe, `${Math.round(1 / dt)} fps: 1 m drop lands at ${L[0]}`); } });
+test('outdoors your feet follow falling ground at up to FALL.safe m/s; where it drops away faster you leave it, at any frame rate (R18)', () => {
+  const steep = x => -1.2 * Math.max(0, x - 1), gentle = x => -.5 * x, at = [];
+  for (const dt of FPS) { const p = createPlayer(east, steep); let off = null;
+    for (let t = 0; t < 1.5 && off === null; t += dt) { stepPlayer(p, RUN, dt, steep, 1e9); if (!p.onGround) off = p.x; } // running: 10.8 m/s down
+    assert.ok(off !== null && off < 1.5, `${Math.round(1 / dt)} fps: ran down a 1.2 slope still glued`); at.push(off);
+    const q = createPlayer(east, steep); for (let t = 0; t < 1.5; t += dt) { stepPlayer(q, { ...idle, fwd: 1 }, dt, steep, 1e9); assert.ok(q.onGround, `${Math.round(1 / dt)} fps: walking (5.4 m/s down) left the slope`); }
+    const r = createPlayer(east, gentle); for (let t = 0; t < 1; t += dt) { stepPlayer(r, RUN, dt, gentle, 1e9); assert.ok(r.onGround); } }
+  assert.ok(Math.max(...at) - Math.min(...at) < .5, `take-off points ${at}`); });

@@ -78,3 +78,23 @@ test('indoors a canister blast stops at walls: nothing behind one is hurt, knock
     put(F, s.x, s.z); Object.assign(a, { x: h.x, y: h.y, z: h.z }); F.canisters.push(o); const hp = ALIENS[a.type].hp;
     assert.ok([.3, .9, 1.5].every(k => !lineOfSight(F.lv.ground, [F.canisters[0].x, F.canisters[0].y + .4, F.canisters[0].z], [worldSpheres(a)[0][0], h.y + k, worldSpheres(a)[0][2]], F.lv.ceil)));
     boom(F); assert.ok(F.hp < 100, 'the player in sight'); assert.equal(a.hp, hp, 'the alien behind the wall'); assert.ok(F.canisters.includes(o) && o.hp === CANISTER.hp && !(o.fuse > 0), 'the canister behind the wall'); } });
+// R18: fall damage.
+import { FALL } from '../src/game/player.js'; import { DOOR_REACH } from '../src/game/fight.js';
+const FPS3 = [1 / 20, 1 / 60, 1 / 144];
+test('jumping costs nothing, on the surface and in the base, at any frame rate (R18)', () => { for (const k of [0, 2]) for (const dt of FPS3) {
+  const F = createFight(W, k); F.aliens.length = F.canisters.length = 0; run(F, t => ({ ...idle, jump: true, fwd: t < 1 ? 1 : 0 }), 6, dt);
+  assert.equal(F.hp, 100, `area ${k}, ${Math.round(1 / dt)} fps`); assert.ok(!F.events.some(e => e.type === 'hurt')); } });
+test('a 15 m drop on the surface costs about 20, the same at 20, 60 and 144 fps, as a hurt event with cause fall (R18)', () => {
+  const want = FALL.dmg * (Math.sqrt(2 * 3 * 15) - FALL.safe), got = [];
+  for (const dt of FPS3) { const F = createFight(W), p = F.player; F.aliens.length = F.canisters.length = 0; Object.assign(p, { y: p.y + 15, onGround: false });
+    run(F, idle, 4, dt); got.push(100 - F.hp); assert.deepEqual(F.events.filter(e => e.type === 'hurt').map(e => e.cause), ['fall']); }
+  for (const d of got) assert.ok(Math.abs(d - want) < .6, `lost ${got} (want ${want.toFixed(1)})`); });
+// Straight from the crater top at the door's use point, running, never jumping (the reviewer's probe), or along the switchback.
+const descend = (dt, path) => { const F = createFight(W, 1), p = F.player, U = W.crater.use, P = W.crater.path; F.aliens.length = F.canisters.length = 0; let k = 1;
+  for (let t = 0; t < 90 && Math.hypot(p.x - U.x, p.z - U.z) > DOOR_REACH; t += dt) {
+    let g = path && k < P.length ? { x: P[k][0], z: P[k][1] } : U; if (path && k < P.length && Math.hypot(p.x - g.x, p.z - g.z) < 1.5) { k++; continue; }
+    p.yaw = Math.atan2(p.x - g.x, p.z - g.z); stepFight(F, { ...idle, fwd: 1, run: true }, dt); }
+  assert.ok(Math.hypot(p.x - U.x, p.z - U.z) <= DOOR_REACH, 'reached the door'); return 100 - F.hp; };
+test('the straight dive from the crater top to the door costs real health at every frame rate; the switchback costs none (R18)', () => {
+  const dive = FPS3.map(dt => descend(dt, false)); assert.ok(Math.min(...dive) >= 8 && Math.max(...dive) - Math.min(...dive) <= 3, `dive cost ${dive}`);
+  for (const dt of FPS3) assert.equal(descend(dt, true), 0, `${Math.round(1 / dt)} fps on the switchback`); });

@@ -4,7 +4,7 @@
 import { makeRng } from '../gen/rng.js';
 import { sampleGround, flagSpot } from '../gen/surface.js';
 import { cameraBasis } from '../gfx/math.js';
-import { PLAYER, createPlayer, stepPlayer, knock, fits } from './player.js';
+import { PLAYER, FALL, createPlayer, stepPlayer, knock, fits } from './player.js';
 import { WEAPONS, MAX_CELLS, createArsenal, give, selectWeapon, cycleWeapon, coolWeapon, fireWeapon, meleeTargets } from './weapons.js';
 import { stepBolts, groundNormal } from './bolts.js';
 import { lineOfSight, createField, updateField } from './nav.js';
@@ -80,13 +80,14 @@ export function enterArea(F, k) {
   F.events.push({ type: 'area', area: k, id: AREAS[k], level: fresh, text: AREA_TEXT[k] });
 }
 
-export function hurtPlayer(F, dmg, kx, ky, kz) {
+// cause (optional) rides on the 'hurt' event: 'fall' for a hard landing (R18), for Plan 4's radio.
+export function hurtPlayer(F, dmg, kx, ky, kz, cause) {
   if (F.state === 'dead') return;
   F.hp -= dmg;
   if (F.god) F.hp = Math.max(1, F.hp);
   F.hurtT = Math.min(1, F.hurtT + dmg / 20);
   knock(F.player, kx, ky, kz);
-  F.events.push({ type: 'hurt' });
+  F.events.push(cause ? { type: 'hurt', cause } : { type: 'hurt' });
   if (F.hp <= 0) die(F);
 }
 
@@ -168,10 +169,12 @@ export function stepFight(F, input, dt) {
   const lv = F.lv;
   coolWeapon(A, dt);
   if (input.fire && A.cur >= 0 && A.cool <= 0) fire(F);
-  // 3. player, then the area you walked into (only the living get here: a dead body never changes area). Walking only ever
-  // advances within a level (over the rim, through the comms door), so lv stays this step's level.
+  // 3. player, then the area you walked into (only the living get here: a dead body never changes area), then a hard landing's
+  // cost (R18), after the area so a fatal fall over the rim restarts you at the crater top. Walking only ever advances within a
+  // level (over the rim, through the comms door), so lv stays this step's level.
   stepPlayer(p, input, dt, lv.ground, lv.bound, F.gravity, lv.ceil);
   const k = advanceArea(F.world, F.area, p.x, p.z); if (k > F.area) enterArea(F, k);
+  if (p.land > FALL.safe) hurtPlayer(F, FALL.dmg * (p.land - FALL.safe), 0, 0, 0, 'fall');
   // 4. distance field
   if ((F.fieldT -= dt) <= 0) { F.fieldT = FIELD_DT; updateField(F.field, lv.grid, lv.n, lv.half, p.x, p.z, lv.maxStep); }
   // 5. aliens: awake within the level's wake radius of their encounter or once it is alerted; the asleep only tick their clock
