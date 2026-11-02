@@ -74,3 +74,8 @@ test('weapon keys work without pointer lock; the capture click never fires (Revi
   await page.keyboard.press('Digit2'); await expect.poll(() => fight(page).then(f => f.cur)).toBe(1);
   await page.keyboard.press('Digit1'); await expect.poll(() => fight(page).then(f => f.cur)).toBe(0);
   await page.mouse.click(300, 300); await page.waitForTimeout(300); expect((await fight(page)).shots).toBe(0); });
+test('the HUD overlays let the capture click through to the canvas (M7)', async ({ page }) => {
+  await page.goto(URLS[1][1] + '#APOLLO-4471'); await ready(page); await page.evaluate(() => window.ospTest.grab()); await page.waitForTimeout(300);
+  const hits = await page.evaluate(() => ['hud', 'seed', 'stat', 'prompt', 'flash', 'x'].map(id => { const r = document.getElementById(id).getBoundingClientRect();
+    return r.width && r.height ? [id, document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)?.id] : null; }).filter(Boolean));
+  expect(hits.length).toBeGreaterThanOrEqual(4); for (const [id, at] of hits) expect(at, id).toBe('c'); });
