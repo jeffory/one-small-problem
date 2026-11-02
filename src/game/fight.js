@@ -10,11 +10,13 @@ import { stepBolts, groundNormal } from './bolts.js';
 import { lineOfSight, createField, updateField } from './nav.js';
 import { muzzleWorld, worldSpheres } from './rigs.js';
 import { ALIENS, createAlien, stepAlien, hurtAlien, move, level } from './aliens.js';
-import { LEVEL, makeLevel, areaStart } from './areas.js';
+import { AREAS, AREA_TEXT, LEVEL, makeLevel, areaStart, advanceArea } from './areas.js';
 
 export const PICKUP = { tape: 25, cells: 25, pistol: 20, scatter: 16, flCells: 15, pistolDrop: .3 };
 export const CANISTER = { hp: 15, radius: .45, blast: 5, dmg: 70, knock: 9, fuse: .2 };
 export const DEATH_TIME = 2.5;
+// GOLF_TOTAL: golf balls in a world (3 on the surface, 2 in the base); DOOR_REACH: how near (m) the hangar door's use point E works.
+export const GOLF_TOTAL = 5, DOOR_REACH = 2.5;
 // CORPSE: seconds a corpse lasts, the last SINK of them sinking 1 m; DECALS: each kind's ring (M5: goo can't evict scorch);
 // GRAB: flag reach; REACH: pickup reach; CAN_Y: canister centre above its base; CAN_H: its height; WALL: ground this far above
 // a particle stops it like a wall.
@@ -43,9 +45,10 @@ export function createFight(world, k = 0) {
   return F;
 }
 
-// From the level plan: one fresh enc per encounter (encs and aliens are rebuilt), then the aliens, pickups and canisters of
-// areas >= from, appended (pre-flight F19: callers empty what they replace). Each carries its area. Ids are the level plan's:
-// an alien's is 1 + its index in the plan's aliens (encounter by encounter), a canister's -1 - its index in the plan's canisters.
+// From the level plan: one fresh enc per encounter (encs and aliens are rebuilt), then the aliens, pickups, canisters and golf
+// balls (those not yet found) of areas >= from, appended (pre-flight F19: callers empty what they replace). Each carries its
+// area. Ids are the level plan's: an alien's is 1 + its index in the plan's aliens (encounter by encounter), a canister's -1 -
+// its index in the plan's canisters, a ball's its golf id.
 function populate(F, from) {
   const plan = F.lv.plan; let id = 1;
   F.encs.length = F.aliens.length = 0;
@@ -56,6 +59,25 @@ function populate(F, from) {
   }
   for (const p of plan.pickups) if (p.area >= from) F.pickups.push({ kind: p.kind, x: p.x, y: p.y, z: p.z, n: PICKUP[p.kind], area: p.area });
   plan.canisters.forEach((c, i) => { if (c.area >= from) F.canisters.push({ x: c.x, y: c.y, z: c.z, hp: CANISTER.hp, fuse: 0, id: -1 - i, area: c.area }); });
+  for (const g of plan.golf) if (g.area >= from && !F.found.includes(g.id)) F.balls.push({ id: g.id, x: g.x, y: g.y, z: g.z, area: g.area });
+}
+
+// Into area k (> F.area): your inventory now is what a death in k restarts you with. On the same level nothing else changes; a
+// new level is entered fresh at k's start, leaving everything of the old one behind (nothing in flight follows you in).
+export function enterArea(F, k) {
+  const fresh = LEVEL[k] !== F.lv.id;
+  F.area = k;
+  if (fresh) {
+    const lv = F.lv = makeLevel(F.world, LEVEL[k]), C = F._ctx;
+    F.gravity = lv.gravity;
+    F.bolts.length = F.parts.length = F.booms.length = 0; clearDecals(F);
+    F.aliens.length = F.pickups.length = F.canisters.length = F.balls.length = 0;
+    populate(F, k);
+    Object.assign(F.player, createPlayer(areaStart(F.world, k), lv.ground)); // in place: the input module holds this object
+    F.field = C.field = createField(); F.fieldT = 0; C.ground = lv.ground; C.ceil = lv.ceil;
+  }
+  F.entry = { owned: F.ars.owned.slice(), cells: F.ars.cells, flagHeld: F.flag.held };
+  F.events.push({ type: 'area', area: k, id: AREAS[k], level: fresh, text: AREA_TEXT[k] });
 }
 
 export function hurtPlayer(F, dmg, kx, ky, kz) {
@@ -73,20 +95,28 @@ function die(F) {
   F.events.push({ type: 'dead' });
 }
 
-// Back to the current area's start with what you entered it with, facing it fresh.
+// Back to the current area's start with what you entered it with, facing it (and any later area of the level) fresh. Earlier
+// areas of the level keep the pickups, intact canisters and golf balls you left there; every alien goes, so those you fled from
+// are gone. Found golf balls stay found.
 export function restartArea(F) {
-  const E = F.entry, A = F.ars;
-  Object.assign(F.player, createPlayer(areaStart(F.world, F.area), F.lv.ground)); // in place: the input module holds this object
+  const E = F.entry, A = F.ars, k = F.area;
+  F.aliens.length = 0;
+  keep(F.pickups, q => q.area < k);
+  keep(F.canisters, c => c.area < k && !(c.hp <= 0 || c.fuse > 0));
+  keep(F.balls, b => b.area < k);
+  Object.assign(F.player, createPlayer(areaStart(F.world, k), F.lv.ground)); // in place: the input module holds this object
   F.hp = 100;
   A.owned = E.owned.slice(); A.cells = E.cells; A.cool = 0; A.cur = A.owned.lastIndexOf(true);
   F.flag.held = E.flagHeld;
   F.bolts.length = F.parts.length = F.booms.length = 0; clearDecals(F);
-  F.aliens.length = F.pickups.length = F.canisters.length = F.balls.length = 0;
   F.field = createField(); F.fieldT = 0;
   F.state = 'play'; F.deadT = 0; F.hurtT = 0; F.shotT = 9;
-  populate(F, F.area);
-  F.events.push({ type: 'restart', area: F.area });
+  populate(F, k);
+  F.events.push({ type: 'restart', area: k });
 }
+
+// Keeps (in order, in place) the items of L that pass ok.
+function keep(L, ok) { let w = 0; for (const x of L) if (ok(x)) L[w++] = x; L.length = w; }
 
 // Where the crosshair ray first meets a live alien's sphere or the level (the ground, or indoors at or above the ceiling; 0.5 m
 // steps), up to 200 m (and never nearer than 1 m, so a bolt from the muzzle can't be sent backwards). Spheres that hold the eye
@@ -124,19 +154,24 @@ export function stepFight(F, input, dt) {
     if (F.deadT >= DEATH_TIME) restartArea(F);
     return;
   }
-  const p = F.player, A = F.ars, lv = F.lv;
-  // 2. weapon input; the flag stands on the surface level only
+  const p = F.player, A = F.ars, U = F.world.crater.use;
+  // 2. weapon input; the flag stands on the surface level only; E at the hangar door takes you into the base, where the rest of
+  // this step runs
   if (input.weapon >= 0) selectWeapon(A, input.weapon);
   if (input.wheel) cycleWeapon(A, input.wheel);
-  if (input.use && lv.id === 'surface' && !F.flag.held && Math.hypot(p.x - F.flag.x, p.z - F.flag.z) <= GRAB) {
+  if (input.use && F.lv.id === 'surface' && !F.flag.held && Math.hypot(p.x - F.flag.x, p.z - F.flag.z) <= GRAB) {
     give(A, 0, 0); F.flag.held = true;
     F.entry = { owned: A.owned.slice(), cells: A.cells, flagHeld: true };
     F.events.push({ type: 'flag', text: WEAPONS[0].name, x: F.flag.x, y: F.flag.y, z: F.flag.z });
   }
+  if (input.use && F.area === 1 && Math.hypot(p.x - U.x, p.z - U.z) <= DOOR_REACH) enterArea(F, 2);
+  const lv = F.lv;
   coolWeapon(A, dt);
   if (input.fire && A.cur >= 0 && A.cool <= 0) fire(F);
-  // 3. player
+  // 3. player, then the area you walked into (only the living get here: a dead body never changes area). Walking only ever
+  // advances within a level (over the rim, through the comms door), so lv stays this step's level.
   stepPlayer(p, input, dt, lv.ground, lv.bound, F.gravity, lv.ceil);
+  const k = advanceArea(F.world, F.area, p.x, p.z); if (k > F.area) enterArea(F, k);
   // 4. distance field
   if ((F.fieldT -= dt) <= 0) { F.fieldT = FIELD_DT; updateField(F.field, lv.grid, lv.n, lv.half, p.x, p.z, lv.maxStep); }
   // 5. aliens: awake within the level's wake radius of their encounter or once it is alerted; the asleep only tick their clock
@@ -152,8 +187,8 @@ export function stepFight(F, input, dt) {
   flyBolts(F, dt);
   deaths(F);
   canisters(F, dt);
-  // 9. pickups (not if a blast just killed you)
-  if (F.state === 'play') pickups(F);
+  // 9. pickups and golf balls (not if a blast just killed you)
+  if (F.state === 'play') { pickups(F); findBalls(F); }
   // 10. particles, decals, booms, the hurt flash
   stepParts(F, dt); stepBooms(F, dt);
   F.hurtT = Math.max(0, F.hurtT - 2 * dt);
@@ -282,6 +317,21 @@ function pickups(F) {
     const dx = k.x - p.x, dz = k.z - p.z;
     if (dx * dx + dz * dz < REACH * REACH && Math.abs(k.y - p.y) < 2 && collect(F, k)) continue;
     L[w++] = k;
+  }
+  L.length = w;
+}
+
+// A golf ball in reach is found for good: it counts once and never comes back, through deaths too (a lifetime stat, like kills).
+function findBalls(F) {
+  const p = F.player, L = F.balls; let w = 0;
+  for (const b of L) {
+    const dx = b.x - p.x, dz = b.z - p.z;
+    if (dx * dx + dz * dz < REACH * REACH && Math.abs(b.y - p.y) < 2) {
+      F.found.push(b.id); F.golf++;
+      F.events.push({ type: 'golf', n: F.golf, id: b.id, x: b.x, y: b.y, z: b.z, text: 'GOLF BALL ' + F.golf + '/' + GOLF_TOTAL });
+      continue;
+    }
+    L[w++] = b;
   }
   L.length = w;
 }
