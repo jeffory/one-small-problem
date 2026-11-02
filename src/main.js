@@ -39,8 +39,9 @@ function boot() {
   const frame = { sky: true, mode: 0, ...scene, fog: [.010, .014, .011], fogDensity: .07, exposure: 1,
     lights: { pos: new Float32Array(64), col: new Float32Array(64), count: 0 }, spheres: new Float32Array(32) };
   function tick(now) {
-    const el = Math.max(0, (now - last) / 1000), dt = Math.min(.05, el); last = now;
-    stepPlayer(p, input.read(), dt, ground, HALF - MAP_MARGIN);
+    // Real-time steps of at most 0.05 s, so slow frames don't slow the game; a long stall skips at most 0.25 s.
+    const el = Math.max(0, (now - last) / 1000), dt = Math.min(.25, el), n = Math.max(1, Math.ceil(dt / .05)), inp = input.read(); last = now;
+    for (let k = 0; k < n; k++) stepPlayer(p, inp, dt / n, ground, HALF - MAP_MARGIN);
     if (helpShown && input.locked()) { helpShown = false; hud.help(''); }
     frame.t = (now - t0) / 1000; frame.palMode = palMode;
     frame.cam = { x: p.x, y: p.y + PLAYER.eye, z: p.z, yaw: p.yaw, pitch: p.pitch };
