@@ -19,11 +19,16 @@ const tile = (M, x, z) => {
   return i >= 0 && j >= 0 && i < M.n && j < M.n ? j * M.n + i : -1;
 };
 
+// The surface level's plan is level 1's then the escape's (Plan 6), list by list, so the escape's alien ids run on from level 1's.
 // Off the surface a level is its map (the base's or the prison's) with a grid of its own: a copy of the map's floor, which ground
 // reads, so the bars (setBars) can shut and open a doorway without touching the map. bars: the barred doorway's tiles, or null.
 export function makeLevel(world, id) {
-  if (id === 'surface') return { id, ground: (x, z) => sampleGround(world, x, z), ceil: null, bound: HALF - MAP_MARGIN, gravity: GRAVITY.surface,
-    grid: world.occ, n: N, half: HALF, maxStep: MAX_STEP, wake: WAKE.surface, plan: world.plan };
+  if (id === 'surface') {
+    const A = world.plan, E = world.escape, plan = {};
+    for (const k of ['encounters', 'pickups', 'canisters', 'golf']) plan[k] = [...A[k], ...E[k]];
+    return { id, ground: (x, z) => sampleGround(world, x, z), ceil: null, bound: HALF - MAP_MARGIN, gravity: GRAVITY.surface,
+      grid: world.occ, n: N, half: HALF, maxStep: MAX_STEP, wake: WAKE.surface, plan };
+  }
   const M = id === 'base' ? world.baseMap : world.prisonMap, grid = M.floor.slice(), ce = M.ceil;
   return { id, ground: (x, z) => { const t = tile(M, x, z); return t < 0 ? BASE.wall : grid[t]; }, ceil: (x, z) => { const t = tile(M, x, z); return t < 0 ? 0 : ce[t]; },
     bound: M.half - 1, gravity: GRAVITY[id], grid, n: M.n, half: M.half, maxStep: BASE.step, wake: WAKE[id], plan: M.plan, map: M, bars: M.bars?.tiles ?? null };

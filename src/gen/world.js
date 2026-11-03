@@ -1,8 +1,9 @@
-// The one way to build a world: the surface (with its crater switchback), then the fight plan on top of it, then the base with its lamps and plan.
+// The one way to build a world: the surface (with its crater switchback), then the fight plan on top of it, then the base with its lamps and plan,
+// the prison with its, and last the escape plan back across the surface.
 import { generateSurface, surfaceAccept, N, HALF, MAX_STEP, MAP_MARGIN } from './surface.js';
 import { passable } from './passable.js';
 import { carveCrater } from './crater.js';
-import { planFight } from './encounters.js';
+import { planFight, planEscape } from './encounters.js';
 import { generateBase, baseAccept, PRISON_PLAN } from './base.js';
 import { lightBase, planBase } from './baseplan.js';
 
@@ -23,5 +24,6 @@ export function generateWorld(seed) {
   world.prisonMap = generateBase(seed, baseAccept, PRISON_PLAN);
   lightBase(world.prisonMap);
   world.prisonMap.plan = planBase(world.prisonMap);
+  world.escape = planEscape(world);
   return world;
 }

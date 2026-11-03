@@ -2,7 +2,7 @@ import { edgeMargin } from './helpers.mjs';
 import { sampleGround, distToPolyline, MAX_STEP, N, HALF, MAP_MARGIN } from '../src/gen/surface.js';
 import { generateWorld } from '../src/gen/world.js';
 import { CRATER } from '../src/gen/crater.js';
-import { budgetAt, COST, CRATER_P, CRATER_AT } from '../src/gen/encounters.js';
+import { budgetAt, COST, CRATER_P, CRATER_AT, ESCAPE } from '../src/gen/encounters.js';
 import { reachMap } from '../src/gen/passable.js';
 import { BASE, K as TILE, PRISON_PLAN, baseAccept } from '../src/gen/base.js';
 import { LIGHT_CAP, BASE_SCALE } from '../src/gen/baseplan.js';
@@ -104,6 +104,36 @@ function checkPrison(seed, B) {
   for (const e of P.encounters) { if (e.area !== 4) bad('encounter area'); for (const a of e.aliens) if (!stand(a)) bad('alien off reachable floor, room ' + e.room); }
   for (const q of [...P.pickups, ...P.canisters, ...P.golf]) if (q.area !== 4 || !stand(q)) bad('item off reachable floor');
 }
+// The escape plan (Plan 6): the climb (area 5) like level 1's crater, the dash (area 6) at p .6 to 1 with full budgets, golf 6 off
+// the route, and the rescue site. A site from the fallback is not rock-clear or not flat, so it fails here.
+let dashMin = Infinity, dashMax = 0, siteFlat = 0;
+function checkEscape(seed, w, stands) {
+  const bad = (m) => { fail++; console.error(seed, 'escape', m); };
+  const E = w.escape, C = E.encounters.filter((e) => e.area === 5), D = E.encounters.filter((e) => e.area === 6), cost = (e) => e.aliens.reduce((s, a) => s + COST[a.type], 0);
+  if ([...E.encounters, ...E.pickups, ...E.canisters, ...E.golf].some((q) => q.area !== 5 && q.area !== 6)) bad('area');
+  if (C.length !== ESCAPE.climbAt.length || C.length + D.length !== E.encounters.length) bad('climb encounters ' + C.length);
+  C.forEach((e, i) => { if (Math.abs(e.p - (ESCAPE.climbP[0] + (ESCAPE.climbP[1] - ESCAPE.climbP[0]) * ESCAPE.climbAt[i])) > 1e-9) bad('climb p ' + i); });
+  if (D.length < 6) bad('dash encounters ' + D.length);
+  dashMin = Math.min(dashMin, D.length); dashMax = Math.max(dashMax, D.length);
+  if (D.some((e) => e.p < ESCAPE.dashP[0] || e.p > ESCAPE.dashP[1])) bad('dash p');
+  if (E.encounters.some((e) => e.first || cost(e) !== budgetAt(e.p))) bad('first or budget');
+  E.encounters.forEach((e, k) => e.aliens.forEach((a) => { if (a.type !== 'fl' && !stands(a)) bad('alien unreachable ' + k); }));
+  const cnt = (a, kd) => E.pickups.filter((u) => u.area === a && u.kind === kd).length;
+  if ([cnt(5, 'tape'), cnt(5, 'cells'), cnt(6, 'tape'), cnt(6, 'cells')].join() !== '1,1,2,2' || E.pickups.length !== 6) bad('pickup counts');
+  if (E.canisters.filter((c) => c.area === 5).length < 2) bad('climb canisters');
+  if (E.canisters.length < 6) bad('canisters ' + E.canisters.length);
+  if (!E.pickups.every(stands) || !E.canisters.every(stands)) bad('pickup or canister unreachable');
+  const g = E.golf[0];
+  if (E.golf.length !== 1 || g.id !== 6 || !stands(g) || distToPolyline(g.x, g.z, w.route) < 20) bad('golf 6');
+  const S = E.site, d = Math.hypot(S.x - w.lander.x, S.z - w.lander.z);
+  if (d < ESCAPE.site[0] || d > ESCAPE.site[1] || !stands(S) || S.y !== sampleGround(w, S.x, S.z)) bad('site off range or ground ' + d);
+  if (w.rocks.some((k) => Math.hypot(k.x - S.x, k.z - S.z) < ESCAPE.rockGap + Math.max(k.sx, k.sz))) bad('site by a rock');
+  let lo = Infinity, hi = -Infinity;
+  for (let j = -4; j <= 4; j++) for (let i = -4; i <= 4; i++) if (i * i + j * j <= 16) { const y = w.h[(Math.round(S.z + HALF) + j) * N + Math.round(S.x + HALF) + i]; lo = Math.min(lo, y); hi = Math.max(hi, y); }
+  siteFlat = Math.max(siteFlat, hi - lo);
+  if (hi - lo > ESCAPE.flat) bad('site not flat ' + (hi - lo));
+  if (Math.abs(Math.hypot(S.dx, S.dz) - 1) > 1e-9 || S.dx * (w.rim.x - S.x) + S.dz * (w.rim.z - S.z) <= 0) bad('site facing');
+}
 const hist = {}; let rerolls = 0, fail = 0, worst = 0, worstCrater = 0, rockMin = Infinity, worstEdge = Infinity, rockMax = 0, golfAll = 0, golfRock = 0;
 for (let n = 0; n < 1000; n++) {
   const seed = 'SOAK-' + String(n).padStart(4, '0');
@@ -170,6 +200,7 @@ for (let n = 0; n < 1000; n++) {
     if (C.some((c) => P.pickups.some((u) => gap(c, u) < 1))) bad('canister within 1 m of a pickup');
     checkBase(seed, w.baseMap, P.golf.length);
     checkPrison(seed, w.prisonMap);
+    checkEscape(seed, w, stands);
     if (w.attempt > 0) rerolls++;
     hist[w.attempt] = (hist[w.attempt] || 0) + 1;
     rockMin = Math.min(rockMin, w.rocks.length); rockMax = Math.max(rockMax, w.rocks.length);
@@ -179,6 +210,7 @@ console.log('base attempt histogram', JSON.stringify(bhist), 'rerolls', brerolls
 console.log('prison attempt histogram', JSON.stringify(phist));
 console.log('greenhouse canister clusters dropped', ghDropped + '/1000');
 console.log('golf balls beside a rock', golfRock + '/' + golfAll);
+console.log('escape: dash encounters min/max', dashMin, dashMax, 'worst site relief', siteFlat.toFixed(3));
 const rate = rerolls / 1000;
 console.log('attempt histogram', JSON.stringify(hist), 'rerolls', rerolls, 'rate', rate);
 console.log('worst centreline step', worst.toFixed(4), 'worst switchback step', worstCrater.toFixed(4), 'worst edge margin', worstEdge.toFixed(3), 'rocks min/max', rockMin, rockMax, 'failures', fail);

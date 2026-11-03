@@ -31,6 +31,9 @@ test('populate tags everything with its area and keeps the level plan ids from a
   assert.deepEqual(can(C.canisters), can(A.canisters.filter(c => c.area >= 1))); assert.ok(C.pickups.length > 0 && C.pickups.every(q => q.area === 1));
   assert.equal(C.encs.length, C.lv.plan.encounters.length); assert.ok(C.aliens.every(a => C.encs.includes(a.enc) && a.enc.area === a.area));
   const F = createFight(W, 2); put(F, F.flag.x + 1, F.flag.z); stepFight(F, { ...idle, use: true }, 1 / 60); assert.equal(F.flag.held, false); });
+test('the surface level carries both plans, level 1 first; a level 1 fight has only areas 0-1 (Plan 6)', () => { const F = createFight(W);
+  assert.equal(F.lv.plan.encounters.length, W.plan.encounters.length + W.escape.encounters.length); assert.equal(F.lv.plan.golf.length, W.plan.golf.length + 1);
+  assert.ok([...F.aliens, ...F.pickups, ...F.canisters, ...F.balls].every(q => q.area <= 1)); });
 test('a hit reported inside a wall (an alien muzzle buried in it) leaves no decal or particle in the wall', () => { const F = createFight(W, 2); F.aliens.length = 0;
   F.bolts.push({ x: .1 - M.half, y: 1.5, z: M.start.z, vx: 1, vy: 0, vz: 0, dmg: 1, r: .1, life: 2, col: [1, 1, 1], team: 1, src: 99 }); // the sealed edge
   stepFight(F, idle, 1 / 60); assert.equal(F.bolts.length, 0); run(F, idle, .5);
