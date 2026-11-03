@@ -54,6 +54,20 @@ test('dawdling: RADIO.dawdle s with no progress cues a dawdle line, only while c
   assert.equal(said(run(R, RADIO.dawdle - 1, false, true)).length, 0); radioEvents(R, [{ type: 'area', id: 'surface' }], F);
   assert.equal(said(run(R, RADIO.dawdle - 1, false, true)).length, 0, 'progress restarts the clock'); const w = said(run(R, 12, false, true));
   assert.equal(w.length, 1); assert.ok(SCRIPT.dawdle.includes(w[0])); assert.equal(said(run(R0(), RADIO.dawdle + 5)).length, 0); });
+// Final review minors (Plan 6): "Hey. The base is that way." is a level 1 line, so from the prison on (an area event from 4, the
+// knock-out's own arriving while you are out) the dawdle bag skips it, part-drawn or refilled; and the cell's nudges cycle after
+// the fourth, so a player stuck in the shut cell keeps hearing them
+test('the dawdle line naming the base plays only on level 1 (areas 0-3); the other dawdle lines play on level 2 (Plan 6)', () => {
+  const base = 'H|Hey. The base is that way.', line = R => R.q[0].who + '|' + R.q[0].text, F = { ko: null, won: false, hp: 100, state: 'play' };
+  assert.equal(SCRIPT.dawdle[CUES.dawdle.lv1 - 1], base);
+  const R = R0(), one = []; for (let i = 0; i < SCRIPT.dawdle.length; i++) { radioCue(R, 'dawdle'); one.push(line(R)); }
+  assert.deepEqual(one.sort(), SCRIPT.dawdle.slice().sort(), 'level 1: each line once a bag');
+  const Q = createRadio(always), q = []; for (let i = 0; i < 2; i++) { radioCue(Q, 'dawdle'); q.push(line(Q)); } assert.deepEqual(q, SCRIPT.dawdle.slice(0, 2)); // the base line still in the bag
+  for (const [area, f] of [[2, F], [4, { ...F, ko: { phase: 'out' } }]]) { radioEvents(R, [{ type: 'area', area, id: 'x' }], f); radioEvents(Q, [{ type: 'area', area, id: 'x' }], f); }
+  for (const X of [R, Q]) { const two = new Set(); for (let i = 0; i < 40; i++) { radioCue(X, 'dawdle'); two.add(line(X)); } assert.deepEqual([...two].sort(), SCRIPT.dawdle.filter(l => l !== base).sort()); } });
+test('the cell nudges cycle after the fourth (Plan 6)', () => { const F = { ko: null, won: false, hp: 100, state: 'play' };
+  assert.equal(SCRIPT.nudge.length, 4); for (const n of [1, 4, 5, 8, 9, 11]) { const R = createRadio(always); radioEvents(R, [{ type: 'nudge', n }], F);
+    assert.deepEqual(R.q.map(l => l.who + '|' + l.text), [SCRIPT.nudge[(n - 1) % 4]], `nudge ${n}`); } });
 test('pausing replays an interrupted story line from its start and drops an interrupted reaction (Review Focus 3)', () => {
   const R = R0(); radioCue(R, 'telemetry'); run(R, RADIO.key + 1); assert.deepEqual(pauseRadio(R).map(a => a.do), ['off']); assert.deepEqual(said(run(R, 10)), SCRIPT.telemetry);
   const Q = R0(); radioCue(Q, 'base'); run(Q, RADIO.key + .5); pauseRadio(Q); assert.equal(said(run(Q, 10)).length, 0); assert.ok(radioIdle(Q)); });

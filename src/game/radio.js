@@ -19,15 +19,17 @@ const AREA_CUES = new Set(['crater', 'base', 'comms', 'climb', 'dash']);
 
 // R.q: the lines waiting, {id, key, who (a WHO letter), text, crit, at (R.clock when cued), voiced}; R.cur: the line on the air.
 // _t: when the phase began; _quiet: no reaction keys up before it; _used: once cues spent; _next: when each cooling cue is allowed
-// again; _bags: each cue's unplayed lines; _kills: recent kill times; _idle: the dawdle clock; _id: the last line id.
+// again; _bags: each cue's unplayed lines; _kills: recent kill times; _idle: the dawdle clock; _id: the last line id; _lv2: level 2
+// reached (an area from the prison, 4, on), so a cue's lv1 line no longer plays.
 export function createRadio(rng, script = SCRIPT, cues = CUES) {
-  return { clock: 0, q: [], cur: null, phase: 'idle', _rng: rng, _script: script, _cues: cues, _t: 0, _quiet: 0, _used: {}, _next: {}, _bags: {}, _kills: [], _idle: 0, _id: 0 };
+  return { clock: 0, q: [], cur: null, phase: 'idle', _rng: rng, _script: script, _cues: cues, _t: 0, _quiet: 0, _used: {}, _next: {}, _bags: {}, _kills: [], _idle: 0, _id: 0, _lv2: false };
 }
 
-// One line index of cue key from its shuffle-bag, refilled when empty.
-function draw(R, key, n) {
-  let B = R._bags[key];
-  if (!B || !B.length) B = R._bags[key] = Array.from({ length: n }, (_, i) => i);
+// One line index of cue key (n lines) from its shuffle-bag, refilled when empty, never line skip (an index, or -1 for none).
+function draw(R, key, n, skip) {
+  let B = R._bags[key]?.filter(i => i !== skip);
+  if (!B?.length) B = Array.from({ length: n }, (_, i) => i).filter(i => i !== skip);
+  R._bags[key] = B;
   return B.splice(R._rng.int(B.length), 1)[0];
 }
 
@@ -35,7 +37,7 @@ function draw(R, key, n) {
 export function radioCue(R, key, n) {
   const c = R._cues[key], L = R._script[key];
   if (!c || !L || (c.at && !L[n - 1]) || (c.once && R._used[key]) || R.clock < (R._next[key] ?? 0) || (c.p < 1 && R._rng.next() >= c.p)) return false;
-  const crit = !!(c.seq || c.crit), q = R.q, picked = c.seq ? L : [L[c.at ? n - 1 : draw(R, key, L.length)]];
+  const crit = !!(c.seq || c.crit), q = R.q, picked = c.seq ? L : [L[c.at ? n - 1 : draw(R, key, L.length, R._lv2 && c.lv1 ? c.lv1 - 1 : -1)]];
   let w = 0;
   while (w < q.length && q[w].crit) w++;
   if (!crit) q.length = w; // the newest reaction wins
@@ -45,14 +47,15 @@ export function radioCue(R, key, n) {
   return true;
 }
 
-// The fight's events as cues, one per event (Houston's, two: the pair, then the rescue line Houston is cut off in). The progress
-// events restart the dawdle clock. While knocked out only Houston and the wake cue, so nothing steps on the punchline or the
+// The fight's events as cues, one per event (Houston's, two: the pair, then the rescue line Houston is cut off in). An area from 4
+// on is level 2, whatever else is filtered (the prison's comes in the knock-out). The progress events restart the dawdle clock. While knocked out only Houston and the wake cue, so nothing steps on the punchline or the
 // cut-off line (R18); once boarded only the boarding line, so nothing steps on it or the stowaway sting, and boarding drops every
 // line still waiting, story or reaction (the shell cuts the one on the air with cutAll); an alien killed by another's bolt (team 1)
 // isn't yours to react to (R25).
 export function radioEvents(R, events, F) {
   for (const e of events) {
     const t = e.type;
+    if (t === 'area' && e.area >= 4) R._lv2 = true;
     if (F.ko && t !== 'houston' && t !== 'wake' || F.won && t !== 'board' || e.team) continue;
     if (PROGRESS.has(t)) R._idle = 0;
     if (t === 'board') R.q.length = 0;
@@ -67,7 +70,7 @@ export function radioEvents(R, events, F) {
     } else if (t === 'pickup') radioCue(R, e.kind);
     else if (t === 'golf') e.id === 5 ? radioCue(R, 'evidence') : radioCue(R, 'golf', e.n);
     else if (t === 'area') { if (AREA_CUES.has(e.id)) radioCue(R, e.id); }
-    else if (t === 'nudge') radioCue(R, 'nudge', e.n);
+    else if (t === 'nudge') radioCue(R, 'nudge', (e.n - 1) % R._script.nudge.length + 1); // they cycle, for a player stuck in the cell
     else if (t === 'clock') radioCue(R, 'countdown', e.n);
     else if (t === 'houston') { radioCue(R, 'houston'); radioCue(R, 'rescue'); }
     else if (PLAIN[t]) radioCue(R, PLAIN[t]);

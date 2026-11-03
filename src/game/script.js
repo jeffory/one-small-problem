@@ -3,13 +3,14 @@
 // radio.js). Pure data.
 export const WHO = { H: 'HOUSTON', Y: 'YOU', S: 'SWITCHBOARD', P: 'PILOT' };
 export const VOICE = { H: [.9, 1.05], Y: [1.05, 1], S: [.5, .85], P: [.8, 1.1] }; // speech pitch, rate
-// seq: every line in order, critical; crit: one line, critical; once: once per run; cool: s between cues; p: chance; at: line n of radioCue(R, key, n)
+// seq: every line in order, critical; crit: one line, critical; once: once per run; cool: s between cues; p: chance; at: line n of radioCue(R, key, n);
+// lv1: line n plays on level 1 only (areas 0-3)
 export const CUES = {
   touchdown: { seq: 1 }, cabin: { crit: 1 }, step: { seq: 1 }, nag: { crit: 1 }, autoplant: { seq: 1 }, planted: { seq: 1 }, company: { seq: 1 }, telemetry: { seq: 1 }, title: { seq: 1 },
   hold: { seq: 1 }, holding: { crit: 1 }, houston: { seq: 1 }, rescue: { seq: 1 },
   grab: { once: 1 }, pistol: { once: 1 }, scatter: { once: 1 }, tape: { cool: 20, p: .6 }, cells: { cool: 20, p: .5 }, low: { cool: 25 }, fall: { cool: 20 },
   first: { once: 1 }, brute: { cool: 20, p: .8 }, floater: { cool: 30, p: .7 }, multi: { cool: 20 }, kill: { cool: 15, p: .2 }, boom: { cool: 20, p: .5 },
-  golf: { at: 1 }, dawdle: {}, crater: {}, base: {}, comms: {}, climb: {}, dash: { seq: 1 }, dead: {}, restart: { p: .5 },
+  golf: { at: 1 }, dawdle: { lv1: 4 }, crater: {}, base: {}, comms: {}, climb: {}, dash: { seq: 1 }, dead: {}, restart: { p: .5 },
   bang: { crit: 1 }, nudge: { at: 1 }, guard: { crit: 1 }, freed: { seq: 1 }, pa: { cool: 30 },
   flare: { seq: 1 }, countdown: { at: 1 }, rush: { seq: 1 }, missed: { crit: 1 }, board: { seq: 1 }, sting: { seq: 1 }, wake: { seq: 1 },
   cow: { seq: 1 }, chair: { seq: 1 }, evidence: { once: 1 }, hall: { seq: 1 } };
