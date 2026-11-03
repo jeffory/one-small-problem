@@ -13,7 +13,7 @@ import { SCRIPT, CUES } from './script.js';
 // low: the health under which a hit gets a "low" line; dawdle: play without progress per dawdle line; multi: [kills, within s].
 export const RADIO = { key: .25, gap: .5, min: 1.6, cps: 14, slack: 1.5, pad: 2, stale: 5, chat: 4, low: 30, dawdle: 50, multi: [3, 4] };
 const EPS = 1e-9, NONE = Object.freeze([]), PROGRESS = new Set(['kill', 'pickup', 'flag', 'golf', 'area', 'restart', 'hold']);
-const PLAIN = { flag: 'grab', dead: 'dead', restart: 'restart', boom: 'boom', hold: 'hold', holdmsg: 'holding' };
+const PLAIN = { flag: 'grab', dead: 'dead', restart: 'restart', boom: 'boom', hold: 'hold', holdmsg: 'holding', bang: 'bang', guard: 'guard', freed: 'freed', pa: 'pa' };
 const AREA_CUES = new Set(['crater', 'base', 'comms']);
 
 // R.q: the lines waiting, {id, key, who (a WHO letter), text, crit, at (R.clock when cued), voiced}; R.cur: the line on the air.
@@ -63,6 +63,7 @@ export function radioEvents(R, events, F) {
     } else if (t === 'pickup') radioCue(R, e.kind);
     else if (t === 'golf') radioCue(R, 'golf', e.n);
     else if (t === 'area') { if (AREA_CUES.has(e.id)) radioCue(R, e.id); }
+    else if (t === 'nudge') radioCue(R, 'nudge', e.n);
     else if (t === 'houston') { radioCue(R, 'houston'); radioCue(R, 'rescue'); }
     else if (PLAIN[t]) radioCue(R, PLAIN[t]);
   }
@@ -99,8 +100,8 @@ export function stepRadio(R, dt, voiced, dawdle) {
 // it started, as a subtitle (R15). One for any other line (a stale onend) is ignored.
 export function radioDone(R, id, failed) { const L = R.cur; if (L && L.id === id) { if (failed) L.voiced = false; else L.done = true; } }
 
-// Whether the dawdle clock runs: in play only, never on hold, while knocked out or once boarded (R16).
-export const dawdling = (state, F) => state === 'play' && !F.hold && !F.ko && !F.won;
+// Whether the dawdle clock runs: in play only, never on hold, while knocked out once boarded (R16) or in the shut cell.
+export const dawdling = (state, F) => state === 'play' && !F.hold && !F.ko && !F.won && !F.cell?.shut;
 
 // The game pauses: a story line keyed or talking goes back to the head of the queue (a copy with a new id, so its cancelled
 // utterance's onend can't end the replay) to play again from the start; a reaction is dropped. One keying down just ends.

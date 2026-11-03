@@ -1,5 +1,10 @@
 // The escape, level 2 (pure): its tables and helpers. The state changes they drive live in fight.js.
 
+// The break-out in the prison cell. reach: how near (m) the bars E works; face: how squarely (forward . the direction to the bars)
+// you must face them; guard, open: seconds from the bang to the guard coming and to the bars dropping; idle: seconds between the
+// Switchboard's nudges in the shut cell; pa: seconds between its notices once you are out.
+export const BREAK = { reach: 2, face: .5, guard: 3, open: 4.5, idle: 20, pa: 40 };
+
 // The knock-out. call: the most seconds from Houston picking up to the knock-out, the fallback when no radio ends the cut-off line
 // first (the bot, replays, Node). The rest time the wake in the cell, which comes later; for now the knock-out ends the run.
 // out: seconds of black; stamp: seconds into the black that text stamps; fade: seconds the light takes to come back; down: seconds

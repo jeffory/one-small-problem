@@ -8,7 +8,8 @@ export const CUES = {
   hold: { seq: 1 }, holding: { crit: 1 }, houston: { seq: 1 }, rescue: { seq: 1 },
   grab: { once: 1 }, pistol: { once: 1 }, scatter: { once: 1 }, tape: { cool: 20, p: .6 }, cells: { cool: 20, p: .5 }, low: { cool: 25 }, fall: { cool: 20 },
   first: { once: 1 }, brute: { cool: 20, p: .8 }, floater: { cool: 30, p: .7 }, multi: { cool: 20 }, kill: { cool: 15, p: .2 }, boom: { cool: 20, p: .5 },
-  golf: { at: 1 }, dawdle: {}, crater: {}, base: {}, comms: {}, dead: {}, restart: { p: .5 } };
+  golf: { at: 1 }, dawdle: {}, crater: {}, base: {}, comms: {}, dead: {}, restart: { p: .5 },
+  bang: { crit: 1 }, nudge: { at: 1 }, guard: { crit: 1 }, freed: { seq: 1 }, pa: { cool: 30 } };
 export const SCRIPT = {
   touchdown: ["Y|Contact light. Engine stop.", "H|We copy, you're down. Beautiful work."],
   cabin: ["H|We show the hatch open. That's usually the cue to go outside."], // carry-over (Task 7 review): still in the cabin OPEN.stay s after touchdown
@@ -73,4 +74,9 @@ export const SCRIPT = {
     "S|Thank you for your patience. Your patience has been noted.", "S|You can also reach us by screaming into the void.", "Y|The hold music is honestly not bad.",
     "S|Please do not shoot the staff."],
   houston: ["H|Houston, go ahead.", "Y|Houston\u2026 we have one small problem."],
+  bang: ["S|PRISONER. QUIET."],
+  nudge: ["H|Try banging on the door. Works in every movie.", "H|Still with us? The bars. Bang on the bars.", "Y|Hello? Room service?", "H|Flight suggests making a nuisance of yourself. You're good at that."],
+  guard: ["H|One guard, coming to check on you. You have a flag pole. We like those odds."],
+  freed: ["S|PRISONER OUT OF BOUNDS. PLEASE REMAIN CALM.", "H|Taken out with a flag pole. Somewhere a historian just fainted."],
+  pa: ["S|ATTENTION. A PRISONER IS LOOSE. DO NOT FEED THE PRISONER.", "S|REMINDER. THE INTERROGATION CHAIR IS NOT FOR STAFF USE.", "S|WILL THE OWNER OF THE COW PLEASE COLLECT THE COW.", "S|ALL GUARDS TO CELL ONE. ALL GUARDS. ANY GUARDS.", "S|THIS FACILITY HAS GONE ZERO DAYS WITHOUT AN ESCAPE.", "S|PLEASE RETURN TO YOUR CELL. THANK YOU FOR YOUR COOPERATION."],
   rescue: ["H|Copy. We heard. Rescue vehicle is go, touchdown at your lander in twenty min\u2014"] }; // cut off: its talk ending is the knock-out

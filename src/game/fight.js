@@ -16,7 +16,7 @@ import { ALIENS, createAlien, stepAlien, hurtAlien, move, level, muzzleAt } from
 import { AREAS, AREA_TEXT, LEVEL, makeLevel, areaStart, advanceArea, stintEnd, setBars } from './areas.js';
 import { K } from '../gen/base.js';
 import { HOLD, planWaves, dishOf } from './hold.js';
-import { KO } from './escape.js';
+import { KO, BREAK } from './escape.js';
 
 // Alien drops (pistol, scatter, flCells) are 20% up on Plan 2's 20, 16 and 15 after the first play-test (H5). Tape drops (Plan 5) come from the sim's
 // F.rng, not generation, so the goldens are untouched: tapeDrop is the chance per alien type, tapeOff the distance it lies from another drop.
@@ -66,9 +66,9 @@ function populate(F, from) {
   const plan = F.lv.plan, to = stintEnd(from), mine = q => q.area >= from && q.area <= to; let id = 1;
   F.encs.length = F.aliens.length = 0;
   for (const e of plan.encounters) {
-    const enc = { x: e.x, z: e.z, p: e.p, first: e.first, area: e.area, room: e.room ?? -1, alerted: false, waved: false };
+    const enc = { x: e.x, z: e.z, p: e.p, first: e.first, guard: !!e.guard, area: e.area, room: e.room ?? -1, alerted: false, waved: false };
     F.encs.push(enc);
-    for (const s of e.aliens) { const i = id++; if (!mine(e)) continue; const a = createAlien(s, i, enc); a.area = e.area; F.aliens.push(a); }
+    for (const s of e.aliens) { const i = id++; if (!mine(e) || e.guard) continue; const a = createAlien(s, i, enc); a.area = e.area; F.aliens.push(a); }
   }
   for (const p of plan.pickups) if (mine(p)) F.pickups.push({ kind: p.kind, x: p.x, y: p.y, z: p.z, n: PICKUP[p.kind], area: p.area });
   plan.canisters.forEach((c, i) => { if (mine(c)) F.canisters.push({ x: c.x, y: c.y, z: c.z, hp: CANISTER.hp, fuse: 0, id: -1 - i, area: c.area }); });
@@ -78,8 +78,30 @@ function populate(F, from) {
 // On arriving in area k, by any way in (a new fight, entering it, a restart): the cell's bars shut behind you in the prison
 // (area 4); out of it there is no cell.
 function arrive(F, k) {
-  if (k === 4) { F.cell = { shut: true }; setBars(F.lv, true); }
-  else if (k === 5) F.cell = null;
+  if (k !== 4) { F.cell = null; return; }
+  const freed = !!F.cell?.freed;
+  F.cell = { shut: !freed, bang: null, idle: 0, nudges: 0, pa: 0, freed }; setBars(F.lv, !freed);
+}
+
+// Whether E bangs on the bars now: in the shut cell, once, near them and facing them.
+export function canBang(F) {
+  if (F.area !== 4 || F.state !== 'play' || F.ko || !F.cell.shut || F.cell.bang !== null) return false;
+  const p = F.player, b = F.world.prisonMap.bars, dx = b.x - p.x, dz = b.z - p.z, d = Math.hypot(dx, dz);
+  return d <= BREAK.reach && (d < 1e-6 || (-Math.sin(p.yaw) * dx - Math.cos(p.yaw) * dz) / d >= BREAK.face);
+}
+
+// The cell's clocks, for the living (spec 4.1): nudges while it is shut and unbanged; after the bang the guard comes and the bars
+// drop; once they are open the Switchboard's notices.
+function stepCell(F, dt) {
+  const c = F.cell;
+  if (!c.shut) { if ((c.pa += dt) >= BREAK.pa) { c.pa -= BREAK.pa; F.events.push({ type: 'pa' }); } return; }
+  if (c.bang === null) { if ((c.idle += dt) >= BREAK.idle) { c.idle -= BREAK.idle; F.events.push({ type: 'nudge', n: ++c.nudges }); } return; }
+  const t = c.bang; c.bang += dt;
+  if (t < BREAK.guard && c.bang >= BREAK.guard) {
+    const e = F.lv.plan.encounters[0], a = createAlien(e.aliens[0], 1, F.encs[0]); a.area = e.area; F.aliens.push(a);
+    F.encs[0].alerted = true; F.events.push({ type: 'guard' });
+  }
+  if (c.bang >= BREAK.open) openBars(F);
 }
 
 // The cell's bars drop: the doorway is floor again.
@@ -204,6 +226,7 @@ export function stepFight(F, input, dt) {
   }
   if (input.use && F.area === 1 && Math.hypot(p.x - U.x, p.z - U.z) <= DOOR_REACH) enterArea(F, 2);
   if (input.use && F.area === 3 && !F.hold && F.state === 'play') { const d = dishOf(F.world.baseMap); if (Math.hypot(p.x - d.x, p.z - d.z) <= HOLD.reach) startHold(F, d); }
+  if (input.use && canBang(F)) { F.cell.bang = 0; F.events.push({ type: 'bang' }); }
   const lv = F.lv;
   coolWeapon(A, dt);
   if (input.fire && A.cur >= 0 && A.cool <= 0) fire(F);
@@ -213,6 +236,7 @@ export function stepFight(F, input, dt) {
   stepPlayer(p, input, dt, lv.ground, lv.bound, F.gravity, lv.ceil, F.area === 1 ? FALL.safe : Infinity);
   const k = advanceArea(F.world, F.area, p.x, p.z); if (k > F.area) enterArea(F, k);
   if (p.land > FALL.safe) hurtPlayer(F, FALL.dmg * (p.land - FALL.safe), 0, 0, 0, 'fall');
+  if (F.area === 4 && F.state === 'play' && !F.ko) stepCell(F, dt);
   // 4. distance field
   if ((F.fieldT -= dt) <= 0) { F.fieldT = FIELD_DT; updateField(F.field, lv.grid, lv.n, lv.half, p.x, p.z, lv.maxStep); }
   // 5. aliens: awake within the level's wake radius of their encounter or once it is alerted; the asleep only tick their clock
@@ -361,10 +385,13 @@ function killed(F, a) {
   const c = worldSpheres(a)[0], gy = F.lv.ground(a.x, a.z);
   burst(F, 'goo', c[0], c[1], c[2], 24, 1.5, 1, 3, 8, 8);
   F.events.push({ type: 'kill', x: a.x, y: gy, z: a.z, kind: a.type, n: F.kills, team: a._foe });
+  if (a.enc.guard) { // the guard: a cell you are out of for good (the checkpoint takes its pistol), and its tape
+    F.cell.freed = true; F.entry.owned[1] = true; F.entry.cells = Math.min(MAX_CELLS, F.entry.cells + PICKUP.pistol); F.events.push({ type: 'freed' });
+  }
   const kind = a.type === 'fl' ? 'cells' : a.type === 'br' ? 'scatter' : a.enc.first || F.rng.next() < PICKUP.pistolDrop ? 'pistol' : null;
   if (kind) F.pickups.push({ kind, x: a.x, y: gy, z: a.z, n: kind === 'cells' ? PICKUP.flCells : PICKUP[kind], area: a.area });
   const chance = PICKUP.tapeDrop[a.type]; // the first scoring kill drops tape with no roll; else by chance (rng drawn only when 0 < chance < 1)
-  if ((scored && F.kills === 1) || chance >= 1 ||
+  if ((scored && F.kills === 1) || a.enc.guard || chance >= 1 ||
       (chance > 0 && F.rng.next() < chance)) {
     let x = a.x, y = gy, z = a.z;
     if (kind) { const p = F.player, dx = p.x - a.x, dz = p.z - a.z, d = Math.hypot(dx, dz), tx = a.x + (d > 1e-6 ? dx / d : 1) * PICKUP.tapeOff, tz = a.z + (d > 1e-6 ? dz / d : 0) * PICKUP.tapeOff, ty = F.lv.ground(tx, tz);

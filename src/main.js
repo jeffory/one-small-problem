@@ -8,7 +8,7 @@ import { generateWorld } from './gen/world.js';
 import { checksumWorld } from './gen/checksum.js';
 import { createGL } from './gfx/gl.js';
 import { createRenderer } from './gfx/renderer.js';
-import { createFight, stepFight, hurtPlayer, enterArea, knockOut, skipTo, DOOR_REACH } from './game/fight.js';
+import { createFight, stepFight, hurtPlayer, enterArea, knockOut, skipTo, canBang, DOOR_REACH } from './game/fight.js';
 import { createFightView, fillFrame, setScene, setWreck } from './game/fightView.js';
 import { AREAS, areaStart, wayfind } from './game/areas.js';
 import { WEAPONS } from './game/weapons.js';
@@ -231,6 +231,7 @@ function boot() {
       const d = F.area === 3 && dishOf(run.world.baseMap);
       hud.prompt(F.ko ? '' : F.state === 'dead' ? 'You died. Back to ' + BACK[F.area] + '...'
         : F.lv.id === 'surface' && !F.flag.held && Math.hypot(p.x - F.flag.x, p.z - F.flag.z) < 2.2 ? '[E] grab the flag'
+        : canBang(F) ? '[E] bang on the bars'
         : F.area === 1 && Math.hypot(p.x - U.x, p.z - U.z) <= DOOR_REACH ? '[E] enter the hangar'
         : d && !F.hold && Math.hypot(p.x - d.x, p.z - d.z) <= HOLD.reach ? '[E] call Houston'
         : F.hold ? 'ON HOLD ' + fmtTime(F.hold.t) : '');
@@ -293,6 +294,9 @@ function boot() {
     door, enter, warp, comms, hurt: n => hurtPlayer(run.F, n, 0, 0, 0), god: on => { run.F.god = on; },
     // Straight into the prison's cell (area 4), stripped as the knock-out leaves you.
     prison: () => skipTo(run.F, 4),
+    // 1.2 m inside the bars facing them; with press, one E.
+    bang: (press = true) => { const F = run.F, b = F.world.prisonMap.bars; place(b.x - b.dx * 1.2, b.z - b.dz * 1.2, Math.atan2(-b.dx, -b.dz));
+      if (press) stepFight(F, { ...IDLE, use: true }, .001); },
     // The radio of a play run: the subtitle of the line on the air (null between lines), the cues of the lines waiting and the
     // dawdle clock (s); cue(key) cues its lines.
     radio: () => run.R && { line: run.R.cur && WHO[run.R.cur.who] + ': ' + run.R.cur.text, queued: run.R.q.map(l => l.key), dawdle: run.R._idle },

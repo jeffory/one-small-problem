@@ -7,6 +7,7 @@ const keyOf = (ev, f = {}) => { const R = createRadio(always); radioEvents(R, ev
 test('the script: 150 to 205 short lines "X|text" with known speakers, every cue scripted, and the spec\'s lines verbatim (radio)', () => {
   const all = Object.values(SCRIPT).flat(); assert.ok(all.length >= 150 && all.length <= 205, `${all.length}`); for (const l of all) assert.match(l, /^[HYS]\|.{2,90}$/);
   assert.deepEqual(Object.keys(SCRIPT).sort(), Object.keys(CUES).sort()); assert.deepEqual(Object.keys(WHO).sort(), ['H', 'S', 'Y']); for (const k in WHO) assert.equal(VOICE[k].length, 2);
+  assert.deepEqual(SCRIPT.bang, ['S|PRISONER. QUIET.']); assert.equal(SCRIPT.nudge[0], 'H|Try banging on the door. Works in every movie.');
   assert.equal(SCRIPT.golf.length, 5); assert.deepEqual(SCRIPT.touchdown, ['Y|Contact light. Engine stop.', "H|We copy, you're down. Beautiful work."]);
   assert.deepEqual(SCRIPT.step, ["Y|Okay Houston, I'm stepping off the\u2014"]); assert.deepEqual(SCRIPT.company, ['Y|\u2026Houston, are we expecting anyone?']);
   assert.deepEqual(SCRIPT.telemetry, ['H|\u2026say again? We just lost all telemetry from the lander.']); assert.deepEqual(SCRIPT.title, ['Y|Houston\u2026 we have one small problem.']);
@@ -37,6 +38,7 @@ test('fight events map to cues (radio)', () => {
   assert.equal(keyOf([{ type: 'kill', kind: 'sk', n: 1 }]), 'first'); /* pre-flight F25: the event's n, not F.kills */ assert.equal(keyOf([{ type: 'kill', kind: 'br' }]), 'brute'); assert.equal(keyOf([{ type: 'kill', kind: 'fl' }]), 'floater');
   assert.equal(keyOf([{ type: 'kill', kind: 'sk' }]), 'kill'); assert.equal(keyOf([1, 2, 3].map(() => ({ type: 'kill', kind: 'sk' }))), 'multi');
   assert.equal(keyOf([{ type: 'hurt' }], { hp: 20 }), 'low'); assert.equal(keyOf([{ type: 'hurt' }], { hp: 80 }), ''); assert.equal(keyOf([{ type: 'hurt', cause: 'fall' }], { hp: 20 }), 'fall');
+  assert.equal(keyOf([{ type: 'bang' }]), 'bang'); assert.equal(keyOf([{ type: 'nudge', n: 1 }]), 'nudge');
   for (const id of ['crater', 'base', 'comms']) assert.equal(keyOf([{ type: 'area', id }]), id); assert.equal(keyOf([{ type: 'area', id: 'surface' }]), '');
   for (const [type, key] of [['dead', 'dead'], ['restart', 'restart'], ['flag', 'grab'], ['boom', 'boom'], ['holdmsg', 'holding']]) assert.equal(keyOf([{ type }]), key);
   for (const kind of ['pistol', 'scatter', 'tape', 'cells']) assert.equal(keyOf([{ type: 'pickup', kind }]), kind);

@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test'; import { pathToFileURL } from 'node:url'; import { resolve } from 'node:path';
 import { generateWorld } from '../src/gen/world.js'; import { checksumWorld } from '../src/gen/checksum.js';
-import { HELP_TIME } from '../src/ui/hud.js'; import { fmtTime } from '../src/ui/score.js'; import { OPEN } from '../src/game/opening.js'; import { HOLD } from '../src/game/hold.js'; import { KO } from '../src/game/escape.js'; import { CUES } from '../src/game/script.js';
+import { HELP_TIME } from '../src/ui/hud.js'; import { fmtTime } from '../src/ui/score.js'; import { OPEN } from '../src/game/opening.js'; import { HOLD } from '../src/game/hold.js'; import { KO, BREAK } from '../src/game/escape.js'; import { CUES } from '../src/game/script.js';
 export const URLS = [['file', pathToFileURL(resolve('dist/index.html')).href], ['http', 'http://localhost:4173/index.html']];
 // Benign Firefox parser note about the packed binary payload when the server's utf-8 header overrides the page's iso-8859-15 meta; real decoding failures are caught by the ready check.
 const BENIGN = /byte stream was erroneous according to the character encoding/i;
@@ -410,3 +410,8 @@ test('the wayfinding arrow shows on the surface in whole metres, and hides while
   await page.keyboard.press('Escape'); await expect.poll(() => paused(page)).toBe(false); await expect(way).toBeVisible();
   await page.evaluate(() => window.ospTest.enter()); await expect.poll(() => page.evaluate(() => window.ospTest.area())).toBe('base'); await expect(way).toBeHidden();
   expect(errors).toEqual([]); });
+test('the bars open: the prompt, a bang, the Switchboard, a guard, the bars drop (Plan 6)', async ({ page }) => {
+  await noVoices(page); const errors = watchErrors(page); await start(page); await page.evaluate(() => window.ospTest.prison()); await expect.poll(() => area(page)).toBe('prison');
+  await page.evaluate(() => window.ospTest.bang(false)); await expect(page.locator('#prompt')).toHaveText('[E] bang on the bars'); await page.evaluate(() => window.ospTest.bang());
+  await expect.poll(() => page.evaluate(() => window.ospTest.radio().line)).toContain('PRISONER. QUIET.'); await page.evaluate(s => window.ospTest.ff(s), BREAK.open + .2);
+  const f = await fight(page); expect([f.cell.shut, f.cell.bang > BREAK.open]).toEqual([false, true]); expect(errors).toEqual([]); });
