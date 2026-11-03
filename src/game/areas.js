@@ -36,13 +36,19 @@ export function advanceArea(world, k, x, z) {
 
 // The wayfinding arrow (Plan 5). Within WAY.near m of the target it hides.
 export const WAY = { near: 12 };
-// Where the arrow points from p: only the outdoor areas have a goal. The crater follows the switchback (the path vertex after the nearest), then the door.
+// Where the arrow points from p: only the outdoor areas have a goal. The crater follows the switchback: the end of the segment p is
+// nearest (by projection, so a long leg is not mistaken for its neighbour), or the vertex after it once p is within WAY.near of
+// that end; after the last vertex, the door. So the hide rule only ever applies at the door.
 export function wayTarget(world, k, p) {
   if (k === 0) return world.crater.top;
   if (k !== 1) return null;
-  const P = world.crater.path; let n = 0, best = Infinity;
-  for (let i = 0; i < P.length; i++) { const d = Math.hypot(P[i][0] - p.x, P[i][1] - p.z); if (d < best) { best = d; n = i; } }
-  return n + 1 < P.length ? { x: P[n + 1][0], z: P[n + 1][1] } : world.crater.use;
+  const P = world.crater.path; let seg = 0, best = Infinity;
+  for (let i = 0; i + 1 < P.length; i++) {
+    const ax = P[i][0], az = P[i][1], ex = P[i + 1][0] - ax, ez = P[i + 1][1] - az, t = Math.max(0, Math.min(1, ((p.x - ax) * ex + (p.z - az) * ez) / (ex * ex + ez * ez)));
+    const d = Math.hypot(ax + ex * t - p.x, az + ez * t - p.z); if (d < best) { best = d; seg = i; }
+  }
+  let n = seg + 1; if (Math.hypot(P[n][0] - p.x, P[n][1] - p.z) < WAY.near) n++;
+  return n < P.length ? { x: P[n][0], z: P[n][1] } : world.crater.use;
 }
 // null, or { ang, m }: the target's bearing from where you face (positive to the right, in (-pi, pi]) and its distance in whole metres.
 export function wayfind(F) {

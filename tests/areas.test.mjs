@@ -58,15 +58,21 @@ test('the arrow points at the rim (crater.top) on the surface, in whole metres, 
   for (const [dy, want] of [[Math.PI / 2, Math.PI / 2], [-Math.PI / 2, -Math.PI / 2], [Math.PI, Math.PI], [20 * Math.PI + .3, .3]]) { F.player.yaw = y0 + dy;
     const a = wayfind(F).ang; assert.ok(Math.abs(Math.abs(a) - Math.abs(want)) < 1e-6 && (want === Math.PI || Math.sign(a) === Math.sign(want)), `${dy}: ${a}`); assert.ok(a > -Math.PI - 1e-12 && a <= Math.PI + 1e-12); }
  });
-test('in the crater the arrow follows the switchback: the vertex after the nearest one, then the hangar door (crater.use) after the last (Plan 5, pre-flight F7)', () => {
+test('walking each switchback leg on three seeds, the arrow target never goes back and never skips a corner (Plan 5 final review)', () => {
+  for (const seed of ['APOLLO-4471', 'EAGLE-0001', 'SOAK-0042']) {
+    const w = generateWorld(seed), P = w.crater.path, U = w.crater.use, pts = [...P, [U.x, U.z]], idx = t => { for (let i = 0; i < P.length; i++) if (t.x === P[i][0] && t.z === P[i][1]) return i; return P.length; };
+    let last = 1;
+    for (let s = 0; s + 1 < pts.length; s++) for (let k = 0; k <= 20; k++) { const f = k / 20, p = { x: pts[s][0] + (pts[s + 1][0] - pts[s][0]) * f, z: pts[s][1] + (pts[s + 1][1] - pts[s][1]) * f }, i = idx(wayTarget(w, 1, p));
+      assert.ok(i >= last && i <= last + 1 && i >= 1, `${seed} leg ${s} at ${f}: target ${i} after ${last}`); last = i; }
+    assert.equal(last, P.length, `${seed}: ends on the door`); } });
+test('in the crater the arrow follows the switchback: the end of the nearest leg (the next vertex once within WAY.near of it), then the hangar door (crater.use) after the last (Plan 5, pre-flight F7)', () => {
   const F = createFight(W), P = W.crater.path, U = W.crater.use, at = (x, z, yaw = 0) => Object.assign(F.player, { x, z, yaw }), vx = i => ({ x: P[i][0], z: P[i][1] });
   assert.ok(P.length >= 3); for (let i = 0; i < P.length - 1; i++) assert.deepEqual(wayTarget(W, 1, vx(i)), vx(i + 1), `${i}`);
   assert.deepEqual(wayTarget(W, 1, vx(P.length - 1)), U);
   assert.deepEqual(wayTarget(W, 1, { x: P[0][0] + 1, z: P[0][1] }), vx(1)); // near the top: the next vertex, not the door
-  assert.deepEqual(wayTarget(W, 1, { x: U.x + 3 * (U.x - P.at(-1)[0]), z: U.z + 3 * (U.z - P.at(-1)[1]) }), U); // past the end: the door
-  enterArea(F, 1); at(P[1][0], P[1][1] + 30.4); assert.deepEqual(wayfind(F), { ang: 0, m: 30 }); // nearest is path[0], so it aims at path[1], due -z
-  const L = P.at(-1); at(U.x + 3 * (U.x - L[0]), U.z + 3 * (U.z - L[1]), Math.atan2(-(U.x - (U.x + 3 * (U.x - L[0]))), -(U.z - (U.z + 3 * (U.z - L[1]))))); const w = wayfind(F);
-  assert.ok(Math.abs(w.ang) < 1e-9 && w.m === Math.round(3 * Math.hypot(U.x - L[0], U.z - L[1]))); });
+  const L = P.at(-1); assert.ok(Math.hypot(U.x - L[0], U.z - L[1]) < WAY.near); assert.deepEqual(wayTarget(W, 1, { x: U.x, z: U.z }), U); // at the door: the door
+  enterArea(F, 1); at(P[1][0], P[1][1] + 30.4); assert.deepEqual(wayfind(F), { ang: 0, m: 30 }); // 30.4 m south of path[1], nearest leg path[0]->path[1]: aims at path[1], due -z
+  at(U.x, U.z); assert.equal(wayfind(F), null); }); // the 12 m hide only ever applies at the door
 test('the arrow hides within WAY.near of its target, when dead, and indoors (Plan 5)', () => { const F = createFight(W), T = W.crater.top;
   assert.equal(WAY.near, 12); Object.assign(F.player, { x: T.x + WAY.near + .1, z: T.z }); assert.ok(wayfind(F)); F.player.x = T.x + WAY.near - .1; assert.equal(wayfind(F), null);
   F.player.x = T.x + 50; F.state = 'dead'; assert.equal(wayfind(F), null); for (const k of [2, 3]) assert.equal(wayfind(createFight(W, k)), null); });
