@@ -17,8 +17,9 @@ import { cameraBasis } from '../gfx/math.js';
 // wp: a route waypoint this near (m) is passed; turn: the most yaw, and the most pitch, turned per second (rad); fire: the aim
 // error (rad) it fires under; sight: how far (m) it looks for a target; noise: the aim noise, each way (rad); strafe: how often
 // (s) its dodge flips; stuck: seconds without progress before it jiggles, and again at each multiple; stall: seconds without
-// progress before it gives up the run; use: how near the flag (m) it presses E.
-export const BOT = { wp: 3, turn: 5, fire: .052, sight: 40, noise: .04, strafe: 1.3, stuck: 3, stall: 45, use: 1.6 };
+// progress before it gives up the run; use: how near the flag (m) it presses E; max: the sim time (s) after which it gives the run
+// up whatever its progress (R21: the soak's longest reach of the comms room is about 297 s).
+export const BOT = { wp: 3, turn: 5, fire: .052, sight: 40, noise: .04, strafe: 1.3, stuck: 3, stall: 45, use: 1.6, max: 600 };
 // GAIN: the drop in the distance left (m or field steps) that counts as progress; JIG: how long a jiggle lasts (s); NOISE_T: how
 // often the aim noise is redrawn (s); DODGE: the dodge strafe; POLE: how near (m) a target must be to swing the flag pole at it;
 // SCATTER: how near for the scattergun; STAY: on hold it keeps within this of the call spot (m): it heads back once half of it away.
@@ -69,9 +70,11 @@ export function createBot(world, rng, finale = false) {
 // dt seconds of play: the Input for this step. It also turns F.player, at most BOT.turn rad/s in yaw and in pitch.
 export function botStep(bot, F, dt) {
   const p = F.player, A = F.ars, W = F.world, R = bot.rng;
-  // 1. done at the comms room's door (unless it plays the finale), when Houston picks up, or stalled
+  // 1. done at the comms room's door (unless it plays the finale), when Houston picks up, or stalled (no progress, or a run past
+  // BOT.max s)
   if (F.area === 3 && !bot.finale) bot.done = 'comms';
   if (F.won) bot.done = 'houston';
+  if (!bot.done && F.time > BOT.max) bot.done = 'stall';
   if (bot.done) return { ...IDLE };
   // the stage: each belongs to one level (in the base, to the comms room, then the array, then on hold), so a new level is
   // always a new stage, and progress starts over

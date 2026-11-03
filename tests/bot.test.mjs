@@ -27,3 +27,8 @@ test('baseField reaches every floor tile from the comms door and nothing else (a
   const B = generateWorld(seed).baseMap, d = baseField(B, B.commsDoor.x, B.commsDoor.z), at = (x, z) => Math.round(z + B.half) * B.n + Math.round(x + B.half);
   assert.equal(d[at(B.commsDoor.x, B.commsDoor.z)], 0); assert.ok(d[at(B.start.x, B.start.z)] > 0);
   for (let t = 0; t < B.n * B.n; t++) assert.equal(d[t] >= 0, B.kind[t] === K.floor, `${seed} tile ${t}`); } });
+// R21: an attract run never lasts longer than BOT.max s of sim time, whatever its progress (the soak's longest reach is ~297 s)
+test('an attract run that is still making progress is given up after BOT.max s (R21)', () => {
+  const F = createFight(W), bot = createBot(W, makeRng('max')); F.god = true;
+  F.time = BOT.max - .01; botStep(bot, F, 1 / 60); assert.equal(bot.done, null);
+  F.time = BOT.max + .01; assert.deepEqual(botStep(bot, F, 1 / 60), { fwd: 0, strafe: 0, run: false, jump: false, fire: false, use: false, weapon: -1, wheel: 0 }); assert.equal(bot.done, 'stall'); });
