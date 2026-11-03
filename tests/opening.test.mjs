@@ -79,3 +79,18 @@ test('the descent: the plume and cabin lights; under OPEN.dust m the dust flies 
 test('the glitter handed on to play lies on or over the ground, none of it inside the lander\'s footing (opening, pre-flight F6)', () => {
   const { F, O } = fresh(), under = q => q.y < F.lv.ground(q.x, q.z); prompt(O, F); assert.ok(O.view.parts.some(q => q.kind === 'foil' && under(q)), 'some foil fell into the cabin column');
   assert.ok(F.parts.length >= 100 && !F.parts.some(under)); });
+// R10: the drawn terrain at (x, z): the mesh's triangle there (each quad split from its (i, j) corner to (i + 1, j + 1)).
+const drawn = (x, z) => { const gx = x + W.half, gz = z + W.half, i = Math.floor(gx), j = Math.floor(gz), fx = gx - i, fz = gz - j, h = (a, b) => W.h[(j + b) * W.N + i + a];
+  return fz >= fx ? h(0, 0) + (h(1, 1) - h(0, 1)) * fx + (h(0, 1) - h(0, 0)) * fz : h(0, 0) + (h(1, 0) - h(0, 0)) * fx + (h(1, 1) - h(1, 0)) * fz; };
+test('the blast\'s glitter thins out: each speck\'s life is drawn, 9 s on average, the expiries spread over 3 s or more (opening, R10)', () => {
+  const { F, O } = fresh(); prompt(O, F, 'down'); const L9 = O.view.parts.filter(q => q.kind === 'foil').map(q => q.life);
+  assert.equal(L9.length, 140); assert.ok(Math.max(...L9) - Math.min(...L9) >= 3, `${Math.min(...L9)}-${Math.max(...L9)}`); assert.ok(Math.abs(L9.reduce((a, b) => a + b) / L9.length - 9) < .5); });
+test('the floater comes down to the ground before it goes, never vanishing in mid-air (opening, R10)', () => {
+  const { F, O } = fresh(); prompt(O, F, 'company'); const fl = O.view.aliens.find(a => a.type === 'fl'); prompt(O, F, 'down');
+  while (O.view.aliens.includes(fl) && O.phase !== 'done') hold(O, idle, 1 / 60); assert.notEqual(O.phase, 'done', 'it goes before the title drop');
+  assert.ok(Math.abs(fl.y - F.lv.ground(fl.x, fl.z)) <= .05, `${fl.y - F.lv.ground(fl.x, fl.z)} m up when it went`); });
+test('a flag planted 3.5 m out, facing the lander, stands on the drawn ground, not on the deck\'s collision ramp (opening, R10)', () => {
+  const { F, O } = fresh(), p = F.player; prompt(O, F, 'ground'); const u = [W.spawn.dx, W.spawn.dz], d = OPEN.far + 1e-6;
+  p.x = L.x + u[0] * d; p.z = L.z + u[1] * d; p.y = F.lv.ground(p.x, p.z); p.yaw = Math.atan2(u[0], u[1]); hold(O, { ...idle, use: true }, 1 / 60);
+  assert.ok(O.planted && Math.abs(flat(F.flag, L) - (OPEN.far - 1)) < 1e-3); assert.ok(F.lv.ground(F.flag.x, F.flag.z) - drawn(F.flag.x, F.flag.z) > .1, 'the ramp is there');
+  assert.ok(Math.abs(F.flag.y - drawn(F.flag.x, F.flag.z)) <= .05, `${F.flag.y - drawn(F.flag.x, F.flag.z)} m off the ground`); });

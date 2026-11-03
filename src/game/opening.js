@@ -4,7 +4,7 @@
 // but for the knock-down. Pure: no DOM, GPU or clock; its randomness is O.rng and the wreck's own seed, so the same dt sequence
 // plays the same opening.
 import { makeRng } from '../gen/rng.js';
-import { flagSpot, sampleBilinear } from '../gen/surface.js';
+import { flagSpot, sampleBilinear, LANDER_OCC } from '../gen/surface.js';
 import { PLAYER, stepPlayer, knock } from './player.js';
 import { ALIENS, createAlien, waveAt } from './aliens.js';
 import { muzzleWorld } from './rigs.js';
@@ -29,9 +29,10 @@ export const EGRESS = [[0, 2.5, .2, 1.05], [0, 2.5, 1.45, .45], [0, 2.45, 2.0, 1
 // dust: the touchdown spray, from the ground r out under the bell, v outward and up; rate a second; it lies `rest` after landing.
 // plume: the exhaust's glow sprites from the bell's mouth (y up, lander space), v down and up to side across, size s; rate a second.
 // glow: its light (y up, radius s, colour col times a flicker) and the cabin's (radius s, colour col).
-// boot: the puff at your first step. spark, foil, puff: the blast's (foil: v in a random direction plus up; puff: a ring r out, y up).
+// boot: the puff at your first step. spark, foil, puff: the blast's (foil: v in a random direction plus up, each its own life, so
+// they thin out rather than all going at once (R10); puff: a ring r out, y up).
 // knock: the blast's shove (out, up). rise: the actors' heights over the ground, from and to (walkers, the floater); sink: from `at`
-// s after the blast they sink at v, gone at `end`. boom: its life. bolt: the actors' bolt radius. disc: the cabin's room (radius);
+// s after the blast they sink at v, the walkers out of sight and gone at `end`, the floater down to the ground and gone once there. boom: its life. bolt: the actors' bolt radius. disc: the cabin's room (radius);
 // drop: the knock-down eye's fall; turn: its look rate (rad/s).
 const FX = {
   dust: { r: [1, 3], v: [6, 12], up: [1, 3], rate: 80, rest: [1, 2] },
@@ -39,7 +40,7 @@ const FX = {
   glow: { plume: { y: .2, s: 9, col: [1.3, .8, .35], flicker: [.8, 1] }, cabin: { s: 2.2, col: [.5, .32, .12] } },
   boot: { n: 12, v: [.5, 1.5], up: [.3, 1], life: [.8, 1.4] },
   spark: { n: 30, h: 6, up: [1.5, 7], life: [.3, .7] },
-  foil: { n: 140, v: [3, 9], up: 3, life: 9 },
+  foil: { n: 140, v: [3, 9], up: 3, life: [7, 11] },
   puff: { n: 56, r: 2.2, y: .3, v: [9, 14], up: [1, 2.5], life: 3, s: [.35, .7] },
   knock: [4, 2.5], rise: { walk: [-2.6, 0], fl: [-1, 3] }, sink: { at: 1, v: 1.3, end: 3 },
   boom: .6, bolt: .3, disc: .45, drop: .4, turn: 3,
@@ -202,8 +203,19 @@ function flag(O, input, beat, t) {
 }
 function plant(O, x, z, t) {
   const F = O._F;
-  F.flag.x = x; F.flag.z = z; F.flag.y = F.lv.ground(x, z); F.flag.held = false;
+  F.flag.x = x; F.flag.z = z; F.flag.y = drawnGround(O._world)(x, z); F.flag.held = false;
   O.planted = true; O.prompt = ''; O._compT = t + OPEN.company;
+}
+
+// The ground as drawn, for the flag's pole (R10): the occlusion (the terrain and the rocks) with the lander's footprint, which only
+// collision and shadows have, back down to the terrain, so a flag beside the descent stage stands on the dust, not on the deck's
+// collision ramp. Rocks never reach under the deck (they stand 5.5 m out), so that is all of it; elsewhere it is F.lv.ground.
+function drawnGround(world) {
+  const { N, half, lander: L, h } = world, o = new Float32Array(world.occ), r = LANDER_OCC.deck[0];
+  for (let j = Math.max(0, Math.floor(L.z + half - r)); j <= Math.min(N - 1, Math.ceil(L.z + half + r)); j++)
+    for (let i = Math.max(0, Math.floor(L.x + half - r)); i <= Math.min(N - 1, Math.ceil(L.x + half + r)); i++)
+      if (Math.hypot(i - half - L.x, j - half - L.z) < r) o[j * N + i] = h[j * N + i];
+  return (x, z) => sampleBilinear(o, x, z);
 }
 
 // --- company ---
@@ -219,16 +231,19 @@ function company(O) {
 }
 const rise = type => (type === 'fl' ? FX.rise.fl : FX.rise.walk);
 
-// They rise over OPEN.rise, the brute waves, each fires one bolt into the cabin; after the blast they duck out of sight.
+// They rise over OPEN.rise, the brute waves, each fires one bolt into the cabin; after the blast they duck out of sight. The
+// floater only comes down to the ground, and goes once it is there, never in mid-air (R10).
 function actors(O, dt, beat, t) {
-  const A = O.view.aliens, G = O._F.lv.ground, cT = O._compT, bT = O._blastT, K = FX.sink;
-  if (bT !== null && t >= bT + K.end) { A.length = 0; return; }
+  const A = O.view.aliens, G = O._F.lv.ground, cT = O._compT, bT = O._blastT, K = FX.sink; let w = 0;
   for (const a of A) {
-    const [lo, hi] = rise(a.type);
+    const [lo, hi] = rise(a.type), g = G(a.x, a.z), fl = a.type === 'fl';
     a.t += dt;
-    a.y = G(a.x, a.z) + lerp(lo, hi, (t - cT) / OPEN.rise) - (bT === null ? 0 : K.v * Math.max(0, t - bT - K.at));
+    a.y = g + lerp(lo, hi, (t - cT) / OPEN.rise) - (bT === null ? 0 : K.v * Math.max(0, t - bT - K.at));
+    if (fl && bT !== null) a.y = Math.max(g, a.y);
     if (a.type === 'br') a.wave = waveAt(t - cT - OPEN.wave); // pre-flight F17: the fight's own wave
+    if (bT === null || t < bT + K.end || (fl && a.y > g)) A[w++] = a;
   }
+  A.length = w;
   if (beat(cT + OPEN.line)) say(O, 'radio', 'company');
   const fT = cT + OPEN.fire;
   if (beat(fT)) for (const a of A) { // each bolt flies OPEN.flight s from the muzzle to the cabin's centre, from the beat's time
@@ -250,7 +265,7 @@ function boom(O) {
   for (let k = 0; k < K.n; k++) P.push({ kind: 'spark', x: C[0], y: C[1], z: C[2], vx: r.range(-K.h, K.h), vy: r.range(K.up[0], K.up[1]), vz: r.range(-K.h, K.h), life: r.range(K.life[0], K.life[1]) });
   const Fo = FX.foil;
   for (let k = 0; k < Fo.n; k++) { const u = r.range(-1, 1), a = r.range(0, TAU), w = Math.sqrt(1 - u * u), v = r.range(Fo.v[0], Fo.v[1]);
-    P.push({ kind: 'foil', x: C[0], y: C[1], z: C[2], vx: v * w * Math.cos(a), vy: v * u + Fo.up, vz: v * w * Math.sin(a), life: Fo.life, ph: r.range(0, TAU) }); }
+    P.push({ kind: 'foil', x: C[0], y: C[1], z: C[2], vx: v * w * Math.cos(a), vy: v * u + Fo.up, vz: v * w * Math.sin(a), life: r.range(Fo.life[0], Fo.life[1]), ph: r.range(0, TAU) }); }
   const Pu = FX.puff;
   for (let k = 0; k < Pu.n; k++) { const a = (k + r.next()) * TAU / Pu.n, cx = Math.cos(a), sz = Math.sin(a), x = L.x + cx * Pu.r, z = L.z + sz * Pu.r, v = r.range(Pu.v[0], Pu.v[1]);
     P.push({ kind: 'puff', x, y: sampleBilinear(h, x, z) + Pu.y, z, vx: cx * v, vy: r.range(Pu.up[0], Pu.up[1]), vz: sz * v, life: Pu.life, s: r.range(Pu.s[0], Pu.s[1]) }); }
