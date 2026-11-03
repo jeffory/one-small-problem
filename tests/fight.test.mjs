@@ -106,3 +106,11 @@ test('the outdoor follow cap holds only in the crater: running down a 1.2 slope 
     Object.assign(p, { x: 0, z: 0, y: 0, vx: 0, vy: 0, vz: 0, kx: 0, kz: 0, yaw: -Math.PI / 2, pitch: 0, onGround: true }); let off = false;
     for (let t = 0; t < 1.5; t += dt) { stepFight(F, { ...idle, fwd: 1, run: true }, dt); off ||= !p.onGround; }
     assert.equal(off, launch, `area ${k} at ${Math.round(1 / dt)} fps`); assert.equal(F.area, k); } });
+test('fight events carry what sound and radio need: fire.w, hit, zap at the muzzle, kill.kind, pickup.kind (audio)', () => {
+  const F = createFight(W), p = F.player, a = F.aliens.find(x => x.enc === F.encs[1]), aim = () => face(F, a.x, a.y + (a.type === 'fl' ? .2 : .6), a.z);
+  grab(F); give(F.ars, 1, 50); put(F, a.x + 8, a.z); aim(); F.events.length = 0; stepFight(F, { ...idle, fire: true }, 1 / 60);
+  assert.deepEqual(F.events.find(x => x.type === 'fire'), { type: 'fire', w: 1 }); run(F, () => { aim(); return { ...idle, fire: true }; }, 3);
+  assert.ok(F.events.some(x => x.type === 'hit')); for (const x of F.events.filter(x => x.type === 'zap')) assert.ok(Number.isFinite(x.x) && Number.isFinite(x.z));
+  const b = F.aliens.find(x => x.state !== 'dead'); shootAt(F, b); run(F, idle, .2); const k = F.events.filter(x => x.type === 'kill').at(-1);
+  assert.equal(k.kind, b.type); assert.equal(k.n, F.kills); // pre-flight F25
+  F.hp = 50; F.pickups.push({ kind: 'tape', x: p.x, y: p.y, z: p.z, n: 25, area: 0 }); stepFight(F, idle, 1 / 60); assert.equal(F.events.filter(x => x.type === 'pickup').at(-1).kind, 'tape'); });

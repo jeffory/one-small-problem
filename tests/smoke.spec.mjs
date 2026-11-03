@@ -278,3 +278,12 @@ test('pausing in the knock-down freezes the opening: its clock, you and the wrec
   const snap = () => page.evaluate(() => { const o = window.ospTest; return [o.opening(), o.player(), o.wreck()]; }), a = await snap();
   expect(['down', 'up']).toContain(a[0].phase); expect(a[2].still).toBeLessThan(11); await page.waitForTimeout(600); expect(await snap()).toEqual(a);
   await page.keyboard.press('Escape'); await expect.poll(() => clock(page).then(c => c.opening)).toBeGreaterThan(a[0].t); expect(errors).toEqual([]); });
+test('with no audio and no speech at all the game still plays: title, New Game, the opening, a fight, no errors (Review Focus 2)', async ({ page }) => {
+  await page.addInitScript(() => { for (const k of ['AudioContext', 'webkitAudioContext', 'OfflineAudioContext', 'speechSynthesis', 'SpeechSynthesisUtterance']) try { delete window[k]; Object.defineProperty(window, k, { value: undefined, configurable: true }); } catch {} });
+  const errors = watchErrors(page); await page.goto(URLS[1][1] + '#APOLLO-4471'); await ready(page); await page.click('#new'); await expect.poll(() => state(page)).toBe('opening');
+  await page.evaluate(() => window.ospTest.ff(12)); expect((await page.evaluate(() => window.ospTest.audio())).ctx).toBe(null);
+  await page.evaluate(() => { const o = window.ospTest; o.play(); o.grab(); o.give(); o.warp(1); }); await expect.poll(() => fight(page).then(f => f.bolts), { timeout: 15_000 }).toBeGreaterThan(0);
+  expect(errors).toEqual([]); });
+test('the air filter muffles the surface and opens in the base (audio)', async ({ page }) => {
+  await start(page); const a = await page.evaluate(() => window.ospTest.audio()); expect(a.ctx).not.toBe(null); expect(a.air).toBe(false);
+  await toBase(page); expect((await page.evaluate(() => window.ospTest.audio())).air).toBe(true); });

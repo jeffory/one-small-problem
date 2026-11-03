@@ -1,0 +1,32 @@
+import test from 'node:test'; import assert from 'node:assert/strict'; import { readFileSync } from 'node:fs'; import { FakeAC } from './fakeaudio.mjs';
+import { createAudio, MIX } from '../src/audio/audio.js'; import { SFX, buildSfx, sfxFor } from '../src/audio/sfx.js'; import { ZZFX_RATE } from '../src/audio/zzfx.js';
+const sfx = buildSfx(), spy = () => { const o = {}; o.AC = class extends FakeAC { constructor() { super(); o.ctx = this; } }; return o; };
+const all = A => { A.start(); A.sfx('pistol'); A.song('base'); A.air(true); A.air(false); A.duck(true); A.duck(false); A.key(true); A.key(false); A.bed(true); A.bed(false); A.volume(.5); A.pause(); A.resume(); return A.info(); };
+test('no AudioContext, a constructor that throws, or nodes that throw: every call is a silent no-op (Review Focus 2)', () => {
+  for (const AC of [undefined, class { constructor() { throw new Error('blocked'); } }, class extends FakeAC { createGain() { throw new Error('x'); } }]) {
+    const A = createAudio({ AC, sfx }); let info; assert.doesNotThrow(() => { info = all(A); }); assert.equal(info.ctx, null); } });
+test('start() makes one context on the gesture and resumes it; SFX run through the air filter, MIX.vacuum Hz outside and MIX.air in the base; pause suspends (audio)', () => {
+  const s = spy(); let made = 0; const AC = class extends s.AC { constructor() { super(); made++; } }, A = createAudio({ AC, sfx }); assert.equal(A.info().ctx, null);
+  A.start(); A.start(); assert.equal(made, 1); assert.equal(A.info().ctx, 'running'); A.air(false); assert.equal(A.info().cut, MIX.vacuum); A.air(true); assert.equal(A.info().cut, MIX.air);
+  A.pause(); assert.equal(A.info().ctx, 'suspended'); A.resume(); assert.equal(A.info().ctx, 'running'); });
+test('one SFX name plays at most once per MIX.gap s; an unknown name is ignored (audio)', () => { const s = spy(), A = createAudio({ AC: s.AC, sfx }); A.start(); const n0 = A.info().plays;
+  A.sfx('pistol'); A.sfx('pistol'); A.sfx('nope'); assert.equal(A.info().plays, n0 + 1); s.ctx.currentTime += MIX.gap + .01; A.sfx('pistol'); A.sfx('zap'); assert.equal(A.info().plays, n0 + 3); });
+test('ducking pulls the music to MIX.duck of its level and back (audio)', () => { const s = spy(), A = createAudio({ AC: s.AC, sfx }); A.start();
+  A.duck(true); assert.ok(Math.abs(A.info().music - MIX.music * MIX.duck) < 1e-9); A.duck(false); assert.ok(Math.abs(A.info().music - MIX.music) < 1e-9); });
+test('key(true) sounds 2525 Hz and key(false) 2475 Hz for MIX.tone s, each with a burst of static (radio)', () => { const s = spy(), A = createAudio({ AC: s.AC, sfx }); A.start();
+  let k = s.ctx.made.length; A.key(true); const o = s.ctx.made.slice(k).filter(n => n.kind === 'osc'); assert.equal(o.length, 1); assert.equal(o[0].frequency.value, 2525);
+  assert.ok(Math.abs(o[0].stopped - o[0].started - MIX.tone) < 1e-9); assert.ok(s.ctx.made.slice(k).some(n => n.kind === 'src' && n.buffer));
+  k = s.ctx.made.length; A.key(false); assert.equal(s.ctx.made.slice(k).find(n => n.kind === 'osc').frequency.value, 2475); });
+test('sfxFor maps fight events to sounds, with alien shots and blasts fading by distance (audio)', () => { const p = { x: 0, z: 0 };
+  assert.deepEqual([0, 1, 2].map(w => sfxFor({ type: 'fire', w }, p)), [['pole', 1], ['pistol', 1], ['scatter', 1]]);
+  assert.deepEqual(sfxFor({ type: 'zap', x: 20, z: 0 }, p), ['zap', .5]); assert.equal(sfxFor({ type: 'zap', x: 50, z: 0 }, p), null);
+  assert.deepEqual(sfxFor({ type: 'boom', x: 0, z: 40 }, p), ['boom', .5]); assert.deepEqual(sfxFor({ type: 'area', level: true }, p), ['door', 1]); assert.equal(sfxFor({ type: 'area', level: false }, p), null);
+  for (const [t, n] of [['kill', 'kill'], ['hurt', 'hurt'], ['pickup', 'pickup'], ['flag', 'pickup'], ['golf', 'golf']]) assert.deepEqual(sfxFor({ type: t }, p), [n, 1]);
+  assert.deepEqual(sfxFor({ type: 'hit' }, p), ['hit', .7]); assert.deepEqual(sfxFor({ type: 'sfx', key: 'thud' }, p), ['thud', 1]); assert.equal(sfxFor({ type: 'restart' }, p), null); });
+test('every SFX renders a short, non-silent ZzFX buffer, and the generator keeps its MIT notice (audio)', () => {
+  assert.deepEqual(Object.keys(sfx).sort(), Object.keys(SFX).sort()); assert.equal(ZZFX_RATE, 44100); assert.match(readFileSync('src/audio/zzfx.js', 'utf8'), /MIT License/);
+  for (const [k, b] of Object.entries(sfx)) { let m = 0; for (const v of b) m = Math.max(m, Math.abs(v)); assert.ok(b.length > 100 && b.length <= 10 * ZZFX_RATE, k); assert.ok(m > .02 && m <= 2, `${k} peak ${m}`); } });
+// pre-flight F21: an unhandled rejection here fails the test file
+test('a context whose resume() and suspend() reject stays silent and unbroken, with no unhandled rejection (Review Focus 2)', async () => {
+  const AC = class extends FakeAC { resume() { return Promise.reject(new Error('blocked')); } suspend() { return Promise.reject(new Error('no')); } }, A = createAudio({ AC, sfx });
+  assert.doesNotThrow(() => { A.start(); A.sfx('pistol'); A.pause(); A.resume(); A.start(); }); await new Promise(r => setTimeout(r, 20)); });

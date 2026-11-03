@@ -17,6 +17,8 @@ import { settleWreck, stepWreck } from './game/lander.js';
 import { createOpening, stepOpening } from './game/opening.js';
 import { createBot, botStep } from './game/bot.js';
 import { HOLD, ENDING, dishOf, callSpot } from './game/hold.js';
+import { createAudio } from './audio/audio.js';
+import { buildSfx, sfxFor } from './audio/sfx.js';
 import { createInput, look } from './game/input.js';
 import { createHud, HELP_TIME } from './ui/hud.js';
 import { createMenus } from './ui/menus.js';
@@ -26,6 +28,8 @@ import { RES, loadSettings, saveSettings } from './ui/settings.js';
 // The scene fields a frame carries (the view supplies the meshes and lights); the events whose text flashes up; where a death
 // in each area sends you back to; no input at all; the help line, shown as a run starts and hidden after HELP_TIME s of it (R2).
 const SCENE = ['sky', 'mode', 'sun', 'earth', 'curv', 'fog', 'fogDensity', 'occTex'], FLASH = new Set(['pickup', 'flag', 'golf', 'area']);
+// Footsteps on the ground play every STRIDE metres walked, at STEP_VOL.
+const STRIDE = 1.6, STEP_VOL = .4;
 const BACK = ['the wreck', 'the crater rim', 'the lift', 'the comms room door'];
 const IDLE = { fwd: 0, strafe: 0, run: false, jump: false, fire: false, use: false, weapon: -1, wheel: 0 };
 const HELP = 'Click to look \u00b7 WASD move \u00b7 Shift run \u00b7 Space jump \u00b7 E use \u00b7 1-3 weapons \u00b7 mouse fire \u00b7 Esc pause';
@@ -48,10 +52,11 @@ function boot() {
   let run = null, state = 'title', endT = 0;
   // S: the settings (loaded once, kept in memory even where the store refuses them). Paused: the pause menu is up, nothing
   // advances. lockLostAt: when a lost pointer lock paused the game, so the Esc that did it can't also resume it.
+  const audio = createAudio({ sfx: buildSfx() });
   let S = loadSettings(store), paused = false, lockLostAt = -1e9, appliedRes = -1;
   // Menu clicks run inside the fatal path too: an exception stops the loop and shows the message, as in tick.
   const guard = f => (...a) => { try { f(...a); } catch (e) { fail(e); throw e; } };
-  const input = createInput(canvas), menus = createMenus({ onNew: guard(() => { input.lock(); newGame(true); }), onBack: guard(() => toTitle(true)),
+  const input = createInput(canvas), menus = createMenus({ onNew: guard(() => { audio.start(); input.lock(); newGame(true); }), onBack: guard(() => toTitle(true)),
     onResume: guard(() => resume()), onQuit: guard(() => quit()), onSetting: guard(setting) });
   const frame = { exposure: 1, lights: { pos: new Float32Array(64), col: new Float32Array(64), count: 0 }, spheres: new Float32Array(32) };
   let palMode = S.pal ? 1 : 0, lost = false, fp = '', warpK = 0, raf = 0, frames = 0, fault = false, t0 = performance.now(), last = t0, fpsN = 0, fpsT = 0;
@@ -59,7 +64,7 @@ function boot() {
   // Native (RES 0) is the window's height in device pixels, at most 2 per CSS pixel.
   const resize = () => lost || renderer.resize(innerWidth, innerHeight, devicePixelRatio || 1, RES[S.res] || Math.round(innerHeight * Math.min(2, devicePixelRatio || 1)));
   // Settings take effect at once; the render targets are rebuilt only when the resolution changes.
-  function apply() { palMode = S.pal ? 1 : 0; if (S.res !== appliedRes) { appliedRes = S.res; resize(); } }
+  function apply() { audio.volume(S.vol); palMode = S.pal ? 1 : 0; if (S.res !== appliedRes) { appliedRes = S.res; resize(); } }
   function setting(s) { S = s; saveSettings(store, S); apply(); }
   addEventListener('resize', resize); apply();
   canvas.addEventListener('webglcontextlost', e => {
@@ -82,9 +87,9 @@ function boot() {
   // keep the lock on Esc, so this doesn't rely on the browser).
   function pause() {
     if (!pausable() || paused) return;
-    paused = true; menus.pause(true, S, HELP); input.unlock();
+    paused = true; audio.pause(); menus.pause(true, S, HELP); input.unlock();
   }
-  function resume() { unpause(); input.lock(); }
+  function resume() { unpause(); audio.resume(); input.lock(); }
   function quit() { unpause(); toTitle(true); }
   // The lock is held only while it is wanted, in the opening, play or the ending, unpaused (R6). One that arrives otherwise (a
   // request still in flight when the game paused, finished or quit) is let go at once, so the menus' buttons take clicks
@@ -100,7 +105,7 @@ function boot() {
 
   // --- runs ---
   // The view draws the scene's meshes and lamps, and on the surface the run's wreck; the frame takes the scene's look.
-  function useScene(scene) { setScene(V, scene); setWreck(V, scene.id === 'surface' ? run.wreck : null); for (const k of SCENE) frame[k] = scene[k]; }
+  function useScene(scene) { setScene(V, scene); setWreck(V, scene.id === 'surface' ? run.wreck : null); for (const k of SCENE) frame[k] = scene[k]; audio.air(run.F.lv.id === 'base'); }
   // A fresh Moon on the surface, at the wreck (the lander as the opening leaves it); intact, the lander stands whole for the
   // opening, which brings its own (newGame). Attract runs are immortal and played by the bot (never the opening, spec 4.1).
   function startRun(kind, seed, { intact = false } = {}) {
@@ -133,7 +138,7 @@ function boot() {
   // The title, with a fresh attract run behind it and the mouse let go (pre-flight F1). At boot the URL's seed stays, so a
   // shared link survives to New Game; Back to title clears it, so the next New Game rolls a fresh Moon.
   function toTitle(clear) {
-    stopRun(); unpause(); input.unlock();
+    stopRun(); unpause(); audio.resume(); input.unlock();
     if (clear) try { history.replaceState(null, '', location.pathname + location.search); } catch {}
     startRun('attract', randomSeed());
     state = 'title';
@@ -170,6 +175,7 @@ function boot() {
       hud.prompt(O.prompt);
       for (const ev of O.events) {
         if (ev.type === 'wreck') { run.scene.wreck(); frame.occTex = run.scene.occTex; } // useScene copied the intact one, now deleted
+        else if (ev.type === 'sfx') audio.sfx(ev.key);
         else if (ev.type === 'title') hud.stamp();
         else if (ev.type === 'done') { run.O = null; play(); }
       }
@@ -177,7 +183,10 @@ function boot() {
     }
     for (const ev of F.events) if (ev.type === 'area' && ev.level) swap();
     if (playing) {
-      const p = F.player, U = run.world.crater.use;
+      const p = F.player, U = run.world.crater.use, W = run.walk ??= { x: p.x, z: p.z, d: 0 };
+      for (const ev of F.events) { const s = sfxFor(ev, p); if (s) audio.sfx(s[0], s[1]); }
+      const stride = Math.hypot(p.x - W.x, p.z - W.z); W.x = p.x; W.z = p.z;
+      if (p.onGround && stride < 3) for (W.d += stride; W.d >= STRIDE; W.d -= STRIDE) audio.sfx('step', STEP_VOL);
       hud.status({ hp: Math.ceil(F.hp), cells: F.ars.cells, weapon: WEAPONS[F.ars.cur]?.name ?? '' });
       if (F.time >= HELP_TIME) hud.help('');
       for (const ev of F.events) if (FLASH.has(ev.type) && ev.text) hud.flash(ev.text);
@@ -231,7 +240,7 @@ function boot() {
     get seed() { return run.kind === 'play' ? run.seed : normalizeSeed(location.hash); },
     get checksum() { return run.kind === 'play' ? checksumWorld(run.world) : null; },
     capture: () => renderer.capture(), frames: () => frames, fault: () => { fault = true; }, paused: () => paused, settings: () => ({ ...S }),
-    state: () => state, play: () => newGame(false), finish, ff,
+    state: () => state, play: () => { audio.start(); newGame(false); }, audio: () => audio.info(), finish, ff,
     // The opening while it plays ({phase, t, prompt}), else null; whether the frame draws the scene's live shadow map (it changes
     // at the blast).
     opening: () => run.O && { phase: run.O.phase, t: run.O.t, prompt: run.O.prompt }, occ: () => frame.occTex === run.scene.occTex,

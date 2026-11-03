@@ -41,7 +41,7 @@ export function createFight(world, k = 0) {
   const C = F._ctx = { ground: lv.ground, ceil: lv.ceil, px: 0, py: 0, pz: 0, field: F.field, rng: F.rng, others: F.aliens,
     los: a => lineOfSight(F.lv.ground, muzzleAt(a, C), [C.px, C.py + PLAYER.eye, C.pz], F.lv.ceil),
     shoot: (a, m, d, s) => { F.bolts.push({ x: m[0], y: m[1], z: m[2], vx: d[0] * s.speed, vy: d[1] * s.speed, vz: d[2] * s.speed,
-      dmg: s.dmg, r: s.size, life: 4, col: s.col, team: 1, src: a.id }); },
+      dmg: s.dmg, r: s.size, life: 4, col: s.col, team: 1, src: a.id }); F.events.push({ type: 'zap', x: m[0], z: m[2] }); },
     melee: (a, dmg, k) => {
       let dx = F.player.x - a.x, dz = F.player.z - a.z; const l = sqrt(dx * dx + dz * dz);
       if (l > 1e-6) { dx /= l; dz /= l; } else { dx = Math.sin(a.yaw); dz = Math.cos(a.yaw); }
@@ -266,7 +266,7 @@ function bodies(F) {
 function fire(F) {
   const p = F.player, eye = [p.x, p.y + PLAYER.eye, p.z], B = cameraBasis(p.yaw, p.pitch), s = fireWeapon(F.ars, eye, B, aimPoint(F));
   if (!s) return;
-  F.shots++; F.shotT = 0; F.events.push({ type: 'fire' });
+  F.shots++; F.shotT = 0; F.events.push({ type: 'fire', w: s.w });
   if (!s.melee) { for (const b of s.bolts) F.bolts.push(b); return; }
   const W = WEAPONS[s.w], f = B.f, T = [];
   for (const a of F.aliens) {
@@ -276,7 +276,7 @@ function fire(F) {
   }
   for (const c of F.canisters) T.push({ x: c.x, y: c.y + CAN_Y, z: c.z, r: CANISTER.radius, c });
   for (const t of meleeTargets(eye, f, T, W.range, W.cosArc)) {
-    if (t.a) { hurtAlien(t.a, W.dmg, f[0] * W.knock, f[2] * W.knock); burst(F, 'goo', t.x, t.y, t.z, 6, 1.2, .5, 2, 8, 8); }
+    if (t.a) { F.events.push({ type: 'hit' }); hurtAlien(t.a, W.dmg, f[0] * W.knock, f[2] * W.knock); burst(F, 'goo', t.x, t.y, t.z, 6, 1.2, .5, 2, 8, 8); }
     else t.c.hp -= W.dmg;
   }
 }
@@ -294,7 +294,7 @@ function flyBolts(F, dt) {
       decal(F, 'scorch', h.x, h.y, h.z, b.r >= .3 ? .7 : .35, h.n);
       burst(F, 'spark', h.x, h.y, h.z, 4, 2.5, 1, 3.5, .25, .5);
       burst(F, 'dust', h.x, h.y, h.z, 2, .8, .4, 1.2, .7, 1.2);
-    } else if (t.a) { hurtAlien(t.a, b.team ? b.dmg / 2 : b.dmg, 0, 0); burst(F, 'goo', h.x, h.y, h.z, 6, 1.2, .5, 2, 8, 8); }
+    } else if (t.a) { if (!b.team) F.events.push({ type: 'hit' }); hurtAlien(t.a, b.team ? b.dmg / 2 : b.dmg, 0, 0); burst(F, 'goo', h.x, h.y, h.z, 6, 1.2, .5, 2, 8, 8); }
     else if (t.c) t.c.hp -= b.dmg;
     else { const k = 1.5 / (Math.hypot(b.vx, b.vy, b.vz) || 1); hurtPlayer(F, b.dmg, b.vx * k, b.vy * k, b.vz * k); }
   }
@@ -320,7 +320,7 @@ function killed(F, a) {
   a._died = F.time; if (!F.won) F.kills++;
   const c = worldSpheres(a)[0], gy = F.lv.ground(a.x, a.z);
   burst(F, 'goo', c[0], c[1], c[2], 24, 1.5, 1, 3, 8, 8);
-  F.events.push({ type: 'kill', x: a.x, y: gy, z: a.z });
+  F.events.push({ type: 'kill', x: a.x, y: gy, z: a.z, kind: a.type, n: F.kills });
   const kind = a.type === 'fl' ? 'cells' : a.type === 'br' ? 'scatter' : a.enc.first || F.rng.next() < PICKUP.pistolDrop ? 'pistol' : null;
   if (kind) F.pickups.push({ kind, x: a.x, y: gy, z: a.z, n: kind === 'cells' ? PICKUP.flCells : PICKUP[kind], area: a.area });
 }
@@ -401,7 +401,7 @@ function collect(F, k) {
     if (A.owned[i] && A.cells >= MAX_CELLS) return false;
     give(A, i, k.n); text = WEAPONS[i].name;
   }
-  F.events.push({ type: 'pickup', text, x: k.x, y: k.y, z: k.z });
+  F.events.push({ type: 'pickup', kind: k.kind, text, x: k.x, y: k.y, z: k.z });
   return true;
 }
 
