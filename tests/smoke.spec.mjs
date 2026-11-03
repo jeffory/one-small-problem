@@ -319,6 +319,12 @@ test('pausing mid-line takes the subtitle down, and the story line plays again f
   await noVoices(page); const errors = watchErrors(page); await page.goto(URLS[1][1] + '#APOLLO-4471'); await ready(page); await page.click('#new'); await expect.poll(() => state(page)).toBe('opening');
   await ff(page, OPEN.descent + .5); await expect(page.locator('#sub')).toHaveText('YOU: Contact light. Engine stop.');
   await page.keyboard.press('Escape'); await expect.poll(() => paused(page)).toBe(true); await expect(page.locator('#sub')).toHaveText('');
-  expect(await page.evaluate(() => window.ospTest.radio())).toEqual({ line: null, queued: ['touchdown', 'touchdown'] });
+  expect(await page.evaluate(() => window.ospTest.radio())).toEqual({ line: null, queued: ['touchdown', 'touchdown'], dawdle: 0 });
   await page.keyboard.press('Escape'); await expect.poll(() => paused(page)).toBe(false); await expect(page.locator('#sub')).toHaveText('YOU: Contact light. Engine stop.');
   await expect(page.locator('#sub')).toHaveClass(/\bon\b/); expect(errors).toEqual([]); });
+// R16: the dawdle clock runs in play (here a few seconds with no progress), but not on hold or in the ending after Houston
+test('the dawdle clock stops on hold and after Houston picks up (R16)', async ({ page }) => {
+  const errors = watchErrors(page), dawdle = () => page.evaluate(() => window.ospTest.radio().dawdle); await start(page); await page.evaluate(() => window.ospTest.ff(3));
+  expect(await dawdle()).toBeGreaterThan(2.5); await toComms(page); await onHold(page); await page.evaluate(() => { window.ospTest.god(true); window.ospTest.ff(60); });
+  expect(await dawdle()).toBe(0); await page.evaluate(() => window.ospTest.ff(31)); await expect.poll(() => state(page)).toBe('ending'); expect(await dawdle()).toBe(0);
+  expect(errors).toEqual([]); });

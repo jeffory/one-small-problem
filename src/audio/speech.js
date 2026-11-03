@@ -13,17 +13,18 @@ export function createSpeech(win = globalThis) {
   try { if (win.speechSynthesis) { choose(); win.speechSynthesis.addEventListener('voiceschanged', choose); } } catch {}
   return {
     get ok() { return !!voice; },
-    // Speaks line {who, text} at its speaker's pitch and rate, cancelling anything queued; onEnd runs once, on its end or an
-    // error. False if it could not be spoken.
+    // Speaks line {who, text} at its speaker's pitch and rate, cancelling anything queued. onEnd(failed) runs once: on its end, or
+    // on an error, failed unless the error is our own cancel (interrupted or canceled), so a voice that fails leaves the line to
+    // its subtitle (R15). False if it could not be spoken.
     say(line, onEnd) {
       try {
         const S = win.speechSynthesis; if (!S) return false;
         S.cancel();
         const u = new win.SpeechSynthesisUtterance(line.text), [pitch, rate] = VOICE[line.who] || [1, 1];
-        let ended = false;
+        let ended = false; const end = failed => { if (!ended) { ended = true; try { onEnd(failed); } catch {} } };
         if (voice) { u.voice = voice; u.lang = voice.lang; }
         u.pitch = pitch; u.rate = rate; u.volume = vol;
-        u.onend = u.onerror = () => { if (!ended) { ended = true; try { onEnd(); } catch {} } };
+        u.onend = () => end(false); u.onerror = e => end(!/^(interrupted|canceled)$/.test(e?.error));
         S.speak(u);
         return true;
       } catch { return false; }

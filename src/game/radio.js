@@ -66,7 +66,7 @@ const go = (R, phase, a) => { R.phase = phase; R._t = R.clock; return [a]; };
 // The line in the air ends: a reaction keeps the radio quiet RADIO.chat s; a gap follows.
 const over = R => { if (!R.cur.crit) R._quiet = R.clock + RADIO.chat; R.cur = null; return go(R, 'gap', { do: 'off' }); };
 
-// dt seconds of the radio (voiced: a speech voice exists now; dawdle: the dawdle clock runs). At most one phase change a step,
+// dt seconds of the radio (voiced: a speech voice exists now; dawdle: the dawdle clock runs, see dawdling). At most one phase change a step,
 // returned as actions: key (tone and subtitle up), say (speak it if voiced), unkey (tone, the keyed dot off), off (subtitle down).
 export function stepRadio(R, dt, voiced, dawdle) {
   R.clock += dt;
@@ -89,8 +89,12 @@ export function stepRadio(R, dt, voiced, dawdle) {
   }
 }
 
-// onend for line id; one for any other line (a stale onend) is ignored.
-export function radioDone(R, id) { if (R.cur && R.cur.id === id) R.cur.done = true; }
+// The end of line id's speech, or with failed its voice failing: the line then stays up for its unvoiced reading time from when
+// it started, as a subtitle (R15). One for any other line (a stale onend) is ignored.
+export function radioDone(R, id, failed) { const L = R.cur; if (L && L.id === id) { if (failed) L.voiced = false; else L.done = true; } }
+
+// Whether the dawdle clock runs: in play only, never on hold or after Houston picks up (R16).
+export const dawdling = (state, F) => state === 'play' && !F.hold && !F.won;
 
 // The game pauses: a story line keyed or talking goes back to the head of the queue (a copy with a new id, so its cancelled
 // utterance's onend can't end the replay) to play again from the start; a reaction is dropped. One keying down just ends.

@@ -60,3 +60,7 @@ test('a pause as a line keys down just ends it; a replayed story line ignores th
   const Q = R0(); radioCue(Q, 'telemetry'); while (Q.phase !== 'unkey') stepRadio(Q, 1 / 60, false, false);
   assert.deepEqual(pauseRadio(Q).map(a => a.do), ['off']); assert.ok(radioIdle(Q)); assert.equal(said(run(Q, 10)).length, 0, 'not replayed'); });
 test('an at cue with no such line is refused (radio)', () => { const R = R0(); assert.equal(radioCue(R, 'golf', SCRIPT.golf.length + 1), false); assert.equal(radioCue(R, 'golf', 0), false); assert.equal(R.q.length, 0); });
+import { dawdling } from '../src/game/radio.js';
+test('the dawdle clock runs only in play, never on hold or after Houston picks up (R16)', () => { const F = { hold: null, won: false };
+  assert.equal(dawdling('play', F), true); for (const s of ['title', 'opening', 'ending', 'end']) assert.equal(dawdling(s, F), false, s);
+  assert.equal(dawdling('play', { ...F, hold: { t: 3 } }), false, 'on hold'); assert.equal(dawdling('play', { ...F, won: true }), false, 'after Houston'); });
