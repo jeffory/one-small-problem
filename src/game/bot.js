@@ -14,7 +14,7 @@ import { WEAPONS } from './weapons.js';
 import { DOOR_REACH, atExit, atLadder, canBang } from './fight.js';
 import { HOLD, dishOf, callSpot } from './hold.js';
 import { exitOf, ladderAt } from './escape.js';
-import { BASE, K } from '../gen/base.js';
+import { BASE } from '../gen/base.js';
 import { N, MAX_STEP, MAP_MARGIN, distToPolyline } from '../gen/surface.js';
 import { cameraBasis } from '../gfx/math.js';
 
@@ -55,17 +55,6 @@ export function gridField(grid, n, i, j, step, wall = Infinity, margin = 0) {
 // An indoor map B's field from the tile under (x, z): every floor tile of grid (the map's floor, or a level's live grid, where
 // the prison's shut bars are wall), by steps a body can climb.
 export const baseField = (B, x, z, grid = B.floor) => gridField(grid, B.n, Math.round(x + B.half), Math.round(z + B.half), BASE.step, BASE.wall);
-
-// Where to stand by the point p of indoor map B: the centre of the floor tile nearest it, within 2 tiles (a hall crate can stand
-// over the prison's exit lift, which still works from beside it), else p.
-function floorNear(B, p) {
-  const i0 = Math.round(p.x + B.half), j0 = Math.round(p.z + B.half); let q = p, bd = Infinity;
-  for (let j = j0 - 2; j <= j0 + 2; j++) for (let i = i0 - 2; i <= i0 + 2; i++) {
-    const x = i - B.half, z = j - B.half, d = Math.hypot(x - p.x, z - p.z);
-    if (B.kind[j * B.n + i] === K.floor && d < bd) { bd = d; q = { x, z }; }
-  }
-  return q;
-}
 
 // The point of the segment a-b nearest (x, z): [x, z, its distance].
 function nearest(x, z, a, b) {
@@ -129,7 +118,7 @@ export function botStep(bot, F, dt) {
   // cell the bars' middle, parked once it has banged on them (it waits there for the guard and the bars to drop)
   let gx, gz, rem, parked = false;
   if (stage === 'base' || stage === 'prison') {
-    const B = F.lv.map, g = stage === 'base' ? B.commsDoor : floorNear(B, exitOf(B)), s = down(bot.bf ??= baseField(B, g.x, g.z, F.lv.grid), B.n, B.half, p.x, p.z);
+    const B = F.lv.map, g = stage === 'base' ? B.commsDoor : exitOf(B), s = down(bot.bf ??= baseField(B, g.x, g.z, F.lv.grid), B.n, B.half, p.x, p.z);
     [gx, gz, rem] = s || [g.x, g.z, Infinity];
     if (stage === 'prison') inp.use = atExit(F);
   } else if (stage === 'cell') {
