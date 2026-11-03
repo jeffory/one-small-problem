@@ -9,10 +9,9 @@ export const LIGHT = { amber: { col: [1.3, .8, .32], r: 8 }, teal: { col: [.35, 
 export const LIGHT_CAP = 10, LAMP_DROP = 2.65, CORRIDOR_LAMP = 6, BASE_SCALE = .5;
 // Heights above a floor tile where the cap is sampled: a standing eye and a jumping one (pre-flight F28).
 const SAMPLE = [1.7, 2.4], TALL = 4.5, TRIES = 40;
-const AMBER_ROOM = { lift: 1, hangar: 1, comms: 1 }, TEAL_ROOM = { lab: 1, reactor: 1, greenhouse: 1 };
 
 export function lightBase(B) {
-  const { n, half, floor, kind, room, rooms } = B, rng = makeRng(B.seed + '/base/lights/' + B.attempt), lights = [];
+  const { n, half, floor, kind, room, rooms, cfg } = B, rng = makeRng(B.seed + B.cfg.stream + '/lights/' + B.attempt), lights = [];
   const cnt = SAMPLE.map(() => new Uint8Array(n * n));
   const wall = (i, j) => i < 0 || j < 0 || i >= n || j >= n || kind[j * n + i] === K.wall;
   // Can a point (in tile coordinates; tile k spans k - .5 to k + .5) see tile (bi, bj)'s centre? A 2D walk over every tile the
@@ -65,7 +64,7 @@ export function lightBase(B) {
   if (core) add(core.x, core.y + 3, core.z, LIGHT.core);
   for (const r of rooms) {
     const w = r.x1 - r.x0, h = r.z1 - r.z0, nx = Math.min(3, Math.ceil(w / 7)), nz = Math.min(3, Math.ceil(h / 7));
-    const def = AMBER_ROOM[r.theme] ? LIGHT.amber : TEAL_ROOM[r.theme] ? LIGHT.teal : rng.next() < .6 ? LIGHT.amber : LIGHT.teal;
+    const def = cfg.amber.includes(r.theme) ? LIGHT.amber : cfg.teal.includes(r.theme) ? LIGHT.teal : cfg.red.includes(r.theme) ? LIGHT.alarm : rng.next() < .6 ? LIGHT.amber : LIGHT.teal;
     const y = Math.min(r.ceil - .6, r.floor + LAMP_DROP);
     for (let b = 0; b < nz; b++) for (let a = 0; a < nx; a++) add(r.x0 - .5 + w * (a + .5) / nx - half, y, r.z0 - .5 + h * (b + .5) / nz - half, def);
   }
@@ -82,7 +81,7 @@ export function lightBase(B) {
 }
 
 export function planBase(B) {
-  const { n, half, floor, ceil, kind, room, rooms } = B, rng = makeRng(B.seed + '/base/fight/' + B.attempt), L = B.crit.length;
+  const { n, half, floor, ceil, kind, room, rooms, cfg } = B, rng = makeRng(B.seed + B.cfg.stream + '/fight/' + B.attempt), L = B.crit.length;
   const col = (t) => t % n, row = (t) => (t - (t % n)) / n, px = (t) => col(t) - half, pz = (t) => row(t) - half;
   const d2 = (t, o) => (px(t) - o.x) * (px(t) - o.x) + (pz(t) - o.z) * (pz(t) - o.z);
   const tall = (t) => ceil[t] - floor[t] >= TALL;
@@ -97,13 +96,13 @@ export function planBase(B) {
     if (ok) clear[room[t]].push(t);
   }
   const cheb = (t, r) => r.in ? Math.max(Math.abs(col(t) - (r.in.x + half)), Math.abs(row(t) - (r.in.z + half))) : 99;
-  const itemAt = (t, extra) => ({ x: px(t), y: floor[t], z: pz(t), area: 2, ...extra });
+  const itemAt = (t, extra) => ({ x: px(t), y: floor[t], z: pz(t), area: cfg.area, ...extra });
   const themed = (th) => rooms.find((r) => r.theme === th);
 
   // 1. Encounters: who is in each room (positions come at step 4, after the canisters).
   const comp = [];
   for (let k = 1; k <= L - 2; k++) {
-    const p = .5 + .5 * k / (L - 1), Bk = Math.floor(budgetAt(p) * BASE_SCALE), types = [];
+    const p = cfg.p[0] + (cfg.p[1] - cfg.p[0]) * k / (L - 1), Bk = Math.floor(budgetAt(p) * BASE_SCALE), types = [];
     let b = Bk;
     if (Bk >= 6 && (k % 2 === 0 || p >= .8)) { types.push('br'); b -= 4; }
     if (clear[k].some(tall)) { // pre-flight F11: the rule reads the tile
@@ -116,13 +115,13 @@ export function planBase(B) {
 
   // 5 first, as it needs no rng: golf 3 and 4 sit on the clear tile farthest from `in` in the first two side rooms.
   const golf = [];
-  B.side.slice(0, 2).forEach((r, i) => {
+  const golfRooms = cfg.golf.room === 'side' ? B.side.slice(0, 2) : [themed(cfg.golf.room).id];
+  golfRooms.forEach((r, i) => {
     const o = rooms[r].in || { x: 0, z: 0 };
     let best = -1, bd = -1;
     for (const t of clear[r]) { const d = d2(t, o); if (d > bd) { bd = d; best = t; } }
-    if (best >= 0) golf.push(itemAt(best, { id: 3 + i }));
+    if (best >= 0) golf.push(itemAt(best, { id: cfg.golf.id + i }));
   });
-  const golfRooms = B.side.slice(0, 2);
 
   // 2. Pickups.
   const pickups = [], near = (t, list, m) => list.every((o) => d2(t, o) >= m * m);
@@ -136,12 +135,12 @@ export function planBase(B) {
   const brute = (k) => comp[k - 1].types.includes('br');
   for (let k = 1; k <= L - 3; k++) if (brute(k + 1)) take('tape', k);
   for (const r of B.side) take('tape', r);
-  take('cells', themed('hangar').id); take('cells', themed('reactor').id);
+  for (const th of cfg.cells) take('cells', themed(th).id);
   for (const r of B.side) if (!golfRooms.includes(r)) take('cells', r);
 
   // 3. Canisters, before the aliens (pre-flight F12).
   const canisters = [];
-  for (const [th, want] of [['hangar', 3], ['reactor', 3], ['greenhouse', 2]]) {
+  for (const [th, want] of cfg.cans) {
     const r = themed(th), mine = [];
     // A spot is free when it is 1 m from the pickups and 1.2 m from the canisters; a next one lies 1.2 to 2.0 m from its predecessor.
     const free = (t) => near(t, pickups, 1) && near(t, canisters, 1.2), ring = (t, o) => { const d = d2(t, o); return d >= 1.2 * 1.2 && d <= 4; };
@@ -168,7 +167,7 @@ export function planBase(B) {
       if (t < 0) t = flo[k].find(ok);
       aliens.push({ type, x: px(t), y: fl ? floor[t] + rng.range(1.8, 2.4) : floor[t], z: pz(t) });
     }
-    return { x: (r.x0 + r.x1 - 1) / 2 - half, z: (r.z0 + r.z1 - 1) / 2 - half, p, room: k, first: false, area: 2, aliens };
+    return { x: (r.x0 + r.x1 - 1) / 2 - half, z: (r.z0 + r.z1 - 1) / 2 - half, p, room: k, first: false, area: cfg.area, aliens };
   });
   return { encounters, pickups, canisters, golf };
 }

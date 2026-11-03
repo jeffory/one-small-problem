@@ -1,5 +1,5 @@
 import test from 'node:test'; import assert from 'node:assert/strict';
-import { generateBase, BASE, K } from '../src/gen/base.js'; import { reachMap } from '../src/gen/passable.js';
+import { generateBase, baseAccept, BASE, BASE_PLAN, K } from '../src/gen/base.js'; import { reachMap } from '../src/gen/passable.js';
 const B = generateBase('APOLLO-4471'), n = B.n, at = o => Math.round(o.z + B.half) * n + Math.round(o.x + B.half);
 const reach = reachMap(B.floor, n, [Math.round(B.start.x + B.half), Math.round(B.start.z + B.half)], BASE.step, 0);
 test('same seed, same base; another seed, another base', () => { assert.deepEqual(generateBase('APOLLO-4471').floor, B.floor); assert.notDeepEqual(generateBase('EAGLE-0001').floor, B.floor); assert.equal(B.seed, 'APOLLO-4471'); });
@@ -81,3 +81,7 @@ test('the lamps light the floor: at least 60% of walkable tiles reach band 1 on 
     assert.ok(lit / all >= .6, `${seed}: ${(100 * lit / all).toFixed(1)}% of walkable tiles lit`); } });
 test('generateWorld carries the base, and the checksum covers it', () => { const a = generateWorld('APOLLO-4471'); assert.equal(checksumWorld(a), checksumWorld(WW));
   a.baseMap.lights[0].r += .5; assert.notEqual(checksumWorld(a), checksumWorld(WW)); });
+test('the generator reads its config: BASE_PLAN is today\'s base; another stream or order is another map (Plan 6)', () => {
+  assert.equal(B.cfg, BASE_PLAN); assert.deepEqual([BASE_PLAN.stream, BASE_PLAN.start, BASE_PLAN.first, BASE_PLAN.end, BASE_PLAN.p, BASE_PLAN.area], ['/base', 'lift', 'hangar', 'comms', [.5, 1], 2]);
+  const cfg = { ...BASE_PLAN, stream: '/other', at: [['greenhouse', .35], ['lab', .6], ['reactor', .8]] }, O = generateBase('APOLLO-4471', baseAccept, cfg);
+  assert.equal(O.cfg, cfg); assert.notDeepEqual(O.floor, B.floor); assert.equal(O.crit.map(r => O.rooms[r].theme).filter(t => t !== 'plain').join(), 'lift,hangar,greenhouse,lab,reactor,comms'); });

@@ -23,7 +23,7 @@ const slab = (M, cx, cz, ux, uz, a0, a1, t, y0, y1, mt) =>
   box(M, ux ? cx + a0 : cx - t, y0, uz ? cz + a0 : cz - t, ux ? cx + a1 : cx + t, y1, uz ? cz + a1 : cz + t, mt);
 
 export function buildBaseMeshes(B) {
-  const { n, half, floor, ceil, kind, room, rooms } = B, S = createMesh(), P = createMesh(), rng = makeRng(B.seed + '/base/mesh');
+  const { n, half, floor, ceil, kind, room, rooms } = B, S = createMesh(), P = createMesh(), rng = makeRng(B.seed + B.cfg.stream + '/mesh');
   const inGrid = (i, j) => i >= 0 && j >= 0 && i < n && j < n, open = (i, j) => inGrid(i, j) && kind[j * n + i] !== K.wall;
   // The visual floor and ceiling: props keep their collision floor and ceiling, but are drawn with the room's (pre-flight F10).
   const vf = t => kind[t] === K.prop ? Math.fround(rooms[room[t]].floor) : floor[t], vc = t => kind[t] === K.prop ? Math.fround(rooms[room[t]].ceil) : ceil[t];

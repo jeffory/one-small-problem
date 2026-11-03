@@ -10,7 +10,12 @@ export const BASE = { n: 144, cell: 18, grid: 8, jitter: 1, wall: 99, step: .35,
   crit: [8, 12], side: [3, 5], loops: [1, 2],
   ceil: { lift: 3.5, side: 3.5, plain: [4, 5], hangar: 8, lab: 4.5, reactor: 9, greenhouse: 6, comms: 9, corridor: 3 },
   size: { lift: 6, hangar: 10, lab: 9, reactor: 10, greenhouse: 10, side: [5, 7], plain: [6, 9] } };
-export const THEME_AT = { hangar: 1, lab: .35, reactor: .6, greenhouse: .8 };
+// A base's config: the generator reads everything that makes one base differ from another here (Plan 6). BASE_PLAN is the
+// Moon base: rng stream, span ranges, theme order along the path, light colours, pickups and the pacing curve.
+export const BASE_PLAN = { stream: '/base', area: 2, attempts: BASE.attempts, crit: BASE.crit, side: BASE.side, loops: BASE.loops,
+  start: 'lift', first: 'hangar', end: 'comms', at: [['lab', .35], ['reactor', .6], ['greenhouse', .8]], p: [.5, 1],
+  golf: { room: 'side', id: 3 }, cells: ['hangar', 'reactor'], cans: [['hangar', 3], ['reactor', 3], ['greenhouse', 2]],
+  amber: ['lift', 'hangar', 'comms'], teal: ['lab', 'reactor', 'greenhouse'], red: [] };
 export const THEMES = ['plain', 'side', 'lift', 'hangar', 'lab', 'reactor', 'greenhouse', 'comms'];
 export const PROPS = ['lift', 'saucer', 'jarRover', 'jarProbe', 'jar', 'core', 'bed', 'dish', 'strip'];
 export const K = { wall: 0, floor: 1, cover: 2, prop: 3 };
@@ -24,12 +29,12 @@ const prop = (kind, x, y, z, w = 0, d = 0, dx = 0, dz = 0) => ({ kind, x, y, z, 
 
 // One attempt. Returns null when the construction fails (see the brief: dead-end walk, no comms block, no side-room
 // cell, no loop candidate, no spot for a required piece).
-function build(seed, attempt, rng) {
+function build(seed, attempt, rng, cfg) {
   const { n, cell: C, grid: G } = BASE, half = n >> 1, T = (i, j) => j * n + i;
   const own = new Int16Array(G * G).fill(-1), at = (x, y) => x >= 0 && x < G && y >= 0 && y < G ? own[y * G + x] : -2;
 
   // 1. The critical path: L - 1 single cells by a self-avoiding walk, then the 2 x 2 comms block beside the last one.
-  const L = span(rng, BASE.crit), cells = [];
+  const L = span(rng, cfg.crit), cells = [];
   let x = rng.int(G), y = rng.int(G);
   own[y * G + x] = 0; cells.push([[x, y]]);
   for (let k = 1; k < L - 1; k++) {
@@ -54,7 +59,7 @@ function build(seed, attempt, rng) {
   link(L - 2, L - 1, false, [x, y], [Math.min(Math.max(x, bx), bx + 1), Math.min(Math.max(y, by), by + 1)]);
 
   // 2. Side rooms: free cells beside path rooms 1 .. L-2.
-  const S = span(rng, BASE.side), parent = [];
+  const S = span(rng, cfg.side), parent = [];
   for (let s = 0; s < S; s++) {
     const cand = [];
     for (let cy = 0; cy < G; cy++) for (let cx = 0; cx < G; cx++) if (own[cy * G + cx] === -1)
@@ -66,7 +71,7 @@ function build(seed, attempt, rng) {
   }
 
   // 3. Loops between unlinked neighbours, never the lift or the comms room.
-  const target = span(rng, BASE.loops), loops = [], ok = (r) => r > 0 && r !== L - 1;
+  const target = span(rng, cfg.loops), loops = [], ok = (r) => r > 0 && r !== L - 1;
   const linked = (a, b) => links.some((l) => (l.a === a && l.b === b) || (l.a === b && l.b === a));
   for (let cy = 0; cy < G; cy++) for (let cx = 0; cx < G; cx++) {
     const a = own[cy * G + cx];
@@ -82,8 +87,8 @@ function build(seed, attempt, rng) {
   // 4. Themes along the path.
   const theme = [];
   for (let k = 0; k < L; k++) theme.push('plain');
-  theme[0] = 'lift'; theme[THEME_AT.hangar] = 'hangar'; theme[L - 1] = 'comms';
-  for (const t of ['lab', 'reactor', 'greenhouse']) theme[Math.round(THEME_AT[t] * (L - 1))] = t;
+  theme[0] = cfg.start; theme[1] = cfg.first; theme[L - 1] = cfg.end;
+  for (const [t, f] of cfg.at) theme[Math.round(f * (L - 1))] = t;
   for (let s = 0; s < S; s++) theme.push('side');
 
   // 5. Rooms to tiles. Every single-cell room covers its cell's central band [+C/2-2, +C/2+2) (the corridor band), keeps
@@ -98,7 +103,7 @@ function build(seed, attempt, rng) {
   for (let id = 0; id < L + S; id++) {
     const th = theme[id], cs = cells[id];
     let x0, z0, x1, z1;
-    if (th === 'comms') { x0 = bx * C + C - 10; z0 = by * C + C - 10; x1 = x0 + 20; z1 = z0 + 20; }
+    if (th === cfg.end) { x0 = bx * C + C - 10; z0 = by * C + C - 10; x1 = x0 + 20; z1 = z0 + 20; }
     else {
       const sz = BASE.size[th], wd = typeof sz === 'number' ? sz : span(rng, sz), ht = typeof sz === 'number' ? sz : span(rng, sz);
       x0 = place(cs[0][0] * C, wd); z0 = place(cs[0][1] * C, ht); x1 = x0 + wd; z1 = z0 + ht;
@@ -113,7 +118,7 @@ function build(seed, attempt, rng) {
   const doors = rooms.map(() => []), into = rooms.map(() => null), tile = (i, j) => ({ x: i - half, z: j - half }), W = BASE.corridor;
   links.forEach((l, k) => {
     const [ca, cb] = lc[k], A = rooms[l.a], Bm = rooms[l.b], xl = ca[1] === cb[1];
-    const lo = (xl ? ca[0] < cb[0] : ca[1] < cb[1]) ? A : Bm, hi = lo === A ? Bm : A, cm = Bm.theme === 'comms' ? Bm : null;
+    const lo = (xl ? ca[0] < cb[0] : ca[1] < cb[1]) ? A : Bm, hi = lo === A ? Bm : A, cm = Bm.theme === cfg.end ? Bm : null;
     let r0 = (xl ? ca[1] : ca[0]) * C + (C >> 1) - 2 + rng.int(2);
     // The comms room (20 wide) is narrower than its block's two corridor bands: its one corridor shifts inside it.
     if (cm) r0 = Math.min(Math.max(r0, xl ? cm.z0 : cm.x0), (xl ? cm.z1 : cm.x1) - W);
@@ -239,7 +244,7 @@ function build(seed, attempt, rng) {
   const commsDoor = { x: comms.in.x, z: comms.in.z, dx: into[L - 1][0], dz: into[L - 1][1] };
   const crit = [], side = [];
   for (let k = 0; k < L + S; k++) (k < L ? crit : side).push(k);
-  return { seed, attempt, n, half, floor, ceil, kind, room, rooms, links, crit, side, start, commsDoor, spawnDoors, props };
+  return { seed, attempt, cfg, n, half, floor, ceil, kind, room, rooms, links, crit, side, start, commsDoor, spawnDoors, props };
 }
 
 // Accept a layout when every walkable tile is reachable from the start by steps of at most BASE.step.
@@ -249,9 +254,9 @@ export function baseAccept(B) {
   return true;
 }
 
-export function generateBase(seed, accept = baseAccept) {
-  for (let attempt = 0; attempt < BASE.attempts; attempt++) {
-    const B = build(seed, attempt, makeRng(seed + '/base' + (attempt ? '#' + attempt : '')));
+export function generateBase(seed, accept = baseAccept, cfg = BASE_PLAN) {
+  for (let attempt = 0; attempt < cfg.attempts; attempt++) {
+    const B = build(seed, attempt, makeRng(seed + cfg.stream + (attempt ? '#' + attempt : '')), cfg);
     if (B && accept(B)) return B;
   }
   throw new Error('no base layout for seed ' + seed);
