@@ -75,7 +75,7 @@ test('weapon keys work without pointer lock; the capture click never fires (Revi
   await page.mouse.click(300, 300); await page.waitForTimeout(300); expect((await fight(page)).shots).toBe(0); });
 test('the HUD overlays let the capture click through to the canvas (M7)', async ({ page }) => {
   await start(page); await page.evaluate(() => window.ospTest.grab()); await page.waitForTimeout(300);
-  const hits = await page.evaluate(() => ['hud', 'seed', 'stat', 'prompt', 'flash', 'x'].map(id => { const r = document.getElementById(id).getBoundingClientRect();
+  const hits = await page.evaluate(() => ['hud', 'seed', 'stat', 'prompt', 'flash', 'x', 'sub'].map(id => { const r = document.getElementById(id).getBoundingClientRect();
     return r.width && r.height ? [id, document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)?.id] : null; }).filter(Boolean));
   expect(hits.length).toBeGreaterThanOrEqual(4); for (const [id, at] of hits) expect(at, id).toBe('c'); });
 test('below 25 health only the number turns red, and an unchanged status line is not rewritten (M8)', async ({ page }) => {
@@ -303,3 +303,22 @@ test('every song loops without a click: the seam jump is no larger than twice th
   const r = await page.evaluate(() => Object.fromEntries(['surface', 'crater', 'base', 'hold'].map(k => { const d = window.ospTest.songBuffer(k).getChannelData(0), a = new Float32Array(d.length - 1);
     for (let i = 1; i < d.length; i++) a[i - 1] = Math.abs(d[i] - d[i - 1]); a.sort(); return [k, [Math.abs(d[d.length - 1] - d[0]), a[Math.floor(a.length * .99)]]]; })));
   for (const [k, [jump, p99]] of Object.entries(r)) expect(jump, k).toBeLessThanOrEqual(2 * p99 + 1e-6); });
+// pre-flight F4: headless Firefox can expose espeak voices (14,805 on the dev machine), so this pins the unvoiced path
+export const noVoices = page => page.addInitScript(() => { try { speechSynthesis.getVoices = () => []; } catch {} });
+test('the radio subtitles the opening with a speaker label and a keyed dot (radio)', async ({ page }) => {
+  await noVoices(page); const errors = watchErrors(page); await page.goto(URLS[1][1] + '#APOLLO-4471'); await ready(page); await page.click('#new'); await expect.poll(() => state(page)).toBe('opening');
+  await ff(page, OPEN.descent + .5); await expect(page.locator('#sub')).toHaveText('YOU: Contact light. Engine stop.'); await expect(page.locator('#sub')).toHaveClass(/\bon\b/);
+  await ff(page, 3); await expect(page.locator('#sub')).toHaveText("HOUSTON: We copy, you're down. Beautiful work."); expect(errors).toEqual([]); });
+// carry-over (Task 4): the attract run behind the title has no radio, so a minute of the bot's play (the flag, kills, pickups)
+// never puts a line or a subtitle up
+test('the attract run behind the title stays silent: no radio, no subtitles (radio)', async ({ page }) => {
+  const errors = watchErrors(page); await page.goto(URLS[1][1]); await ready(page); await page.evaluate(() => window.ospTest.ff(60));
+  expect(await page.evaluate(() => [window.ospTest.state(), window.ospTest.radio(), document.getElementById('sub').textContent])).toEqual(['title', null, '']);
+  expect(errors).toEqual([]); });
+test('pausing mid-line takes the subtitle down, and the story line plays again from its start on resume (Review Focus 3)', async ({ page }) => {
+  await noVoices(page); const errors = watchErrors(page); await page.goto(URLS[1][1] + '#APOLLO-4471'); await ready(page); await page.click('#new'); await expect.poll(() => state(page)).toBe('opening');
+  await ff(page, OPEN.descent + .5); await expect(page.locator('#sub')).toHaveText('YOU: Contact light. Engine stop.');
+  await page.keyboard.press('Escape'); await expect.poll(() => paused(page)).toBe(true); await expect(page.locator('#sub')).toHaveText('');
+  expect(await page.evaluate(() => window.ospTest.radio())).toEqual({ line: null, queued: ['touchdown', 'touchdown'] });
+  await page.keyboard.press('Escape'); await expect.poll(() => paused(page)).toBe(false); await expect(page.locator('#sub')).toHaveText('YOU: Contact light. Engine stop.');
+  await expect(page.locator('#sub')).toHaveClass(/\bon\b/); expect(errors).toEqual([]); });

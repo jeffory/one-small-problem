@@ -46,6 +46,10 @@ test('E plants the flag OPEN.plant ahead and left of your view within range (R12
   hold(O, idle, OPEN.auto + .2 - (O.t - t0), 1 / 60, e2); const nag = has(e2, 'radio', 'nag'), auto = has(e2, 'radio', 'autoplant'), f = flagSpot(W);
   assert.ok(nag && Math.abs(nag.t - t0 - OPEN.nag) <= 1 / 30); assert.ok(auto && Math.abs(auto.t - t0 - OPEN.auto) <= 1 / 30);
   assert.ok(O.planted && Math.abs(F.flag.x - f.x) < 1e-9 && Math.abs(F.flag.z - f.z) < 1e-9); });
+test('still in the cabin OPEN.stay s after touchdown, Houston nudges you once; one who climbs out never hears it (opening, carry-over)', () => {
+  let { F, O } = fresh(); const ev = hold(O, idle, OPEN.descent + OPEN.stay + 10), c = ev.filter(e => e.type === 'radio' && e.key === 'cabin');
+  assert.equal(c.length, 1); assert.ok(Math.abs(c[0].t - OPEN.descent - OPEN.stay) <= 1 / 60 + 1e-9); assert.equal(O.phase, 'landed');
+  ({ F, O } = fresh()); const e2 = prompt(O, F, 'ground'); hold(O, idle, OPEN.stay, 1 / 60, e2); assert.ok(e2.at(-1).t > OPEN.descent + OPEN.stay); assert.ok(!has(e2, 'radio', 'cabin')); });
 test('company: three aliens rise down the route and the brute waves; three bolts streak into the cabin; then the silent blast with its flash, thud, glitter, dust ring and wreck (opening)', () => {
   const { F, O } = fresh(), ev = prompt(O, F, 'company'), cT = O.t, br = O.view.aliens[1];
   assert.deepEqual(O.view.aliens.map(a => a.type), OPEN.aliens.types); for (const a of O.view.aliens) assert.ok(Math.abs(flat(a, L) - OPEN.aliens.d) <= OPEN.aliens.side + 1);
@@ -97,14 +101,13 @@ test('a flag planted 3.5 m out, facing the lander, stands on the drawn ground, n
   p.x = L.x + u[0] * d; p.z = L.z + u[1] * d; p.y = F.lv.ground(p.x, p.z); p.yaw = Math.atan2(u[0], u[1]); hold(O, { ...idle, use: true }, 1 / 60);
   const [fx, fz] = spot(p); assert.ok(O.planted && Math.abs(F.flag.x - fx) < 1e-9 && Math.abs(F.flag.z - fz) < 1e-9 && flat(F.flag, L) < OPEN.far - .5); assert.ok(F.lv.ground(F.flag.x, F.flag.z) - drawn(F.flag.x, F.flag.z) > .1, 'the ramp is there');
   assert.ok(Math.abs(F.flag.y - drawn(F.flag.x, F.flag.z)) <= .05, `${F.flag.y - drawn(F.flag.x, F.flag.z)} m off the ground`); });
-// R11: the plan's unvoiced radio queue (Task 11: RADIO key .25, gap .5, min 1.6, cps 14; story lines first in, first out, each keying
-// on once the one before has unkeyed and gapped) over the opening's SCRIPT lines (the nag at its longest). Each is {key, talk, end}.
-const RQ = { key: .25, gap: .5, min: 1.6, cps: 14 }, SAY = { touchdown: ['Contact light. Engine stop.', "We copy, you're down. Beautiful work."],
-  step: ["Okay Houston, I'm stepping off the—"], nag: ["Whenever you're ready with that flag. No pressure. Just the whole planet watching."],
-  autoplant: ["We're going to count that as planted."], planted: ['Flag is up. It looks great on the telemetry.'], company: ['…Houston, are we expecting anyone?'],
-  telemetry: ['…say again? We just lost all telemetry from the lander.'], title: ['Houston… we have one small problem.'] };
-const radio = ev => { let free = 0; const out = []; for (const e of ev) if (e.type === 'radio') for (const s of SAY[e.key]) {
-  const talk = Math.max(free, e.t) + RQ.key, end = talk + Math.max(RQ.min, s.length / RQ.cps); out.push({ key: e.key, talk, end }); free = end + RQ.key + RQ.gap; } return out; };
+// R11: the real radio queue (Task 11), unvoiced so each line is up for its reading time, fed the opening's radio cues in the frames
+// they come, with the nag at its longest line. Each line on the air is {key, talk (when it is spoken), end (when it keys down)}.
+import { SCRIPT } from '../src/game/script.js'; import { createRadio, radioCue, stepRadio, radioIdle } from '../src/game/radio.js';
+const radio = ev => { const R = createRadio(makeRng('R11'), { ...SCRIPT, nag: [SCRIPT.nag.reduce((a, b) => (b.length > a.length ? b : a))] }), E = ev.filter(e => e.type === 'radio'), out = [];
+  for (let i = 0; i < E.length || !radioIdle(R);) { while (i < E.length && E[i].t <= R.clock + 1 / 60 + 1e-9) radioCue(R, E[i++].key);
+    for (const a of stepRadio(R, 1 / 60, false, false)) if (a.do === 'say') out.push({ key: a.line.key, talk: R.clock }); else if (a.do === 'unkey') out.at(-1).end = R.clock; }
+  return out; };
 test('the radio keeps the storyboard\'s order: each line is spoken before its beat, and the title line on the stamp (opening, R11)', () => {
   for (const plants of [true, false]) { // a prompt planter, and one who never presses E (nag, then autoplant)
     const { F, O } = fresh(), ev = prompt(O, F, 'ground'); if (plants) hold(O, { ...idle, use: true }, 1 / 60, 1 / 60, ev);

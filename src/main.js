@@ -17,9 +17,12 @@ import { settleWreck, stepWreck } from './game/lander.js';
 import { createOpening, stepOpening } from './game/opening.js';
 import { createBot, botStep } from './game/bot.js';
 import { HOLD, ENDING, dishOf, callSpot } from './game/hold.js';
+import { WHO } from './game/script.js';
+import { createRadio, radioCue, radioEvents, stepRadio, radioDone, pauseRadio, radioIdle } from './game/radio.js';
 import { createAudio } from './audio/audio.js';
 import { buildSfx, sfxFor } from './audio/sfx.js';
 import { renderSongs } from './audio/music.js';
+import { createSpeech } from './audio/speech.js';
 import { createInput, look } from './game/input.js';
 import { createHud, HELP_TIME } from './ui/hud.js';
 import { createMenus } from './ui/menus.js';
@@ -48,7 +51,8 @@ function boot() {
 
   const { gl, hdrOK } = createGL(canvas), renderer = createRenderer(gl, hdrOK), V = createFightView(gl, { meshes: [] }), store = storage();
   // run: the Moon on screen, {kind: 'attract' | 'play', seed, world, scene, F, wreck (the lander's pieces), O (the opening while
-  // it plays, else null), moving (the wreck is still settling after the opening), bot (attract only)}.
+  // it plays, else null), moving (the wreck is still settling after the opening), R (the radio, play only: attract runs stay
+  // silent), bot (attract only)}.
   // state: where the flow is (see the top). endT: seconds of the ending so far.
   let run = null, state = 'title', endT = 0;
   // S: the settings (loaded once, kept in memory even where the store refuses them). Paused: the pause menu is up, nothing
@@ -57,6 +61,8 @@ function boot() {
   // leaves that one out). The AudioContext itself waits for the first New Game click.
   let sfx = {}; try { sfx = buildSfx(); } catch {}
   const audio = createAudio({ sfx, songs: (() => { try { return renderSongs(); } catch { return {}; } })() });
+  // The radio's voice, when the browser has one (lines are subtitled either way; nothing waits for voices to load).
+  const speech = createSpeech();
   // The music map: the title the surface song, the opening none until its title drop, play the area's song (the hold's on hold),
   // the ending none, the end screen the hold music. Asked every frame; the engine ignores a repeat.
   const MUSIC = ['surface', 'crater', 'base', 'base'];
@@ -72,7 +78,7 @@ function boot() {
   // Native (RES 0) is the window's height in device pixels, at most 2 per CSS pixel.
   const resize = () => lost || renderer.resize(innerWidth, innerHeight, devicePixelRatio || 1, RES[S.res] || Math.round(innerHeight * Math.min(2, devicePixelRatio || 1)));
   // Settings take effect at once; the render targets are rebuilt only when the resolution changes.
-  function apply() { audio.volume(S.vol); palMode = S.pal ? 1 : 0; if (S.res !== appliedRes) { appliedRes = S.res; resize(); } }
+  function apply() { audio.volume(S.vol); speech.volume(S.vol); palMode = S.pal ? 1 : 0; if (S.res !== appliedRes) { appliedRes = S.res; resize(); } }
   function setting(s) { S = s; saveSettings(store, S); apply(); }
   addEventListener('resize', resize); apply();
   canvas.addEventListener('webglcontextlost', e => {
@@ -92,10 +98,11 @@ function boot() {
   const pausable = () => !lost && (state === 'opening' || state === 'play' || state === 'ending');
   function unpause() { paused = false; menus.pause(false); }
   // Esc or a lost pointer lock: the pause menu goes up, the frame keeps drawing, and the mouse is let go (headless browsers
-  // keep the lock on Esc, so this doesn't rely on the browser).
+  // keep the lock on Esc, so this doesn't rely on the browser). The radio stops mid-line: a story line plays again from its start
+  // on resume, a reaction is dropped.
   function pause() {
     if (!pausable() || paused) return;
-    paused = true; audio.pause(); menus.pause(true, S, HELP); input.unlock();
+    paused = true; audio.pause(); if (run.R) radioDo(run.R, pauseRadio(run.R)); speech.cancel(); menus.pause(true, S, HELP); input.unlock();
   }
   function resume() { unpause(); audio.resume(); input.lock(); }
   function quit() { unpause(); toTitle(true); }
@@ -118,12 +125,25 @@ function boot() {
   // opening, which brings its own (newGame). Attract runs are immortal and played by the bot (never the opening, spec 4.1).
   function startRun(kind, seed, { intact = false } = {}) {
     const world = generateWorld(seed), scene = buildSurfaceScene(gl, world, intact), F = createFight(world);
-    run = { kind, seed, world, scene, F, wreck: intact ? null : settleWreck(world), O: null, moving: false }; warpK = 0;
+    run = { kind, seed, world, scene, F, wreck: intact ? null : settleWreck(world), O: null, moving: false, R: kind === 'play' ? createRadio(makeRng(seed + '/radio')) : null }; warpK = 0;
     if (kind === 'attract') { F.god = true; run.bot = createBot(world, makeRng(seed + '/bot')); }
     useScene(scene);
     if (DEBUG) fp = `#${seed} ${checksumWorld(world)}`;
   }
-  function stopRun() { run?.scene.dispose(); }
+  function stopRun() { hush(); run?.scene.dispose(); }
+  // The radio off at once, whatever it was saying: no voice, subtitle or keyed dot, noise bed or duck (pre-flight F11).
+  function hush() { speech.cancel(); hud.sub(''); audio.bed(false); audio.duck(false); }
+  // The radio's actions: the subtitle and its keyed dot, the Quindar tones with their static, the noise bed under the line, the
+  // music ducked while a line is on, and the voice when the line has one. off leaves out key(false), which would sound the
+  // closing tone, so a line cut short by a pause stops dead (pre-flight F11).
+  function radioDo(R, acts) {
+    for (const { do: d, line } of acts) {
+      if (d === 'key') { hud.sub(WHO[line.who] + ': ' + line.text, true); audio.key(true); audio.duck(true); audio.bed(true); }
+      else if (d === 'say') { if (line.voiced) speech.say(line, () => radioDone(R, line.id)); }
+      else if (d === 'unkey') { hud.sub(WHO[line.who] + ': ' + line.text, false); audio.key(false); audio.bed(false); }
+      else { hud.sub(''); audio.duck(false); audio.bed(false); }
+    }
+  }
   // A new level gets its own scene; the old one's GPU meshes are freed.
   function swap() {
     const next = run.F.lv.id === 'base' ? buildBaseScene(gl, run.world.baseMap) : buildSurfaceScene(gl, run.world);
@@ -158,7 +178,7 @@ function boot() {
   function finish() {
     if (state !== 'play' && state !== 'ending') return;
     const { F, seed } = run, time = F.wonAt ?? F.time;
-    state = 'end'; unpause(); music();
+    state = 'end'; unpause(); hush(); music();
     menus.end({ time, kills: F.kills, golf: F.golf, link: shareLink(location.href, seed), seed, ...recordBest(store, seed, time) });
     hud.mode('none');
     input.unlock();
@@ -167,12 +187,12 @@ function boot() {
   // dt seconds of the current state. Sub-steps are at most 0.05 s, and one-shot inputs (use, weapon, wheel) count on the
   // first only. The title steps the attract run with the bot's input; the opening steps its director with yours, with its
   // prompt: the blast swaps the scene's shadow map for the wreck's, the title drop stamps the title, and at its end play takes
-  // over (its radio and sound cues wait for Tasks 9 and 11); play and ending step yours, with flashes, status and prompt; the
-  // end screen steps nothing. After the opening the wreck keeps settling, a call at a time, until every piece is still (pre-
-  // flight F29). A level swap is handled for whatever run is on screen, and the events (the fight's and the opening's) are
+  // over; play and ending step yours, with flashes, status and prompt; the end screen steps nothing. In the opening, play and the
+  // ending the radio takes the opening's cues and the fight's events, then steps (its dawdle clock runs in play only). After the
+  // opening the wreck keeps settling, a call at a time, until every piece is still (pre-flight F29). A level swap is handled for whatever run is on screen, and the events (the fight's and the opening's) are
   // cleared here, so each call (a frame or an ff step) sees only its own (pre-flight F3). When the bot is done (the comms room, or
   // stalled) a fresh attract Moon replaces it; the hash is never touched. Houston picking up starts the ending, which goes to
-  // the end screen after ENDING.min s once the radio is idle, or after ENDING.max s whatever it is saying.
+  // the end screen after ENDING.min s once the radio is idle, or after ENDING.max s whatever it is saying (finish hushes it).
   function advance(dt, inp) {
     const F = run.F, B = run.bot, O = run.O, n = Math.max(1, Math.ceil(dt / .05)), h = dt / n, playing = state === 'play' || state === 'ending';
     if (state === 'title') for (let k = 0; k < n && !B.done; k++) { const b = botStep(B, F, h); stepFight(F, k ? { ...b, use: false, weapon: -1, wheel: 0 } : b, h); }
@@ -184,6 +204,7 @@ function boot() {
       for (const ev of O.events) {
         if (ev.type === 'wreck') { run.scene.wreck(); frame.occTex = run.scene.occTex; } // useScene copied the intact one, now deleted
         else if (ev.type === 'sfx') audio.sfx(ev.key);
+        else if (ev.type === 'radio') radioCue(run.R, ev.key);
         else if (ev.type === 'title') { hud.stamp(); run.titled = true; }
         else if (ev.type === 'done') { run.O = null; play(); }
       }
@@ -205,11 +226,10 @@ function boot() {
         : d && !F.hold && Math.hypot(p.x - d.x, p.z - d.z) <= HOLD.reach ? '[E] call Houston'
         : F.hold && !F.won ? 'ON HOLD ' + fmtTime(F.hold.t) : '');
     }
+    const R = run.R;
+    if (R && (state === 'opening' || state === 'play' || state === 'ending')) { radioEvents(R, F.events, F); radioDo(R, stepRadio(R, dt, speech.ok, state === 'play')); }
     if (state === 'play' && F.events.some(e => e.type === 'houston')) { state = 'ending'; endT = 0; }
-    else if (state === 'ending') {
-      const quiet = true; // the radio is idle (always, until Task 11 gives it a queue)
-      if ((endT += dt) >= ENDING.min && quiet || endT >= ENDING.max) finish();
-    }
+    else if (state === 'ending' && ((endT += dt) >= ENDING.min && radioIdle(R) || endT >= ENDING.max)) finish();
     F.events.length = 0; music();
     if (state === 'title' && B.done) { stopRun(); startRun('attract', randomSeed()); }
   }
@@ -262,6 +282,8 @@ function boot() {
     grab: () => { const F = run.F, p = F.player; p.x = F.flag.x + 1; p.z = F.flag.z; p.y = F.lv.ground(p.x, p.z); stepFight(F, { ...IDLE, use: true }, .001); },
     give: () => { const A = run.F.ars; for (let i = 0; i < WEAPONS.length; i++) A.owned[i] = true; A.cells = 150; if (A.cur < 0) A.cur = 0; },
     door, enter, warp, comms, hurt: n => hurtPlayer(run.F, n, 0, 0, 0), god: on => { run.F.god = on; },
+    // The radio of a play run: the subtitle of the line on the air (null between lines) and the cues of the lines waiting.
+    radio: () => run.R && { line: run.R.cur && WHO[run.R.cur.who] + ': ' + run.R.cur.text, queued: run.R.q.map(l => l.key) },
     // The clocks that pause stops: the opening's, the hold's and the ending's, each null when not running.
     clock: () => ({ opening: run.O?.t ?? null, hold: run.F.hold?.t ?? null, ending: state === 'ending' ? endT : null }),
   };

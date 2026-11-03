@@ -1,5 +1,5 @@
-// Text overlays from the shell: #hud (help line, then debug line), #seed, the opening's title #stamp and the full-screen #msg
-// for fatal errors. mode() picks which play overlays show: 'none' on the title and the end screen, 'opening' just the prompt and
+// Text overlays from the shell: #hud (help line, then debug line), #seed, the opening's title #stamp, the radio's subtitle #sub
+// and the full-screen #msg for fatal errors. mode() picks which play overlays show: 'none' on the title and the end screen, 'opening' just the prompt and
 // crosshair; any mode but 'play' also takes the stamp down.
 // R2: the help line shows as each run starts and hides once the run has HELP_TIME s of play time (deaths don't reset it); the
 // pause menu carries the controls after that. STAMP_TIME: seconds the title stays stamped on the screen.
@@ -7,7 +7,7 @@ export const HELP_TIME = 20, STAMP_TIME = 3.5;
 
 export function createHud() {
   const $ = id => document.getElementById(id), msg = $('msg'), help = document.createElement('div'), debug = document.createElement('div');
-  const stat = $('stat'), prompt = $('prompt'), flash = $('flash'), x = $('x'), stamp = $('stamp'), num = document.createElement('span'), rest = document.createTextNode('');
+  const stat = $('stat'), prompt = $('prompt'), flash = $('flash'), x = $('x'), stamp = $('stamp'), sub = $('sub'), num = document.createElement('span'), rest = document.createTextNode('');
   const MODES = { none: [], opening: [prompt, x], play: [stat, prompt, flash, x, help] };
   $('hud').append(help, debug);
   let low = false, shown = false, stampT = 0;
@@ -26,6 +26,8 @@ export function createHud() {
       if (low !== hp < 25) { low = hp < 25; num.style.color = low ? '#b8301a' : ''; }
     },
     prompt: t => { if (prompt.textContent !== t) prompt.textContent = t; },
+    // The radio's subtitle, "SPEAKER: line", with the red keyed dot while keyed ('' takes it down).
+    sub: (t, keyed) => { if (sub.textContent !== t) sub.textContent = t; sub.classList.toggle('on', !!keyed); },
     flash: t => {
       const d = document.createElement('div'); d.textContent = t; flash.append(d);
       while (flash.childNodes.length > 3) flash.firstChild.remove();
@@ -35,7 +37,7 @@ export function createHud() {
     ready: () => { msg.style.display = 'none'; },
     fatal: t => {
       msg.textContent = t; msg.style.display = 'flex';
-      for (const e of [stat, prompt, flash, x, stamp, $('title'), $('end'), $('pause')]) e.style.display = 'none';
+      for (const e of [stat, prompt, flash, x, stamp, sub, $('title'), $('end'), $('pause')]) e.style.display = 'none';
     },
   };
 }

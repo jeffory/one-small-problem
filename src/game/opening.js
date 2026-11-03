@@ -15,14 +15,15 @@ import { MAX_PARTS } from './fight.js';
 // touchdown; dust: the height (m) under which the engine sprays dust; hatch: touchdown to the hatch opening, which swings over hatchT;
 // cabin, crawl, climb: your speeds (m/s) in the cabin, crawling out to the porch, and down the ladder; far, near: where the flag can
 // go (m from the lander's centre); plant: where E puts it, m ahead of you and m left of your view line, so its cloth (which hangs
-// toward world +x) stays off the view's centre and the company (R12); nag, auto: your first step to Houston's nudge and to Houston
-// planting it for you; talk: your first step to the earliest the aliens' wait can start, so the step line is over before the flag's
-// (R11); company: that wait, from the plant, to the aliens, who rise over rise, then speak (line), wave and fire, their bolts flying
-// for flight; from the blast, flash (held, then faded over), down (the knock-down: look, its pitch (rad) up at Earth, and downEye, its
-// eye (m), back to PLAYER.eye over getUp), tele (the telemetry line) and title (the drop); aliens: the actors d m from where you
-// planted the flag, turn rad right of the way you faced then (so the brute's wave is seen past the flag, R12), side m apart across
-// that line; parts: the most particles at once.
-export const OPEN = { alt: 24, descent: 9, dust: 5, hatch: 5.5, hatchT: .8, cabin: 1.2, crawl: 1, climb: 1.2, near: 15, far: 3.5, plant: { ahead: 1, left: 1 }, nag: 15, auto: 30,
+// toward world +x) stays off the view's centre and the company (R12); stay: touchdown to Houston's nudge if you are still in the
+// cabin then; nag, auto: your first step to Houston's nudge and to Houston planting it for you; talk: your first step to the
+// earliest the aliens' wait can start, so the step line is over before the flag's (R11); company: that wait, from the plant, to
+// the aliens, who rise over rise, then speak (line), wave and fire, their bolts flying for flight; from the blast, flash (held,
+// then faded over), down (the knock-down: look, its pitch (rad) up at Earth, and downEye, its eye (m), back to PLAYER.eye over
+// getUp), tele (the telemetry line) and title (the drop); aliens: the actors d m from where you planted the flag, turn rad right
+// of the way you faced then (so the brute's wave is seen past the flag, R12), side m apart across that line; parts: the most
+// particles at once.
+export const OPEN = { alt: 24, descent: 9, dust: 5, hatch: 5.5, hatchT: .8, cabin: 1.2, crawl: 1, climb: 1.2, near: 15, far: 3.5, plant: { ahead: 1, left: 1 }, stay: 20, nag: 15, auto: 30,
   talk: 3.5, company: 2.5, rise: 1.5, line: 1, wave: 1.5, fire: 4.5, flight: .45, flash: [.12, 1.2], down: 2, look: .75, downEye: .3, getUp: .7,
   tele: .6, title: 5.5, aliens: { d: 40, turn: .35, side: 6, types: ['sk', 'br', 'fl'] }, parts: 500 };
 // The way out, [x, y, z, eye] in lander space (y the feet): the cabin, the hatch, the porch, the foot of the ladder.
@@ -107,6 +108,7 @@ export function stepOpening(O, input, dt) {
   else if (ph === 'down') { stepPlayer(p, IDLE, dt, F.lv.ground, F.lv.bound, F.gravity, null, Infinity); look(O, dt); }
   else stepPlayer(p, input, dt, F.lv.ground, F.lv.bound, F.gravity, null, Infinity);
   O.prompt = O.phase === 'landed' && O.hatch === 1 ? '[W] climb out' : '';
+  if (O.phase === 'landed' && beat(OPEN.descent + OPEN.stay)) say(O, 'radio', 'cabin'); // once, and only if you're still inside
 
   // the flag, then company
   if (O.phase === 'ground' && !O.planted) flag(O, input, beat, t);
