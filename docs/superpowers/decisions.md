@@ -26,7 +26,7 @@ This file is the single place to find every decision made while building the gam
   - SOAK-0042 `5671ed28`
 - If any generation table changes, re-pin the goldens in the same commit.
 - WebKit/Safari was never run. Playwright's WebKit can't launch on Fedora 44 because it needs libicu74 and libjpeg-turbo8.
-- The user has not yet played Plans 2–4 on real hardware.
+- The user's first play-test (2026-11-03) led to the hands-on rulings H1-H5 below; Plans 5 and 6 have not been played on real hardware yet.
 
 ## State after Plan 5 (overnight run 2, 2026-11-04)
 
@@ -181,10 +181,31 @@ Starting values to tune by hand: the swing (`WEAPONS[0]`: reach 2.6, arc .65, ba
 
 ## Plan 6 (escape) calls
 
-Plan 6's `[call]`s are in `docs/superpowers/plans/` (the Plan 6 file), by table. Two rows were added by the pre-flight scan.
+Two rows (F24, F27) were added by the pre-flight scan, at the end of the table.
+
+Every `[call]` in `docs/superpowers/plans/2026-11-04-plan-6-escape.md`, by task. Every number is a starting value for the hands-on check; only `SHIP.clock` was retuned (from the bot soak).
 
 | Call | Decision |
 |---|---|
+| `KO` (T1, `src/game/escape.js`) | The knock-out table. `KO.call` is the fallback (s) from Houston to the knock-out when no radio triggers it (bot, replay, Node); the rest is used in T10. |
+| Cell block (T4) | The cell block's long side runs along its entry link `lc[id - 1]`, along x when that link's cells share a row. |
+| Prison attempts (T4) | 64 attempts: one loop among 6-8 rooms re-rolls more. |
+| Prison `p` (T4) | `p` runs from .4 at the cell to .9 at the hall, by the base's formula. |
+| Side rooms (T4) | Side rooms ("empty cells") get tape and, holding no golf, cells by the base's rule; you start with a pole. |
+| Prison room features (T4, step 7) | Alcoves along both long walls of the cell block (from 2 tiles in from each corner, then every 3; one gets a cow); 4-6 optional crates in the guard room; a required chair in the interrogation room; required shelves in the evidence room; the hall's raised exit band and 8-10 crates. |
+| `LIGHT.alarm` (T4) | `{ col: [2.2, .25, .08], r: 8, kind: 1 }`, the red alarm lamp. |
+| Prison props (T4, `baseMesh.js`) | Free shapes within the footprints: bars (glowing teal, h 2.6), cow, chair with probe arm, shelf, exit disc with posts and amber ring. |
+| `BREAK` (T5) | The break-out table: the bars, the guard's timing and the nudge. |
+| `SFX.bang`, `SFX.bars` (T5) | A clang and a falling zap, mapped by `sfxFor`. |
+| `ESCAPE` (T6, `src/gen/encounters.js`) | The escape plan's table (dash encounter counts and gaps, e.g. `shipGap`). |
+| Rescue site facing (T6) | The site's `(dx, dz)` is the unit vector toward `world.rim`, so the ladder faces you as you come. |
+| `SHIP`, `FLARE`, `RING` (T8) | The dash tables, in `src/game/escape.js`. `SHIP.clock` started at 240 s and was retuned to 430 s by the bot soak (T12). |
+| Clock HUD (T8) | `#clk` ("SHIP LEAVES m:ss") at the top centre, red under `SHIP.warn`; `#flash` moves from 56 to 76 px; the dead prompt reads "The ship left without you. Back to the crater rim...". |
+| `LIFT` (T9) | The ascent's climb (m/s^2), the seconds from boarding to the sting, and the fade (s) after the end gate. |
+| `SFX.click` (T10) | The stamp's click. |
+| `GOLF_TOTAL = 7` (T10) | Runs are now two levels long (golf 0-2 surface, 3-4 base, 5 evidence locker, 6 dash). |
+| `SIGHTS` (T11) | The level 2 sight distances, pinned in their test. |
+| `BOT.full = 1500` (T12) | The stall limit (s) of a `'board'` bot run. |
 | A missed ship (pre-flight F24) | It restarts area 6 at the rim like a death, and the ship's departure is not shown (it is out of sight from most of the dash). Spec 6 says "the vehicle lifts off without you"; a visible lift-off on a miss (raising `F.ship.W.up` over the dead time) is later polish. |
 | Spec 3 vs 4.1 (pre-flight F27) | Spec 3's table says area 4 starts with "bars already open", but spec 4.1's builder check (guard alive: the beat replays, bars shut) takes precedence, and the plan follows it. |
 
