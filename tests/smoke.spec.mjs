@@ -383,7 +383,12 @@ for (const [how, text, act] of [['an error in the frame loop', 'Something went w
 // R19, R24: the pause menu's checkboxes and sliders take the palette's dim #7a7266, not the browser's saturated accent; the play
 // overlays under it (the prompt and the flashes) hide while it is up and come back on resume; no setting's label wraps.
 test('the pause menu: palette-coloured controls, no prompt or flash showing through, every label on one line (R19, R24)', async ({ page }) => {
-  const errors = watchErrors(page); await start(page); await page.evaluate(() => { window.ospTest.grab(); window.ospTest.door(); });
+  const errors = watchErrors(page); await start(page);
+  // The real area flash (shown a frame after the door) fades after 2 s, which a slow software-GL runner can outlast before the
+  // checks below. So it is waited for with a frame-rate poll, and the moment it appears a held copy keeps #flash non-empty.
+  await page.evaluate(() => { window.ospTest.grab(); window.ospTest.door(); });
+  await page.waitForFunction(() => { const f = document.getElementById('flash'); if (!f.childNodes.length) return false;
+    const held = document.createElement('div'); held.textContent = 'THE CRATER'; f.append(held); return true; }, null, { polling: 'raf' });
   await expect(page.locator('#prompt')).toHaveText('[E] enter the hangar'); await expect(page.locator('#flash')).toBeVisible();
   await page.keyboard.press('Escape'); await expect(page.locator('#pause')).toBeVisible();
   await expect(page.locator('#prompt')).toBeHidden(); await expect(page.locator('#flash')).toBeHidden();

@@ -69,7 +69,8 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npx playwright install --with-deps chromium firefox
-      - run: npm run test:smoke
+      # xvfb-run: headless Firefox gets no WebGL2 on a GPU-less runner; playwright.config.mjs runs it headed on CI, which needs a display
+      - run: xvfb-run -a npm run test:smoke
       - name: Upload test results
         if: failure()
         uses: actions/upload-artifact@v7
