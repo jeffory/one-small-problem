@@ -40,3 +40,8 @@ test('song(): recorded while silent, starts when the context and buffer both exi
   A.song(null); assert.equal(A.info().song, null); });
 test('a rejected or garbage songs promise, and no songs at all, leave the engine silent and unbroken (Review Focus 2)', async () => {
   for (const songs of [Promise.reject(new Error('x')), Promise.resolve({ a: {} }), null]) { const A = createAudio({ AC: FakeAC, sfx, songs }); A.start(); A.song('a'); await new Promise(r => setTimeout(r, 0)); assert.deepEqual(A.info().songs, {}); } });
+test('the master runs through a limiter when DynamicsCompressorNode exists, and straight to the destination when it does not (audio)', () => {
+  const comp = []; const P = v => ({ value: v }), AC1 = class extends FakeAC { createDynamicsCompressor() { const k = { threshold: P(0), knee: P(0), ratio: P(1), attack: P(0), release: P(0), to: null, connect(n) { this.to = n; } }; comp.push(k); return k; } };
+  const A = createAudio({ AC: AC1, sfx }); A.start(); assert.equal(comp.length, 1); assert.ok(comp[0].threshold.value <= -3 && comp[0].ratio.value >= 10 && comp[0].attack.value <= .01); assert.equal(comp[0].to.kind, 'dest');
+  const s = spy(), B = createAudio({ AC: s.AC, sfx }); B.start(); assert.equal(B.info().ctx, 'running');
+  const m = s.ctx.made.find(n => n.kind === 'gain' && n.out.includes(s.ctx.destination)); assert.ok(m); });

@@ -28,7 +28,10 @@ export function createAudio({ AC = globalThis.AudioContext ?? globalThis.webkitA
       try {
         if (!ctx) {
           const c = new AC();
-          const master = c.createGain(); master.gain.value = vol; master.connect(c.destination);
+          // A limiter before the destination (threshold -6 dB, high ratio, fast attack); without the node, master goes straight out.
+          let out = c.destination;
+          try { const k = c.createDynamicsCompressor(); k.threshold.value = -6; k.knee.value = 0; k.ratio.value = 20; k.attack.value = .003; k.release.value = .1; k.connect(c.destination); out = k; } catch { out = c.destination; }
+          const master = c.createGain(); master.gain.value = vol; master.connect(out);
           const g = { c, master }; ctx = c;
           g.music = gain(musicLevel(), master); g.radio = gain(MIX.radio, master);
           g.filter = c.createBiquadFilter(); g.filter.type = 'lowpass'; g.filter.frequency.value = inAir ? MIX.air : MIX.vacuum; g.filter.connect(master);

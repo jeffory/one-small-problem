@@ -1,5 +1,5 @@
 import test from 'node:test'; import assert from 'node:assert/strict'; import { FakeOffline } from './fakeaudio.mjs';
-import { SONGS, INST, songNotes, songLength, renderSong } from '../src/audio/music.js';
+import { SONGS, INST, songNotes, songLength, renderSong, PEAK } from '../src/audio/music.js';
 test('four songs as compact patterns: every pattern 16 rows of a-z . -, every order 8 bars of existing patterns, every instrument known (music)', () => {
   assert.deepEqual(Object.keys(SONGS), ['surface', 'crater', 'base', 'hold']);
   for (const [k, s] of Object.entries(SONGS)) for (const [inst, base, vol, order, pats] of s.tracks) { assert.ok(INST[inst], `${k} ${inst}`); assert.equal(order.length, 8);
@@ -15,3 +15,7 @@ test('every song is 8 bars of 15 to 30 s, and its pitched notes lie between 30 H
 test('renderSong builds on any OfflineAudioContext-like class, and resolves null without one or when it throws (Review Focus 2)', async () => {
   const b = await renderSong(SONGS.base, 22050, FakeOffline); assert.equal(b.length, Math.ceil(songLength(SONGS.base) * 22050));
   assert.equal(await renderSong(SONGS.base, 22050, undefined), null); assert.equal(await renderSong(SONGS.base, 22050, class { constructor() { throw new Error('no'); } }), null); });
+test('a rendered song is normalised once so its peak is at most PEAK, and a quiet one is left alone (music)', async () => {
+  const mk = v => class extends FakeOffline { startRendering() { const b = this.createBuffer(1, this.length, this.sampleRate), d = b.getChannelData(0); d[10] = v; d[11] = -v / 2; return Promise.resolve(b); } };
+  for (const v of [1.5, 3]) { const d = (await renderSong(SONGS.base, 22050, mk(v))).getChannelData(0); let p = 0; for (const x of d) p = Math.max(p, Math.abs(x)); assert.ok(p <= PEAK + 1e-6 && p > PEAK - 1e-3, `${p}`); }
+  assert.equal((await renderSong(SONGS.base, 22050, mk(.5))).getChannelData(0)[10], .5); });

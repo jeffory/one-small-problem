@@ -60,6 +60,7 @@ export const INST = {
   hat: (c, q, to, nz) => { const [g, e] = decay(c, q.v, q.t, .04, to), s = noise(c, lp(c, 'highpass', 7000, g), nz, q.t); stops([s], e); },
 };
 const noise = (c, to, buf, t) => { const s = c.createBufferSource(); s.buffer = buf; s.loop = true; s.connect(to); s.start(t); return s; };
+export const PEAK = .9; // every rendered song is scaled once so its peak is at most this
 // Resolves the song's mono buffer, or null where there is no OfflineAudioContext or anything throws or rejects.
 export async function renderSong(song, sr = 22050, Ctx = globalThis.OfflineAudioContext) {
   try {
@@ -67,7 +68,10 @@ export async function renderSong(song, sr = 22050, Ctx = globalThis.OfflineAudio
     const c = new Ctx(1, Math.ceil(songLength(song) * sr), sr), nz = c.createBuffer(1, sr, sr), d = nz.getChannelData(0);
     for (let i = 0; i < sr; i++) d[i] = Math.random() * 2 - 1;
     for (const q of songNotes(song)) INST[q.i](c, q, c.destination, nz);
-    return (await c.startRendering()) ?? null;
+    const b = await c.startRendering(), x = b.getChannelData(0); let pk = 0;
+    for (let i = 0; i < x.length; i++) pk = Math.max(pk, Math.abs(x[i]));
+    if (pk > PEAK) for (let i = 0, k = PEAK / pk; i < x.length; i++) x[i] *= k;
+    return b;
   } catch { return null; }
 }
 export async function renderSongs(Ctx) {
