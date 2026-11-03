@@ -1,6 +1,7 @@
 // Boot and the game's state machine. The page opens on the title with an attract run behind it; New Game plays the URL's seed
-// (or rolls one and writes it there); the end screen reports the run and leads back to the title, which clears the seed.
-// States: 'title' -> 'opening' (Task 8) -> 'play' -> 'ending' (Task 5) -> 'end' -> 'title'.
+// (or rolls one and writes it there), starting with the opening; the end screen reports the run and leads back to the title,
+// which clears the seed.
+// States: 'title' -> 'opening' -> 'play' -> 'ending' -> 'end' -> 'title'.
 import { makeRng, normalizeSeed, seedName } from './gen/rng.js';
 import { generateWorld } from './gen/world.js';
 import { checksumWorld } from './gen/checksum.js';
@@ -12,7 +13,8 @@ import { AREAS, areaStart } from './game/areas.js';
 import { WEAPONS } from './game/weapons.js';
 import { buildSurfaceScene } from './game/surfaceScene.js';
 import { buildBaseScene } from './game/baseScene.js';
-import { settleWreck } from './game/lander.js';
+import { settleWreck, stepWreck } from './game/lander.js';
+import { createOpening, stepOpening } from './game/opening.js';
 import { createBot, botStep } from './game/bot.js';
 import { HOLD, ENDING, dishOf, callSpot } from './game/hold.js';
 import { createInput, look } from './game/input.js';
@@ -40,7 +42,8 @@ function boot() {
   addEventListener('hashchange', () => location.reload());
 
   const { gl, hdrOK } = createGL(canvas), renderer = createRenderer(gl, hdrOK), V = createFightView(gl, { meshes: [] }), store = storage();
-  // run: the Moon on screen, {kind: 'attract' | 'play', seed, world, scene, F, wreck (the settled lander), bot (attract only)}.
+  // run: the Moon on screen, {kind: 'attract' | 'play', seed, world, scene, F, wreck (the lander's pieces), O (the opening while
+  // it plays, else null), moving (the wreck is still settling after the opening), bot (attract only)}.
   // state: where the flow is (see the top). endT: seconds of the ending so far.
   let run = null, state = 'title', endT = 0;
   // S: the settings (loaded once, kept in memory even where the store refuses them). Paused: the pause menu is up, nothing
@@ -48,7 +51,7 @@ function boot() {
   let S = loadSettings(store), paused = false, lockLostAt = -1e9, appliedRes = -1;
   // Menu clicks run inside the fatal path too: an exception stops the loop and shows the message, as in tick.
   const guard = f => (...a) => { try { f(...a); } catch (e) { fail(e); throw e; } };
-  const input = createInput(canvas), menus = createMenus({ onNew: guard(() => { input.lock(); newGame(); }), onBack: guard(() => toTitle(true)),
+  const input = createInput(canvas), menus = createMenus({ onNew: guard(() => { input.lock(); newGame(true); }), onBack: guard(() => toTitle(true)),
     onResume: guard(() => resume()), onQuit: guard(() => quit()), onSetting: guard(setting) });
   const frame = { exposure: 1, lights: { pos: new Float32Array(64), col: new Float32Array(64), count: 0 }, spheres: new Float32Array(32) };
   let palMode = S.pal ? 1 : 0, lost = false, fp = '', warpK = 0, raf = 0, frames = 0, fault = false, t0 = performance.now(), last = t0, fpsN = 0, fpsT = 0;
@@ -73,7 +76,7 @@ function boot() {
 
   // --- pause ---
   // Never after a fatal error or a lost context: the message stays on top and nothing is left to resume.
-  const pausable = () => !lost && (state === 'play' || state === 'ending');
+  const pausable = () => !lost && (state === 'opening' || state === 'play' || state === 'ending');
   function unpause() { paused = false; menus.pause(false); }
   // Esc or a lost pointer lock: the pause menu goes up, the frame keeps drawing, and the mouse is let go (headless browsers
   // keep the lock on Esc, so this doesn't rely on the browser).
@@ -83,9 +86,9 @@ function boot() {
   }
   function resume() { unpause(); input.lock(); }
   function quit() { unpause(); toTitle(true); }
-  // The lock is held only while it is wanted, in play or the ending, unpaused (R6). One that arrives otherwise (a request still
-  // in flight when the game paused, finished or quit) is let go at once, so the menus' buttons take clicks (pre-flight F1);
-  // that release never pauses. Losing a wanted lock while playing pauses.
+  // The lock is held only while it is wanted, in the opening, play or the ending, unpaused (R6). One that arrives otherwise (a
+  // request still in flight when the game paused, finished or quit) is let go at once, so the menus' buttons take clicks
+  // (pre-flight F1); that release never pauses. Losing a wanted lock while playing pauses.
   document.addEventListener('pointerlockchange', () => {
     if (document.pointerLockElement) { if (!input.wanted() || paused || !pausable()) input.unlock(); }
     else if (input.wanted() && pausable() && !paused) { pause(); lockLostAt = performance.now(); }
@@ -98,11 +101,11 @@ function boot() {
   // --- runs ---
   // The view draws the scene's meshes and lamps, and on the surface the run's wreck; the frame takes the scene's look.
   function useScene(scene) { setScene(V, scene); setWreck(V, scene.id === 'surface' ? run.wreck : null); for (const k of SCENE) frame[k] = scene[k]; }
-  // A fresh Moon on the surface, at the wreck (the lander as the opening leaves it). Attract runs are immortal and played by the
-  // bot (never the opening).
-  function startRun(kind, seed) {
-    const world = generateWorld(seed), scene = buildSurfaceScene(gl, world), F = createFight(world);
-    run = { kind, seed, world, scene, F, wreck: settleWreck(world) }; warpK = 0;
+  // A fresh Moon on the surface, at the wreck (the lander as the opening leaves it); intact, the lander stands whole for the
+  // opening, which brings its own (newGame). Attract runs are immortal and played by the bot (never the opening, spec 4.1).
+  function startRun(kind, seed, { intact = false } = {}) {
+    const world = generateWorld(seed), scene = buildSurfaceScene(gl, world, intact), F = createFight(world);
+    run = { kind, seed, world, scene, F, wreck: intact ? null : settleWreck(world), O: null, moving: false }; warpK = 0;
     if (kind === 'attract') { F.god = true; run.bot = createBot(world, makeRng(seed + '/bot')); }
     useScene(scene);
     if (DEBUG) fp = `#${seed} ${checksumWorld(world)}`;
@@ -115,13 +118,18 @@ function boot() {
   }
 
   // --- the flow ---
-  // New Game plays the URL's seed, or rolls one and writes it there (replaceState: no new history entry).
-  function newGame() {
+  // New Game plays the URL's seed, or rolls one and writes it there (replaceState: no new history entry). The New Game button
+  // starts with the opening, on an intact lander; ospTest.play() skips it, into play at the settled wreck.
+  function newGame(opening) {
     const seed = normalizeSeed(location.hash) ?? randomSeed();
     try { history.replaceState(null, '', '#' + seed); } catch {}
-    stopRun(); startRun('play', seed); unpause();
-    state = 'play'; menus.hide(); hud.mode('play'); hud.help(HELP); hud.seed('#' + seed);
+    stopRun(); startRun('play', seed, { intact: opening }); unpause(); menus.hide();
+    if (!opening) return play();
+    run.O = createOpening(run.world, run.F); run.wreck = run.O.wreck; run.moving = true; setWreck(V, run.wreck);
+    state = 'opening'; hud.mode('opening'); hud.prompt('');
   }
+  // Into play: the status line, the help line (shown as each run starts) and the seed.
+  function play() { state = 'play'; hud.mode('play'); hud.help(HELP); hud.seed('#' + run.seed); }
   // The title, with a fresh attract run behind it and the mouse let go (pre-flight F1). At boot the URL's seed stays, so a
   // shared link survives to New Game; Back to title clears it, so the next New Game rolls a fresh Moon.
   function toTitle(clear) {
@@ -144,15 +152,29 @@ function boot() {
   }
 
   // dt seconds of the current state. Sub-steps are at most 0.05 s, and one-shot inputs (use, weapon, wheel) count on the
-  // first only. The title steps the attract run with the bot's input; play and ending step yours, with flashes, status and
-  // prompt; the end screen steps nothing. A level swap is handled for whatever run is on screen, and the events are cleared
-  // here, so each call (a frame or an ff step) sees only its own (pre-flight F3). When the bot is done (the comms room, or
+  // first only. The title steps the attract run with the bot's input; the opening steps its director with yours, with its
+  // prompt: the blast swaps the scene's shadow map for the wreck's, the title drop stamps the title, and at its end play takes
+  // over (its radio and sound cues wait for Tasks 9 and 11); play and ending step yours, with flashes, status and prompt; the
+  // end screen steps nothing. After the opening the wreck keeps settling, a call at a time, until every piece is still (pre-
+  // flight F29). A level swap is handled for whatever run is on screen, and the events (the fight's and the opening's) are
+  // cleared here, so each call (a frame or an ff step) sees only its own (pre-flight F3). When the bot is done (the comms room, or
   // stalled) a fresh attract Moon replaces it; the hash is never touched. Houston picking up starts the ending, which goes to
   // the end screen after ENDING.min s once the radio is idle, or after ENDING.max s whatever it is saying.
   function advance(dt, inp) {
-    const F = run.F, B = run.bot, n = Math.max(1, Math.ceil(dt / .05)), h = dt / n, playing = state === 'play' || state === 'ending';
+    const F = run.F, B = run.bot, O = run.O, n = Math.max(1, Math.ceil(dt / .05)), h = dt / n, playing = state === 'play' || state === 'ending';
     if (state === 'title') for (let k = 0; k < n && !B.done; k++) { const b = botStep(B, F, h); stepFight(F, k ? { ...b, use: false, weapon: -1, wheel: 0 } : b, h); }
     if (playing) for (let k = 0; k < n; k++) stepFight(F, k ? { ...inp, use: false, weapon: -1, wheel: 0 } : inp, h);
+    if (run.moving && !O) { stepWreck(run.wreck, dt); run.moving = run.wreck.pieces.some(p => !p.still); }
+    if (state === 'opening') {
+      for (let k = 0; k < n && O.phase !== 'done'; k++) stepOpening(O, k ? { ...inp, use: false, weapon: -1, wheel: 0 } : inp, h);
+      hud.prompt(O.prompt);
+      for (const ev of O.events) {
+        if (ev.type === 'wreck') { run.scene.wreck(); frame.occTex = run.scene.occTex; } // useScene copied the intact one, now deleted
+        else if (ev.type === 'title') hud.stamp();
+        else if (ev.type === 'done') { run.O = null; play(); }
+      }
+      O.events.length = 0;
+    }
     for (const ev of F.events) if (ev.type === 'area' && ev.level) swap();
     if (playing) {
       const p = F.player, U = run.world.crater.use;
@@ -209,7 +231,10 @@ function boot() {
     get seed() { return run.kind === 'play' ? run.seed : normalizeSeed(location.hash); },
     get checksum() { return run.kind === 'play' ? checksumWorld(run.world) : null; },
     capture: () => renderer.capture(), frames: () => frames, fault: () => { fault = true; }, paused: () => paused, settings: () => ({ ...S }),
-    state: () => state, play: () => newGame(), finish, ff,
+    state: () => state, play: () => newGame(false), finish, ff,
+    // The opening while it plays ({phase, t, prompt}), else null; whether the frame draws the scene's live shadow map (it changes
+    // at the blast).
+    opening: () => run.O && { phase: run.O.phase, t: run.O.t, prompt: run.O.prompt }, occ: () => frame.occTex === run.scene.occTex,
     attract: () => run.bot ? { seed: run.seed, stage: run.bot.stage, done: run.bot.done } : null,
     player: () => { const p = run.F.player; return { x: p.x, y: p.y, z: p.z }; },
     wreck: () => ({ n: run.wreck.pieces.length, still: run.wreck.pieces.filter(p => p.still).length }),
@@ -220,8 +245,8 @@ function boot() {
     grab: () => { const F = run.F, p = F.player; p.x = F.flag.x + 1; p.z = F.flag.z; p.y = F.lv.ground(p.x, p.z); stepFight(F, { ...IDLE, use: true }, .001); },
     give: () => { const A = run.F.ars; for (let i = 0; i < WEAPONS.length; i++) A.owned[i] = true; A.cells = 150; if (A.cur < 0) A.cur = 0; },
     door, enter, warp, comms, hurt: n => hurtPlayer(run.F, n, 0, 0, 0), god: on => { run.F.god = on; },
-    // The clocks that pause stops: the opening's (Task 8), the hold's and the ending's, each null when not running.
-    clock: () => ({ opening: null, hold: run.F.hold?.t ?? null, ending: state === 'ending' ? endT : null }),
+    // The clocks that pause stops: the opening's, the hold's and the ending's, each null when not running.
+    clock: () => ({ opening: run.O?.t ?? null, hold: run.F.hold?.t ?? null, ending: state === 'ending' ? endT : null }),
   };
 
   // --- the frame loop: advance the state, then draw the current run, in every state ---
@@ -231,9 +256,11 @@ function boot() {
       // Real time, so slow frames don't slow the game; a long stall skips at most 0.25 s.
       const el = Math.max(0, (now - last) / 1000); last = now;
       const inp = input.read();
-      if (!paused) { if (pausable()) look(run.F.player, inp.lookX, inp.lookY, S.sens, S.invert); advance(Math.min(.25, el), inp); }
+      // The mouse doesn't look while the opening holds the view (the knock-down).
+      if (!paused) { if (pausable() && !run.O?.lock) look(run.F.player, inp.lookX, inp.lookY, S.sens, S.invert); advance(Math.min(.25, el), inp); }
       frame.t = (now - t0) / 1000; frame.palMode = palMode;
-      fillFrame(V, run.F, frame, frame.t);
+      // the opening draws its own fight-shaped view (the cabin's eye, its actors, glows, glitter and the flash)
+      fillFrame(V, run.O ? run.O.view : run.F, frame, frame.t);
       renderer.render(frame);
       if (!T.ready) { T.ready = true; hud.ready(); }
       if (DEBUG) {

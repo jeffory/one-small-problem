@@ -9,3 +9,6 @@ test('strips comments and collapses whitespace around punctuation', () => {
 test('keeps spaces between words and between +/- pairs', () => {
   assert.equal(minifyGLSL('if(a) b = x - -y; else if (c) d = e + +f;'), 'if(a)b=x- -y;else if(c)d=e+ +f;');
 });
+import { readFileSync } from 'node:fs';
+test('the post pass mixes toward warm white by uK.y, capped at .85 (opening flash, pre-flight F14)', () => {
+  assert.match(readFileSync('src/gfx/shaders/post.frag', 'utf8'), /mix\(\s*c\s*,\s*vec3\(\s*\.94\s*,\s*\.91\s*,\s*\.86\s*\)\s*,\s*min\(\s*\.85\s*,\s*uK\.y\s*\)\s*\)/); });

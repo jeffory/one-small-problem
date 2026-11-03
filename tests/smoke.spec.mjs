@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test'; import { pathToFileURL } from 'node:url'; import { resolve } from 'node:path';
 import { generateWorld } from '../src/gen/world.js'; import { checksumWorld } from '../src/gen/checksum.js';
-import { HELP_TIME } from '../src/ui/hud.js'; import { fmtTime } from '../src/ui/score.js';
+import { HELP_TIME } from '../src/ui/hud.js'; import { fmtTime } from '../src/ui/score.js'; import { OPEN } from '../src/game/opening.js';
 export const URLS = [['file', pathToFileURL(resolve('dist/index.html')).href], ['http', 'http://localhost:4173/index.html']];
 // Benign Firefox parser note about the packed binary payload when the server's utf-8 header overrides the page's iso-8859-15 meta; real decoding failures are caught by the ready check.
 const BENIGN = /byte stream was erroneous according to the character encoding/i;
@@ -138,10 +138,11 @@ test('the best time per seed is remembered (end screen)', async ({ page }) => {
   await start(page); await page.evaluate(() => window.ospTest.finish()); await expect(page.locator('#stats')).toContainText('NEW BEST'); await page.click('#back');
   await page.evaluate(() => { history.replaceState(null, '', '#APOLLO-4471'); const o = window.ospTest; o.play(); o.ff(2); o.finish(); });
   await expect(page.locator('#stats')).toContainText(/BEST \d+:\d\d/); });
-// pre-flight F1: headless Chromium and Firefox both grant the lock on the #new click, and while locked a click on #back lands on the canvas
+// pre-flight F1: headless Chromium and Firefox both grant the lock on the #new click, and while locked a click on #back lands on the canvas.
+// New Game plays the opening first (Task 8); the run can only finish from play, so the test plays through it, still holding the click's lock.
 test('the end screen releases the pointer lock, so Back to title works after a New Game click (flow)', async ({ page }) => {
-  await page.goto(URLS[1][1] + '#APOLLO-4471'); await ready(page); await page.click('#new'); await expect.poll(() => state(page)).not.toBe('title');
-  await page.evaluate(() => window.ospTest.finish()); await expect(page.locator('#end')).toBeVisible();
+  await page.goto(URLS[1][1] + '#APOLLO-4471'); await ready(page); await page.click('#new'); await expect.poll(() => state(page)).toBe('opening');
+  await throughOpening(page); await page.evaluate(() => window.ospTest.finish()); await expect(page.locator('#end')).toBeVisible();
   await expect.poll(() => page.evaluate(() => document.pointerLockElement === null)).toBe(true); await page.click('#back');
   await expect(page.locator('#title')).toBeVisible(); expect(await state(page)).toBe('title'); });
 // R2: the help line shows as each run starts and hides after HELP_TIME s of the run's play time; a death restart doesn't bring it back
@@ -202,7 +203,7 @@ test('the attract bot plays behind the title, starts a fresh Moon when its run e
   await expect.poll(async () => { const b = await page.evaluate(() => window.ospTest.player()); return Math.hypot(b.x - a.x, b.z - a.z); }, { timeout: 10_000 }).toBeGreaterThan(1);
   const s0 = (await page.evaluate(() => window.ospTest.attract())).seed; await page.evaluate(() => window.ospTest.ff(700));
   expect((await page.evaluate(() => window.ospTest.attract())).seed).not.toBe(s0); expect(await page.evaluate(() => location.hash)).toBe('');
-  expect(await state(page)).toBe('title'); expect(errors).toEqual([]); });
+  expect(await state(page)).toBe('title'); expect(await page.evaluate(() => window.ospTest.opening())).toBe(null); expect(errors).toEqual([]); }); // spec 4.1: never the opening
 // R6: a pointer lock that arrives when the game doesn't want one (a request still in flight when it paused, finished or quit) is
 // released at once, so the menus' buttons take clicks (pre-flight F1). countLocks counts the locks that arrive, from a listener
 // added before the page's own (which lets go at once); askLockOn makes a click on element id ask for the lock, as a late request would.
@@ -248,5 +249,32 @@ test('pausing on hold or mid-ending stops the hold timer and the ending countdow
   expect((await clock(page)).ending).toBe(e); await expect(page.locator('#end')).toBeHidden(); await page.keyboard.press('Escape');
   await expect(page.locator('#end')).toBeVisible({ timeout: 20_000 }); });
 test('a new run starts at the settled wreck (opening)', async ({ page }) => { const errors = watchErrors(page); await start(page);
+  expect(await page.evaluate(() => [window.ospTest.state(), window.ospTest.opening()])).toEqual(['play', null]); // ospTest.play() skips the opening
   expect(await page.evaluate(() => window.ospTest.wreck())).toEqual({ n: 11, still: 11 }); const s = await page.evaluate(() => window.ospTest.capture());
   expect(s.inPalette).toBe(1); expect(s.colours).toBeGreaterThan(8); expect(errors).toEqual([]); });
+const ff = (page, s, i = {}) => page.evaluate(([s, i]) => window.ospTest.ff(s, i), [s, i]);
+// Carry-over (R11): the aliens come at least OPEN.talk + OPEN.company after the first step, so a prompt plant still waits OPEN.talk for them.
+export const throughOpening = async page => { await ff(page, OPEN.descent + OPEN.hatch + 1); await expect(page.locator('#prompt')).toHaveText('[W] climb out');
+  await ff(page, 6, { fwd: 1 }); await expect(page.locator('#prompt')).toHaveText('[E] plant the flag'); await ff(page, .1, { use: true });
+  await ff(page, OPEN.talk + OPEN.company + OPEN.fire + OPEN.flight + OPEN.title + 1); await expect.poll(() => state(page)).toBe('play'); };
+test('New Game plays the opening to the title drop, then the surface fight (opening)', async ({ page }) => {
+  const errors = watchErrors(page); await page.goto(URLS[1][1] + '#APOLLO-4471'); await ready(page); await page.click('#new'); await expect.poll(() => state(page)).toBe('opening');
+  const s = await page.evaluate(() => window.ospTest.capture()); expect(s.inPalette).toBe(1); await throughOpening(page);
+  await expect(page.locator('#stamp')).toBeVisible(); await expect(page.locator('#stamp')).toHaveText('ONE SMALL PROBLEM');
+  const f = await fight(page); expect([f.state, f.hp, f.area]).toEqual(['play', 100, 'surface']); expect(errors).toEqual([]);
+  // carry-over (Task 6): the blast swapped the scene's shadow map, and the frame draws the new one, not the deleted intact one
+  expect(await page.evaluate(() => [window.ospTest.occ(), window.ospTest.opening(), window.ospTest.clock().opening])).toEqual([true, null, null]); });
+test('pausing mid-opening stops its clock until you resume (Review Focus 3)', async ({ page }) => {
+  await page.goto(URLS[1][1] + '#APOLLO-4471'); await ready(page); await page.click('#new'); await expect.poll(() => state(page)).toBe('opening'); await page.waitForTimeout(300);
+  await page.keyboard.press('Escape'); await expect.poll(() => paused(page)).toBe(true); const a = (await clock(page)).opening; await page.waitForTimeout(600);
+  expect((await clock(page)).opening).toBe(a); await page.keyboard.press('Escape'); await expect.poll(() => clock(page).then(c => c.opening)).toBeGreaterThan(a); });
+// Carry-over (Task 3): the director moves you, the wreck and the particles only as its clock runs, so pausing in the knock-down,
+// with you and the pieces in the air, freezes all of it.
+test('pausing in the knock-down freezes the opening: its clock, you and the wreck (Review Focus 3)', async ({ page }) => {
+  const errors = watchErrors(page); await page.goto(URLS[1][1] + '#APOLLO-4471'); await ready(page); await page.click('#new'); await expect.poll(() => state(page)).toBe('opening');
+  await ff(page, OPEN.descent + OPEN.hatch + 1); await ff(page, 6, { fwd: 1 }); await ff(page, .1, { use: true });
+  await page.evaluate(() => { const o = window.ospTest; for (let i = 0; i < 300 && o.opening().phase !== 'down'; i++) o.ff(.1); });
+  await page.keyboard.press('Escape'); await expect.poll(() => paused(page)).toBe(true);
+  const snap = () => page.evaluate(() => { const o = window.ospTest; return [o.opening(), o.player(), o.wreck()]; }), a = await snap();
+  expect(['down', 'up']).toContain(a[0].phase); expect(a[2].still).toBeLessThan(11); await page.waitForTimeout(600); expect(await snap()).toEqual(a);
+  await page.keyboard.press('Escape'); await expect.poll(() => clock(page).then(c => c.opening)).toBeGreaterThan(a[0].t); expect(errors).toEqual([]); });

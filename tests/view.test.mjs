@@ -96,3 +96,16 @@ test('the wreck draws its eleven pieces on the surface without allocating, and n
   const Real = globalThis.Float32Array; let n = 0; globalThis.Float32Array = class extends Real { constructor(...a) { super(...a); n++; } };
   try { fillFrame(V, F, fr, 1 / 60); } finally { globalThis.Float32Array = Real; } assert.equal(n, 0);
   setWreck(V, null); fillFrame(V, F, fr, 0); assert.equal(fr.meshes.filter(m => V.pieces.includes(m.gpu)).length, 0); });
+import { createOpening, stepOpening, OPEN } from '../src/game/opening.js';
+test('the opening frame: glitter as small dim gold glows, the dust ring as opaque puffs, the flash in tint[1], the eye override, the cabin light (opening)', () => {
+  const F = createFight(W), O = createOpening(W, F), fr = frame(); stepOpening(O, idle, 1 / 60); O.events.length = 0; fillFrame(V, O.view, fr, 0);
+  assert.ok(Math.abs(fr.cam.y - (F.player.y + O.view.eye)) < 1e-6);
+  assert.ok(fr.lights.count >= 1); assert.equal(fr.tint[1], 0);
+  let t = 0; for (let used = false; O.phase !== 'down' && t < 90; t += 1 / 60) { const inp = { ...idle };
+    if ((O.phase === 'landed' && O.hatch >= 1) || O.phase === 'egress') inp.fwd = 1; if (O.phase === 'ground' && !used) { inp.use = used = true; } stepOpening(O, inp, 1 / 60); O.events.length = 0; }
+  fillFrame(V, O.view, fr, t); assert.equal(fr.tint[1], 1); const D = fr.sprites.data, glows = [];
+  for (let i = fr.sprites.nOpaque; i < fr.sprites.nOpaque + fr.sprites.nGlow; i++) glows.push([...D.subarray(i * 8 + 3, i * 8 + 7)]);
+  assert.ok(glows.some(([s, r, g, b]) => Math.abs(s - .045) < 1e-6 && r > g && g > b && r <= .9 + 1e-6), 'gold glitter');
+  let puffs = 0; for (let i = 0; i < fr.sprites.nOpaque; i++) if (D[i * 8 + 3] >= .35) puffs++; assert.ok(puffs >= 20, 'the dust ring'); });
+test('a real fight sets no flash and no eye override (opening)', () => { const F = createFight(W), fr = frame(); fillFrame(V, F, fr, 0);
+  assert.equal(fr.tint[1], 0); assert.ok(Math.abs(fr.cam.y - (F.player.y + PLAYER.eye)) < 1e-6); });

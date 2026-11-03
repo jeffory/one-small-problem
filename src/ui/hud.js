@@ -1,19 +1,23 @@
-// Text overlays from the shell: #hud (help line, then debug line), #seed, and the full-screen #msg for fatal errors.
-// mode() picks which play overlays show: 'none' on the title and the end screen, 'opening' just the prompt and crosshair.
+// Text overlays from the shell: #hud (help line, then debug line), #seed, the opening's title #stamp and the full-screen #msg
+// for fatal errors. mode() picks which play overlays show: 'none' on the title and the end screen, 'opening' just the prompt and
+// crosshair; any mode but 'play' also takes the stamp down.
 // R2: the help line shows as each run starts and hides once the run has HELP_TIME s of play time (deaths don't reset it); the
-// pause menu carries the controls after that.
-export const HELP_TIME = 20;
+// pause menu carries the controls after that. STAMP_TIME: seconds the title stays stamped on the screen.
+export const HELP_TIME = 20, STAMP_TIME = 3.5;
 
 export function createHud() {
   const $ = id => document.getElementById(id), msg = $('msg'), help = document.createElement('div'), debug = document.createElement('div');
-  const stat = $('stat'), prompt = $('prompt'), flash = $('flash'), x = $('x'), num = document.createElement('span'), rest = document.createTextNode('');
+  const stat = $('stat'), prompt = $('prompt'), flash = $('flash'), x = $('x'), stamp = $('stamp'), num = document.createElement('span'), rest = document.createTextNode('');
   const MODES = { none: [], opening: [prompt, x], play: [stat, prompt, flash, x, help] };
   $('hud').append(help, debug);
-  let low = false, shown = false;
+  let low = false, shown = false, stampT = 0;
+  const unstamp = () => { clearTimeout(stampT); stamp.style.display = 'none'; };
   return {
     help: t => { if (help.textContent !== t) help.textContent = t; },
     seed: t => { $('seed').textContent = t; },
-    mode: m => { for (const e of MODES.play) e.style.display = MODES[m].includes(e) ? '' : 'none'; },
+    mode: m => { for (const e of MODES.play) e.style.display = MODES[m].includes(e) ? '' : 'none'; if (m !== 'play') unstamp(); },
+    // The title drop: ONE SMALL PROBLEM slams on (the shell's CSS animation, from 1.8x and clear over .18 s, runs as it shows).
+    stamp: () => { unstamp(); stamp.style.display = 'block'; stampT = setTimeout(unstamp, STAMP_TIME * 1000); },
     status: ({ hp, cells, weapon }) => {
       if (!shown) { shown = true; stat.append('HEALTH ', num, rest); } // M8: only the number turns red, below 25
       const h = String(hp), t = `   CELLS ${cells}   ${weapon}`;
@@ -31,7 +35,7 @@ export function createHud() {
     ready: () => { msg.style.display = 'none'; },
     fatal: t => {
       msg.textContent = t; msg.style.display = 'flex';
-      for (const e of [stat, prompt, flash, x, $('title'), $('end'), $('pause')]) e.style.display = 'none';
+      for (const e of [stat, prompt, flash, x, stamp, $('title'), $('end'), $('pause')]) e.style.display = 'none';
     },
   };
 }

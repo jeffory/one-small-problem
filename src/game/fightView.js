@@ -1,6 +1,8 @@
 // The fight view: every frame it turns a Fight into Frame fields (camera, meshes, lights, sphere occluders, sprites,
 // the first-person view model and the damage tint). It only reads the fight, the scene's lamps and the lander's wreck; its GPU
-// work is the model and lander-piece upload and dispose.
+// work is the model and lander-piece upload and dispose. The opening's view (opening.js) is fight-shaped, with three optional
+// fields a real fight never has: eye (the eye's height over the feet, else PLAYER.eye), glow ([{x, y, z, s, r, g, b}], more
+// dynamic light candidates) and flash (0-1, the blast's white flash, to tint[1]).
 import { uploadMesh, disposeMesh } from '../gfx/gl.js';
 import { cameraBasis, chainTo, trs, setT, setRx, setRy, setSc, rot3To, I3 } from '../gfx/math.js';
 import { buildModels, VIEW_MODEL } from './models.js';
@@ -57,8 +59,8 @@ export function fillFrame(V, F, frame, t) {
   const dt = V._t === null ? 0 : Math.max(0, Math.min(.25, t - V._t));
   V._t = t;
   // 1. camera: the eye; after death it slumps to the ground and tips up to the sky
-  const k = dead ? smooth(F.deadT / .7) : 0, cam = frame.cam = V._cam;
-  cam.x = p.x; cam.y = p.y + PLAYER.eye + (.35 - PLAYER.eye) * k; cam.z = p.z; cam.yaw = p.yaw; cam.pitch = p.pitch + (.6 - p.pitch) * k;
+  const k = dead ? smooth(F.deadT / .7) : 0, cam = frame.cam = V._cam, eye = F.eye ?? PLAYER.eye;
+  cam.x = p.x; cam.y = p.y + eye + (.35 - eye) * k; cam.z = p.z; cam.yaw = p.yaw; cam.pitch = p.pitch + (.6 - p.pitch) * k;
   const cx = cam.x, cy = cam.y, cz = cam.z, B = cameraBasis(cam.yaw, cam.pitch), { f, r, u } = B;
   const near = (x, z) => (x - cx) * (x - cx) + (z - cz) * (z - cz) < FAR * FAR;
   // the muzzle flash, for guns only (a pole swing also resets shotT)
@@ -109,8 +111,10 @@ export function fillFrame(V, F, frame, t) {
     M.push(ent(d.kind === 'goo' ? G.discGoo : G.discScorch, m));
   }
 
-  // 3. lights: the scene's lamps first, then the nearest of bolts, booms, the muzzle flash and canisters (pre-flight F18)
+  // 3. lights: the scene's lamps first, then the nearest of bolts, booms, the muzzle flash, canisters and the opening's glows
+  // (pre-flight F18)
   reset();
+  if (F.glow) for (const o of F.glow) add(o.x, o.y, o.z, o.s, o.r, o.g, o.b);
   for (const b of F.bolts) add(b.x, b.y, b.z, 7, b.col[0] * 1.3, b.col[1] * 1.3, b.col[2] * 1.3);
   for (const o of F.booms) { const e = 1 - o.age / .6; add(o.x, o.y, o.z, 12, 2.4 * e, 1.6 * e, .7 * e); }
   if (mz) add(mz[0], mz[1], mz[2], 6, TEAL[0] * 1.5, TEAL[1] * 1.5, TEAL[2] * 1.5);
@@ -148,13 +152,14 @@ export function fillFrame(V, F, frame, t) {
   let ns = 0;
   for (const c of C) { if (ns >= MAX_SPH) break; ns = worldSpheresTo(S, ns, c.o, MAX_SPH); }
 
-  // 5. sprites: opaque goo and dust (at most 192), then glows until 512
+  // 5. sprites: opaque goo, dust and the blast's dust-ring puffs (at most 192), then glows until 512
   const P = frame.sprites = V._spr, D = P.data;
   const put = (i, c) => { const j = i * 8; D[j] = c.x; D[j + 1] = c.y; D[j + 2] = c.z; D[j + 3] = c.s; D[j + 4] = c.r; D[j + 5] = c.g; D[j + 6] = c.b; D[j + 7] = 0; };
   reset();
   for (const q of F.parts) {
     if (q.kind === 'goo') add(q.x, q.y, q.z, .07, .25, .3, .05);
     else if (q.kind === 'dust') add(q.x, q.y, q.z, .1, .18, .17, .15);
+    else if (q.kind === 'puff') add(q.x, q.y, q.z, q.s, .2, .19, .17);
   }
   const no = P.nOpaque = keep(MAX_OPQ);
   for (let i = 0; i < no; i++) put(i, C[i]);
@@ -169,7 +174,12 @@ export function fillFrame(V, F, frame, t) {
       add(b.x - b.vx * o, b.y - b.vy * o, b.z - b.vz * o, b.r * TRAIL[j][0], b.col[0] * e, b.col[1] * e, b.col[2] * e);
     }
   }
-  for (const q of F.parts) if (q.kind === 'spark') { const e = Math.min(1, q.life * 5); add(q.x, q.y, q.z, .06, 1.2 * e, .5 * e, .12 * e); }
+  // sparks; the foil's glitter, small dim gold specks each twinkling on its own phase; the descent's exhaust, fading as it dies
+  for (const q of F.parts) {
+    if (q.kind === 'spark') { const e = Math.min(1, q.life * 5); add(q.x, q.y, q.z, .06, 1.2 * e, .5 * e, .12 * e); }
+    else if (q.kind === 'foil') { const e = .25 + .75 * Math.max(0, Math.sin(11 * t + q.ph)); add(q.x, q.y, q.z, .045, .9 * e, .65 * e, .22 * e); }
+    else if (q.kind === 'plume') { const e = Math.min(1, 8 * q.life); add(q.x, q.y, q.z, q.s, 1.3 * e, .8 * e, .35 * e); }
+  }
   for (const o of F.booms) if (o.age < .4) add(o.x, o.y, o.z, 3 * (1 - o.age / .4), 1.2, .8, .35);
   if (mz) add(mz[0], mz[1], mz[2], .1, TEAL[0], TEAL[1], TEAL[2]);
   // a golf ball glints for .15 s every 2.5 s, each on its own beat
@@ -190,7 +200,7 @@ export function fillFrame(V, F, frame, t) {
   }
 
   // 7. damage tint (R17): tint[0] is how far the post pass mixes the tone-mapped image toward blood red (it caps that at .18);
-  // dead holds a mild fixed shift
+  // dead holds a mild fixed shift. tint[1] is the opening's white flash, mixed toward warm off-white (capped at .85, F14).
   const K = frame.tint = V._tint;
-  K[0] = dead ? .12 : .18 * F.hurtT; K[1] = K[2] = 0;
+  K[0] = dead ? .12 : .18 * F.hurtT; K[1] = F.flash || 0; K[2] = 0;
 }
