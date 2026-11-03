@@ -3,14 +3,25 @@
 // by start(), on the user's first New Game click. Buses: sfx -> air filter -> master, music -> master, radio -> master (with the
 // noise bed). In vacuum the filter is a low-pass at MIX.vacuum Hz, a thud through the suit; in the base it is open.
 import { ZZFX_RATE } from './zzfx.js';
-export const MIX = { music: .45, sfx: .7, radio: .5, duck: .35, vacuum: 380, air: 18000, tones: [2525, 2475], tone: .25, toneVol: .12, bed: .025, gap: .06 };
+export const MIX = { music: .45, sfx: .7, radio: .5, duck: .35, fade: .5, vacuum: 380, air: 18000, tones: [2525, 2475], tone: .25, toneVol: .12, bed: .025, gap: .06 };
 const quiet = p => { try { p?.catch?.(() => {}); } catch {} };
 export function createAudio({ AC = globalThis.AudioContext ?? globalThis.webkitAudioContext, sfx, songs = null }) {
-  let ctx = null, dead = !AC, G = null, bufs = {}, vol = 1, inAir = false, ducked = false, song = null, plays = 0;
+  let ctx = null, dead = !AC, G = null, bufs = {}, vol = 1, inAir = false, ducked = false, song = null, plays = 0, ready = {}, peaks = {}, cur = null;
   const last = {}, safe = f => (...a) => { if (dead) return; try { return f(...a); } catch { /* audio never breaks the game */ } };
   const gain = (v, to) => { const g = ctx.createGain(); g.gain.value = v; g.connect(to); return g; };
   const musicLevel = () => MIX.music * (ducked ? MIX.duck : 1);
   const ramp = (param, v, k = .08) => { try { param.setTargetAtTime(v, ctx.currentTime, k); } catch { param.value = v; } };
+  // The music bus plays one looping song at a time; a change crossfades over MIX.fade s. Asking for a song whose buffer has not
+  // arrived yet only records it: playMusic runs again when the buffer lands, and starts it if it is still wanted.
+  const playMusic = () => {
+    if (!G || (cur?.name ?? null) === song) return;
+    const b = song && ready[song], t = ctx.currentTime, old = cur; cur = null;
+    if (old) { old.g.gain.setValueAtTime(old.g.gain.value, t); old.g.gain.linearRampToValueAtTime(0, t + MIX.fade); try { old.s.stop(t + MIX.fade + .05); } catch {} }
+    if (!b) return;
+    const s = ctx.createBufferSource(), g = ctx.createGain(); s.buffer = b; s.loop = true; g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(1, t + MIX.fade);
+    s.connect(g); g.connect(G.music); s.start(); cur = { name: song, s, g };
+  };
+  Promise.resolve(songs).then(m => { for (const k in m) { const d = m[k].getChannelData(0); let p = 0; for (let i = 0; i < d.length; i++) p = Math.max(p, Math.abs(d[i])); ready[k] = m[k]; peaks[k] = p; } safe(playMusic)(); }).catch(() => {});
   const A = {
     start: () => {
       if (dead) return;
@@ -28,7 +39,7 @@ export function createAudio({ AC = globalThis.AudioContext ?? globalThis.webkitA
           for (const k in sfx) { const b = c.createBuffer(1, sfx[k].length, ZZFX_RATE); b.getChannelData(0).set(sfx[k]); bufs[k] = b; }
           G = g;
         }
-        quiet(ctx.resume());
+        quiet(ctx.resume()); playMusic();
       } catch { dead = true; ctx = G = null; }
     },
     sfx: safe((name, v = 1) => {
@@ -45,11 +56,11 @@ export function createAudio({ AC = globalThis.AudioContext ?? globalThis.webkitA
     }),
     bed: safe(on => { if (G) ramp(G.bed.gain, on ? MIX.bed : 0, .05); }),
     volume: safe(v => { vol = v; if (G) G.master.gain.value = v; }),
-    song: safe(name => { song = name ?? null; }),
+    song: safe(name => { song = name ?? null; playMusic(); }),
     pause: safe(() => { if (ctx) quiet(ctx.suspend()); }),
     resume: safe(() => { if (ctx) quiet(ctx.resume()); }),
     info: () => ({ ctx: ctx ? ctx.state : null, air: inAir, duck: ducked, cut: G ? G.filter.frequency.value : null, music: G ? G.music.gain.value : null, plays, song,
-      songs: songs ? Object.keys(songs) : [] }),
+      songs: { ...peaks } }),
   };
   return A;
 }

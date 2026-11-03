@@ -286,4 +286,12 @@ test('with no audio and no speech at all the game still plays: title, New Game, 
   expect(errors).toEqual([]); });
 test('the air filter muffles the surface and opens in the base (audio)', async ({ page }) => {
   await start(page); const a = await page.evaluate(() => window.ospTest.audio()); expect(a.ctx).not.toBe(null); expect(a.air).toBe(false);
-  await toBase(page); expect((await page.evaluate(() => window.ospTest.audio())).air).toBe(true); });
+  await toBase(page); await expect.poll(() => page.evaluate(() => window.ospTest.audio().air)).toBe(true); });
+test('the four songs pre-render non-silent where OfflineAudioContext exists (music)', async ({ page }) => {
+  await page.goto(URLS[1][1]); await ready(page); test.skip(!(await page.evaluate(() => typeof OfflineAudioContext === 'function')), 'no OfflineAudioContext');
+  await expect.poll(() => page.evaluate(() => Object.keys(window.ospTest.audio().songs ?? {}).length), { timeout: 20_000 }).toBe(4);
+  const s = await page.evaluate(() => window.ospTest.audio().songs); for (const k of ['surface', 'crater', 'base', 'hold']) expect(s[k]).toBeGreaterThan(.01); });
+test('the music follows the run: surface, crater over the rim, base through the door, hold on the array (music)', async ({ page }) => {
+  const song = () => page.evaluate(() => window.ospTest.audio().song); await start(page); expect(await song()).toBe('surface');
+  await page.evaluate(() => window.ospTest.door()); await expect.poll(song).toBe('crater'); await page.evaluate(() => window.ospTest.enter()); await expect.poll(song).toBe('base');
+  await toComms(page); await onHold(page); await expect.poll(song).toBe('hold'); });

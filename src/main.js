@@ -19,6 +19,7 @@ import { createBot, botStep } from './game/bot.js';
 import { HOLD, ENDING, dishOf, callSpot } from './game/hold.js';
 import { createAudio } from './audio/audio.js';
 import { buildSfx, sfxFor } from './audio/sfx.js';
+import { renderSongs } from './audio/music.js';
 import { createInput, look } from './game/input.js';
 import { createHud, HELP_TIME } from './ui/hud.js';
 import { createMenus } from './ui/menus.js';
@@ -52,7 +53,14 @@ function boot() {
   let run = null, state = 'title', endT = 0;
   // S: the settings (loaded once, kept in memory even where the store refuses them). Paused: the pause menu is up, nothing
   // advances. lockLostAt: when a lost pointer lock paused the game, so the Esc that did it can't also resume it.
-  const audio = createAudio({ sfx: buildSfx() });
+  // Generated sound can never stop the game: a throwing generator leaves no effects, and the songs render after boot (any failure
+  // leaves none). The AudioContext itself waits for the first New Game click.
+  let sfx = {}; try { sfx = buildSfx(); } catch {}
+  const audio = createAudio({ sfx, songs: new Promise(r => setTimeout(r)).then(() => renderSongs()).catch(() => ({})) });
+  // The music map: the title the surface song, the opening none until its title drop, play the area's song (the hold's on hold),
+  // the ending none, the end screen the hold music. Asked every frame; the engine ignores a repeat.
+  const MUSIC = ['surface', 'crater', 'base', 'base'];
+  const music = () => audio.song(state === 'title' || state === 'opening' && run.titled ? 'surface' : state === 'play' ? run.F.hold ? 'hold' : MUSIC[run.F.area] : state === 'end' ? 'hold' : null);
   let S = loadSettings(store), paused = false, lockLostAt = -1e9, appliedRes = -1;
   // Menu clicks run inside the fatal path too: an exception stops the loop and shows the message, as in tick.
   const guard = f => (...a) => { try { f(...a); } catch (e) { fail(e); throw e; } };
@@ -141,7 +149,7 @@ function boot() {
     stopRun(); unpause(); audio.resume(); input.unlock();
     if (clear) try { history.replaceState(null, '', location.pathname + location.search); } catch {}
     startRun('attract', randomSeed());
-    state = 'title';
+    state = 'title'; music();
     menus.title(true, normalizeSeed(location.hash)); hud.mode('none'); hud.seed('');
   }
   // The end screen: the fight's sim time up to Houston picking up (deaths count; the opening, pauses and the ending don't, R9),
@@ -150,7 +158,7 @@ function boot() {
   function finish() {
     if (state !== 'play' && state !== 'ending') return;
     const { F, seed } = run, time = F.wonAt ?? F.time;
-    state = 'end'; unpause();
+    state = 'end'; unpause(); music();
     menus.end({ time, kills: F.kills, golf: F.golf, link: shareLink(location.href, seed), seed, ...recordBest(store, seed, time) });
     hud.mode('none');
     input.unlock();
@@ -176,7 +184,7 @@ function boot() {
       for (const ev of O.events) {
         if (ev.type === 'wreck') { run.scene.wreck(); frame.occTex = run.scene.occTex; } // useScene copied the intact one, now deleted
         else if (ev.type === 'sfx') audio.sfx(ev.key);
-        else if (ev.type === 'title') hud.stamp();
+        else if (ev.type === 'title') { hud.stamp(); run.titled = true; }
         else if (ev.type === 'done') { run.O = null; play(); }
       }
       O.events.length = 0;
@@ -202,7 +210,7 @@ function boot() {
       const quiet = true; // the radio is idle (always, until Task 11 gives it a queue)
       if ((endT += dt) >= ENDING.min && quiet || endT >= ENDING.max) finish();
     }
-    F.events.length = 0;
+    F.events.length = 0; music();
     if (state === 'title' && B.done) { stopRun(); startRun('attract', randomSeed()); }
   }
 

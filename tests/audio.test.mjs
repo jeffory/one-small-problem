@@ -30,3 +30,13 @@ test('every SFX renders a short, non-silent ZzFX buffer, and the generator keeps
 test('a context whose resume() and suspend() reject stays silent and unbroken, with no unhandled rejection (Review Focus 2)', async () => {
   const AC = class extends FakeAC { resume() { return Promise.reject(new Error('blocked')); } suspend() { return Promise.reject(new Error('no')); } }, A = createAudio({ AC, sfx });
   assert.doesNotThrow(() => { A.start(); A.sfx('pistol'); A.pause(); A.resume(); A.start(); }); await new Promise(r => setTimeout(r, 20)); });
+const fakeSong = v => ({ length: 4, getChannelData: () => Float32Array.of(0, v, -v, 0) });
+test('song(): recorded while silent, starts when the context and buffer both exist, crossfades MIX.fade s, and a song asked for early starts when its buffer arrives (music)', async () => {
+  let done; const songs = new Promise(r => { done = r; }), s = spy(), A = createAudio({ AC: s.AC, sfx, songs });
+  A.song('base'); assert.equal(A.info().song, 'base'); A.start(); const loops = () => s.ctx.made.filter(n => n.kind === 'src' && n.loop && n.buffer?.length === 4);
+  assert.equal(loops().length, 0); done({ base: fakeSong(.5), hold: fakeSong(.25) }); await songs; await new Promise(r => setTimeout(r, 0));
+  assert.deepEqual(A.info().songs, { base: .5, hold: .25 }); const b = loops(); assert.equal(b.length, 1);
+  A.song('base'); assert.equal(loops().length, 1); A.song('hold'); const h = loops(); assert.equal(h.length, 2);
+  A.song(null); assert.equal(A.info().song, null); });
+test('a rejected or garbage songs promise, and no songs at all, leave the engine silent and unbroken (Review Focus 2)', async () => {
+  for (const songs of [Promise.reject(new Error('x')), Promise.resolve({ a: {} }), null]) { const A = createAudio({ AC: FakeAC, sfx, songs }); A.start(); A.song('a'); await new Promise(r => setTimeout(r, 0)); assert.deepEqual(A.info().songs, {}); } });
