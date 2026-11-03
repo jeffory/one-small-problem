@@ -60,22 +60,26 @@ export const INST = {
   hat: (c, q, to, nz) => { const [g, e] = decay(c, q.v, q.t, .04, to), s = noise(c, lp(c, 'highpass', 7000, g), nz, q.t); stops([s], e); },
 };
 const noise = (c, to, buf, t) => { const s = c.createBufferSource(); s.buffer = buf; s.loop = true; s.connect(to); s.start(t); return s; };
-export const PEAK = .9; // every rendered song is scaled once so its peak is at most this
-// Resolves the song's mono buffer, or null where there is no OfflineAudioContext or anything throws or rejects.
+export const PEAK = .9, TAIL = 2.5; // every rendered song is scaled once so its peak is at most PEAK; TAIL s covers the longest release or decay
+// Folds the render's tail onto the start of the loop (added, so a note ringing past the last bar rings under the first), trims to n
+// frames and scales to PEAK. Resolves the song's mono buffer, or null where there is no OfflineAudioContext or anything throws or rejects.
 export async function renderSong(song, sr = 22050, Ctx = globalThis.OfflineAudioContext) {
   try {
     if (!Ctx) return null;
-    const c = new Ctx(1, Math.ceil(songLength(song) * sr), sr), nz = c.createBuffer(1, sr, sr), d = nz.getChannelData(0);
+    const n = Math.ceil(songLength(song) * sr), m = Math.ceil(TAIL * sr), c = new Ctx(1, n + m, sr), nz = c.createBuffer(1, sr, sr), d = nz.getChannelData(0);
     for (let i = 0; i < sr; i++) d[i] = Math.random() * 2 - 1;
     for (const q of songNotes(song)) INST[q.i](c, q, c.destination, nz);
-    const b = await c.startRendering(), x = b.getChannelData(0); let pk = 0;
-    for (let i = 0; i < x.length; i++) pk = Math.max(pk, Math.abs(x[i]));
-    if (pk > PEAK) for (let i = 0, k = PEAK / pk; i < x.length; i++) x[i] *= k;
+    const x = (await c.startRendering()).getChannelData(0), b = c.createBuffer(1, n, sr), y = b.getChannelData(0);
+    for (let i = 0; i < n; i++) y[i] = x[i] + (i < m ? x[n + i] : 0);
+    let pk = 0; for (let i = 0; i < n; i++) pk = Math.max(pk, Math.abs(y[i]));
+    if (pk > PEAK) for (let i = 0, k = PEAK / pk; i < n; i++) y[i] *= k;
     return b;
   } catch { return null; }
 }
-export async function renderSongs(Ctx) {
-  const o = {};
-  try { for (const k in SONGS) { const b = await renderSong(SONGS[k], 22050, Ctx); if (b) o[k] = b; } } catch {}
+// One promise per song, so a song that hangs or fails loses only itself. Each render starts after the last one's notes were
+// scheduled and a timer tick has passed: the order is fixed, and boot is never blocked by more than one song's scheduling.
+export function renderSongs(Ctx) {
+  const o = {}; let gate = Promise.resolve();
+  for (const k in SONGS) { gate = gate.then(() => new Promise(r => setTimeout(r))); const g = gate; o[k] = g.then(() => renderSong(SONGS[k], 22050, Ctx)).catch(() => null); }
   return o;
 }

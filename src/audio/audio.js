@@ -21,7 +21,10 @@ export function createAudio({ AC = globalThis.AudioContext ?? globalThis.webkitA
     const s = ctx.createBufferSource(), g = ctx.createGain(); s.buffer = b; s.loop = true; g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(1, t + MIX.fade);
     s.connect(g); g.connect(G.music); s.start(); cur = { name: song, s, g };
   };
-  Promise.resolve(songs).then(m => { for (const k in m) { const d = m[k].getChannelData(0); let p = 0; for (let i = 0; i < d.length; i++) p = Math.max(p, Math.abs(d[i])); ready[k] = m[k]; peaks[k] = p; } safe(playMusic)(); }).catch(() => {});
+  for (const k in songs) Promise.resolve(songs[k]).then(b => {
+    if (!b) return; const d = b.getChannelData(0); let p = 0; for (let i = 0; i < d.length; i++) p = Math.max(p, Math.abs(d[i]));
+    ready[k] = b; peaks[k] = p; safe(playMusic)();
+  }).catch(() => {});
   const A = {
     start: () => {
       if (dead) return;
@@ -59,6 +62,7 @@ export function createAudio({ AC = globalThis.AudioContext ?? globalThis.webkitA
     }),
     bed: safe(on => { if (G) ramp(G.bed.gain, on ? MIX.bed : 0, .05); }),
     volume: safe(v => { vol = v; if (G) G.master.gain.value = v; }),
+    buffer: k => ready[k],
     song: safe(name => { song = name ?? null; playMusic(); }),
     pause: safe(() => { if (ctx) quiet(ctx.suspend()); }),
     resume: safe(() => { if (ctx) quiet(ctx.resume()); }),

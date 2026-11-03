@@ -295,3 +295,11 @@ test('the music follows the run: surface, crater over the rim, base through the 
   const song = () => page.evaluate(() => window.ospTest.audio().song); await start(page); expect(await song()).toBe('surface');
   await page.evaluate(() => window.ospTest.door()); await expect.poll(song).toBe('crater'); await page.evaluate(() => window.ospTest.enter()); await expect.poll(song).toBe('base');
   await toComms(page); await onHold(page); await expect.poll(song).toBe('hold'); });
+// The jump across the loop seam must not be a click: at most 2x the 99th percentile of |sample-to-sample delta| inside the song (a robust
+// "typical loud step": the percentile ignores a few drum transients, and a click is a step far above what the music itself does).
+test('every song loops without a click: the seam jump is no larger than twice the 99th-percentile step inside it (music)', async ({ page }) => {
+  await page.goto(URLS[1][1]); await ready(page); test.skip(!(await page.evaluate(() => typeof OfflineAudioContext === 'function')), 'no OfflineAudioContext');
+  await expect.poll(() => page.evaluate(() => Object.keys(window.ospTest.audio().songs ?? {}).length), { timeout: 20_000 }).toBe(4);
+  const r = await page.evaluate(() => Object.fromEntries(['surface', 'crater', 'base', 'hold'].map(k => { const d = window.ospTest.songBuffer(k).getChannelData(0), a = new Float32Array(d.length - 1);
+    for (let i = 1; i < d.length; i++) a[i - 1] = Math.abs(d[i] - d[i - 1]); a.sort(); return [k, [Math.abs(d[d.length - 1] - d[0]), a[Math.floor(a.length * .99)]]]; })));
+  for (const [k, [jump, p99]] of Object.entries(r)) expect(jump, k).toBeLessThanOrEqual(2 * p99 + 1e-6); });

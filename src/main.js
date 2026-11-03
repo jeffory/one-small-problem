@@ -53,10 +53,10 @@ function boot() {
   let run = null, state = 'title', endT = 0;
   // S: the settings (loaded once, kept in memory even where the store refuses them). Paused: the pause menu is up, nothing
   // advances. lockLostAt: when a lost pointer lock paused the game, so the Esc that did it can't also resume it.
-  // Generated sound can never stop the game: a throwing generator leaves no effects, and the songs render after boot (any failure
-  // leaves none). The AudioContext itself waits for the first New Game click.
+  // Generated sound can never stop the game: a throwing generator leaves no effects, and the songs render after boot, one promise each (any failure
+  // leaves that one out). The AudioContext itself waits for the first New Game click.
   let sfx = {}; try { sfx = buildSfx(); } catch {}
-  const audio = createAudio({ sfx, songs: new Promise(r => setTimeout(r)).then(() => renderSongs()).catch(() => ({})) });
+  const audio = createAudio({ sfx, songs: (() => { try { return renderSongs(); } catch { return {}; } })() });
   // The music map: the title the surface song, the opening none until its title drop, play the area's song (the hold's on hold),
   // the ending none, the end screen the hold music. Asked every frame; the engine ignores a repeat.
   const MUSIC = ['surface', 'crater', 'base', 'base'];
@@ -248,7 +248,7 @@ function boot() {
     get seed() { return run.kind === 'play' ? run.seed : normalizeSeed(location.hash); },
     get checksum() { return run.kind === 'play' ? checksumWorld(run.world) : null; },
     capture: () => renderer.capture(), frames: () => frames, fault: () => { fault = true; }, paused: () => paused, settings: () => ({ ...S }),
-    state: () => state, play: () => { audio.start(); newGame(false); }, audio: () => audio.info(), finish, ff,
+    state: () => state, play: () => { audio.start(); newGame(false); }, audio: () => audio.info(), songBuffer: k => audio.buffer(k), finish, ff,
     // The opening while it plays ({phase, t, prompt}), else null; whether the frame draws the scene's live shadow map (it changes
     // at the blast).
     opening: () => run.O && { phase: run.O.phase, t: run.O.t, prompt: run.O.prompt }, occ: () => frame.occTex === run.scene.occTex,
