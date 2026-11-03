@@ -32,3 +32,5 @@ test('every guide lamp has a glowing beacon post in the surface scene static pro
     for (let i = 0; i < props.pos.length; i += 3) { const d = Math.hypot(props.pos[i] - l.x, props.pos[i + 2] - l.z), e = props.mat[i / 3 * 4 + 2];
       if (d < .4 && Math.abs(props.pos[i + 1] - l.y) < .4 && e > 0) glow++; if (d < .2 && props.pos[i + 1] < l.y - .5 && e === 0) stalk++; }
     assert.ok(glow > 8 && stalk > 4, `post at ${l.x}, ${l.z}: ${glow} glowing, ${stalk} stalk vertices`); } });
+test('an intact surface scene swaps its shadow map for the wreck\'s once, and still frees all it made (opening)', () => { const gl = fakeGL(), s = buildSurfaceScene(gl, WW, true), n = gl.live.size, t0 = s.occTex;
+  s.wreck(); assert.notEqual(s.occTex, t0); assert.equal(gl.live.size, n); const t1 = s.occTex; s.wreck(); assert.equal(s.occTex, t1); s.dispose(); assert.equal(gl.live.size, 0); });

@@ -181,14 +181,17 @@ function stampDisc(occ, cx, cz, rad, fn) {
   }
 }
 
+// The lander's shadow and collision columns, [radius, height above lander.y]: the descent stage's deck, and the cabin on it.
+export const LANDER_OCC = { deck: [2.0, 2.45], cabin: [1.35, 4.05] };
+
 export function stampOccluders(h, L, rocks) {
-  const occ = new Float32Array(h);
+  const occ = new Float32Array(h), { deck, cabin } = LANDER_OCC;
   for (const r of rocks) {
     const m = 0.85 * Math.max(r.sx, r.sz);
     stampDisc(occ, r.x, r.z, m, (q) => r.y + r.sy * Math.sqrt(q));
   }
-  stampDisc(occ, L.lander.x, L.lander.z, 2.0, () => L.lander.y + 2.45);
-  stampDisc(occ, L.lander.x, L.lander.z, 1.35, () => L.lander.y + 4.05);
+  stampDisc(occ, L.lander.x, L.lander.z, deck[0], () => L.lander.y + deck[1]);
+  stampDisc(occ, L.lander.x, L.lander.z, cabin[0], () => L.lander.y + cabin[1]);
   return occ;
 }
 

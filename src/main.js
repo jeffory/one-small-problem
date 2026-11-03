@@ -7,11 +7,12 @@ import { checksumWorld } from './gen/checksum.js';
 import { createGL } from './gfx/gl.js';
 import { createRenderer } from './gfx/renderer.js';
 import { createFight, stepFight, hurtPlayer, enterArea, DOOR_REACH } from './game/fight.js';
-import { createFightView, fillFrame, setScene } from './game/fightView.js';
+import { createFightView, fillFrame, setScene, setWreck } from './game/fightView.js';
 import { AREAS, areaStart } from './game/areas.js';
 import { WEAPONS } from './game/weapons.js';
 import { buildSurfaceScene } from './game/surfaceScene.js';
 import { buildBaseScene } from './game/baseScene.js';
+import { settleWreck } from './game/lander.js';
 import { createBot, botStep } from './game/bot.js';
 import { HOLD, ENDING, dishOf, callSpot } from './game/hold.js';
 import { createInput, look } from './game/input.js';
@@ -39,8 +40,8 @@ function boot() {
   addEventListener('hashchange', () => location.reload());
 
   const { gl, hdrOK } = createGL(canvas), renderer = createRenderer(gl, hdrOK), V = createFightView(gl, { meshes: [] }), store = storage();
-  // run: the Moon on screen, {kind: 'attract' | 'play', seed, world, scene, F, bot (attract only)}. state: where the flow is (see the
-  // top). endT: seconds of the ending so far.
+  // run: the Moon on screen, {kind: 'attract' | 'play', seed, world, scene, F, wreck (the settled lander), bot (attract only)}.
+  // state: where the flow is (see the top). endT: seconds of the ending so far.
   let run = null, state = 'title', endT = 0;
   // S: the settings (loaded once, kept in memory even where the store refuses them). Paused: the pause menu is up, nothing
   // advances. lockLostAt: when a lost pointer lock paused the game, so the Esc that did it can't also resume it.
@@ -95,12 +96,13 @@ function boot() {
   });
 
   // --- runs ---
-  // The view draws the scene's meshes and lamps, and the frame takes its look.
-  function useScene(scene) { setScene(V, scene); for (const k of SCENE) frame[k] = scene[k]; }
-  // A fresh Moon on the surface, at the wreck. Attract runs are immortal and played by the bot (never the opening).
+  // The view draws the scene's meshes and lamps, and on the surface the run's wreck; the frame takes the scene's look.
+  function useScene(scene) { setScene(V, scene); setWreck(V, scene.id === 'surface' ? run.wreck : null); for (const k of SCENE) frame[k] = scene[k]; }
+  // A fresh Moon on the surface, at the wreck (the lander as the opening leaves it). Attract runs are immortal and played by the
+  // bot (never the opening).
   function startRun(kind, seed) {
     const world = generateWorld(seed), scene = buildSurfaceScene(gl, world), F = createFight(world);
-    run = { kind, seed, world, scene, F }; warpK = 0;
+    run = { kind, seed, world, scene, F, wreck: settleWreck(world) }; warpK = 0;
     if (kind === 'attract') { F.god = true; run.bot = createBot(world, makeRng(seed + '/bot')); }
     useScene(scene);
     if (DEBUG) fp = `#${seed} ${checksumWorld(world)}`;
@@ -210,6 +212,7 @@ function boot() {
     state: () => state, play: () => newGame(), finish, ff,
     attract: () => run.bot ? { seed: run.seed, stage: run.bot.stage, done: run.bot.done } : null,
     player: () => { const p = run.F.player; return { x: p.x, y: p.y, z: p.z }; },
+    wreck: () => ({ n: run.wreck.pieces.length, still: run.wreck.pieces.filter(p => p.still).length }),
     fight: () => { const F = run.F, p = F.player, s = areaStart(run.world, F.area);
       return { hp: F.hp, cells: F.ars.cells, cur: F.ars.cur, state: F.state, kills: F.kills, bolts: F.bolts.length, shots: F.shots, area: AREAS[F.area], golf: F.golf, time: F.time, atStart: Math.hypot(p.x - s.x, p.z - s.z) < 1,
         hold: F.hold?.t ?? null, won: F.won, wonAt: F.wonAt }; },

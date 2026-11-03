@@ -1,5 +1,6 @@
-// GPU scene for a generated surface: terrain, rocks, lander and flag, plus the shadow height texture, the sky lights, a lamp over
-// the hangar door and the guide lamps down the crater's switchback.
+// GPU scene for a generated surface: terrain, rocks and the static props (the hangar bunker and the guide posts), plus the shadow
+// height texture, the sky lights, a lamp over the hangar door and the guide lamps down the crater's switchback. The lander is the
+// view's (its pieces, lander.js).
 import { uploadMesh, disposeMesh, createHeightTexture } from '../gfx/gl.js';
 import { createMesh, vtx, quadIdx, blob, finishMesh } from '../gfx/mesh.js';
 import { MAT } from '../gfx/materials.js';
@@ -7,7 +8,8 @@ import { norm, I4, I3 } from '../gfx/math.js';
 import { vn3 } from '../gen/noise.js';
 import { sampleBilinear } from '../gen/surface.js';
 import { CRATER } from '../gen/crater.js';
-import { buildLander, buildBunker, buildGuides } from './props.js';
+import { buildBunker, buildGuides } from './props.js';
+import { wreckOcc } from './lander.js';
 import { GRAVITY } from './areas.js';
 import { LIGHT } from '../gen/baseplan.js';
 
@@ -37,7 +39,7 @@ export function guideLights(world) {
 
 // The scene's CPU meshes (terrain, rocks, props) and lamps (the hangar door's, then the guides).
 export function surfaceParts(world) {
-  const { N, half, h, lander: L, spawn: { dx, dz } } = world, terr = createMesh(), rocks = createMesh(), props = createMesh();
+  const { N, half, h } = world, terr = createMesh(), rocks = createMesh(), props = createMesh();
   for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) vtx(terr, i - half, h[j * N + i], j - half, MAT.regolith);
   for (let j = 0; j < N - 1; j++) for (let i = 0; i < N - 1; i++) { const a = j * N + i; quadIdx(terr, a, a + N, a + N + 1, a + 1); }
 
@@ -49,9 +51,7 @@ export function surfaceParts(world) {
       r.yaw01 * 2 * Math.PI);
   }
 
-  // The lander's front faces down the route.
-  const ground = (x, z) => sampleBilinear(h, x, z), yaw = Math.atan2(dx, dz), guides = guideLights(world);
-  buildLander(props, L.x, L.y, L.z, yaw, ground);
+  const ground = (x, z) => sampleBilinear(h, x, z), guides = guideLights(world);
   buildBunker(props, world.crater);
   buildGuides(props, guides, ground);
   // The hangar door's lamp hangs 4 m above the door, 1 m out along its facing.
@@ -59,15 +59,19 @@ export function surfaceParts(world) {
   return { meshes: [terr, rocks, props].map(finishMesh), lamps: [{ x: d.x + d.dx, y: d.y + 4, z: d.z + d.dz, r: 6, col: LIGHT.teal.col, kind: 0 }, ...guides] };
 }
 
-export function buildSurfaceScene(gl, world) {
+// intact: the shadow map keeps the cabin's column (the opening, before the blast); otherwise it is the wreck's. wreck() swaps an
+// intact scene's shadow map for the wreck's, once.
+export function buildSurfaceScene(gl, world, intact = false) {
   const S = surfaceParts(world), { dx, dz } = world.spawn;
-  const meshes = S.meshes.map(m => ({ gpu: uploadMesh(gl, m), model: I4, rot: I3 })), occTex = createHeightTexture(gl, world.occ, world.N);
-  return {
+  const meshes = S.meshes.map(m => ({ gpu: uploadMesh(gl, m), model: I4, rot: I3 })), occ = o => createHeightTexture(gl, o, world.N);
+  const scene = {
     id: 'surface', sky: true, mode: 0, fog: [.010, .014, .011], fogDensity: .07, gravity: GRAVITY.surface,
     sun: norm([-.43, .17, -.9]),
     earth: norm([.8 * dx, .42, .8 * dz]),
     curv: 1 / 1800,
-    meshes, occTex, lamps: S.lamps,
-    dispose() { meshes.forEach(m => disposeMesh(gl, m.gpu)); gl.deleteTexture(occTex); },
+    meshes, occTex: occ(intact ? world.occ : wreckOcc(world)), lamps: S.lamps,
+    wreck() { if (!intact) return; intact = false; gl.deleteTexture(scene.occTex); scene.occTex = occ(wreckOcc(world)); },
+    dispose() { meshes.forEach(m => disposeMesh(gl, m.gpu)); gl.deleteTexture(scene.occTex); },
   };
+  return scene;
 }

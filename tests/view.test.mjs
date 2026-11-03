@@ -2,7 +2,7 @@ import test from 'node:test'; import assert from 'node:assert/strict'; import { 
 import { sampleGround } from '../src/gen/surface.js'; import { generateWorld } from '../src/gen/world.js'; import { buildSurfaceScene } from '../src/game/surfaceScene.js';
 import { createFight, stepFight, hurtPlayer } from '../src/game/fight.js'; import { createAlien } from '../src/game/aliens.js'; import { give } from '../src/game/weapons.js';
 import { createFightView, fillFrame } from '../src/game/fightView.js'; import { cameraBasis, xf, dot } from '../src/gfx/math.js';
-import { tilt } from '../src/game/fightView.js'; import { readFileSync } from 'node:fs';
+import { tilt, setWreck } from '../src/game/fightView.js'; import { readFileSync } from 'node:fs'; import { settleWreck } from '../src/game/lander.js';
 const W = generateWorld('APOLLO-4471'), gl = fakeGL(), scene = buildSurfaceScene(gl, W), V = createFightView(gl, scene);
 const idle = { fwd: 0, strafe: 0, run: false, jump: false, fire: false, use: false, weapon: -1, wheel: 0 };
 const frame = () => ({ ...scene, exposure: 1, lights: { pos: new Float32Array(64), col: new Float32Array(64), count: 0 }, spheres: new Float32Array(32) });
@@ -91,3 +91,8 @@ test('by the hangar door a crowded surface fight ranks the door lamp first and l
   for (let i = 0; i < 300; i++) F.bolts.push({ x: p.x + 1 + i, y: p.y + 1.7, z: p.z, vx: 1, vy: 0, vz: 0, dmg: 1, r: .2, life: 9, col: [.3, 1, .8], team: 1, src: 99 });
   const fr = frame(), L = scene.lamps[0]; fillFrame(V, F, fr, 0); const n = V._sel.length; assert.equal(V._sel[0], 0); assert.ok(n >= 1 && n <= 16 - MAX_DYN); assert.equal(fr.lights.count, 16);
   assert.deepEqual([...fr.lights.pos.slice(0, 4)], [L.x, L.y, L.z, L.r].map(Math.fround)); assert.ok(fr.lights.pos[4 * 15] === Math.fround(p.x + 16 - n)); }); // the lamps (the door's first, then the nearby guides), then the nearest bolts
+test('the wreck draws its eleven pieces on the surface without allocating, and none once cleared (opening)', () => { const F = createFight(W), fr = frame(); setWreck(V, settleWreck(W)); put(F, W.spawn.x, W.spawn.z);
+  fillFrame(V, F, fr, 0); assert.equal(fr.meshes.filter(m => V.pieces.includes(m.gpu)).length, 11);
+  const Real = globalThis.Float32Array; let n = 0; globalThis.Float32Array = class extends Real { constructor(...a) { super(...a); n++; } };
+  try { fillFrame(V, F, fr, 1 / 60); } finally { globalThis.Float32Array = Real; } assert.equal(n, 0);
+  setWreck(V, null); fillFrame(V, F, fr, 0); assert.equal(fr.meshes.filter(m => V.pieces.includes(m.gpu)).length, 0); });

@@ -32,7 +32,7 @@ void main(){
  vec3 col;
  if(uMode==0){
   float mu0=max(dot(N,uSun),0.),mu=max(dot(N,V),.05);
-  float vis=mu0>0.?sunVis(vW+Ng*.04,(f&1)!=0?1.:.3):0.;
+  float vis=mu0>0.&&(f&32)==0?sunVis(vW+Ng*.04,(f&1)!=0?1.:.3):0.; // flag 32: never sunlit (the cabin's inside)
   float df=(f&2)!=0?mix(mu0,2.*mu0/(mu0+mu),.6):mu0;
   vec3 sun=vec3(1.,.96,.9)*1.55;
   col=A.rgb*(sun*df*vis+vec3(.018,.024,.04)+dl);

@@ -1,12 +1,13 @@
 // The fight view: every frame it turns a Fight into Frame fields (camera, meshes, lights, sphere occluders, sprites,
-// the first-person view model and the damage tint). It only reads the fight and the scene's lamps; its GPU work is the model
-// upload and dispose.
+// the first-person view model and the damage tint). It only reads the fight, the scene's lamps and the lander's wreck; its GPU
+// work is the model and lander-piece upload and dispose.
 import { uploadMesh, disposeMesh } from '../gfx/gl.js';
 import { cameraBasis, chainTo, trs, setT, setRx, setRy, setSc, rot3To, I3 } from '../gfx/math.js';
 import { buildModels, VIEW_MODEL } from './models.js';
 import { RIGS, partMatrixTo, worldSpheresTo } from './rigs.js';
 import { WEAPONS, TEAL } from './weapons.js';
 import { PLAYER } from './player.js';
+import { landerMeshes, pieceMatrix } from './lander.js';
 
 // Per-frame caps (16 lights, 8 spheres, 512 sprites of which at most 192 opaque); FAR culls aliens and small props at 80 m.
 const MAX_L = 16, MAX_SPH = 8, MAX_SPR = 512, MAX_OPQ = 192, FAR = 80;
@@ -23,10 +24,10 @@ export const MAX_DYN = 6, HYST = 4, LIGHT_FADE = 4, FOG_REACH = 30;
 const byD = (a, b) => a.d - b.d, smooth = v => { const x = Math.max(0, Math.min(1, v)); return x * x * (3 - 2 * x); };
 
 export function createFightView(gl, scene, models = buildModels()) {
-  const gpu = {};
+  const gpu = {}, pieces = landerMeshes().map(m => uploadMesh(gl, m));
   for (const k in models) gpu[k] = uploadMesh(gl, models[k]);
-  const V = { gpu, dispose() { for (const k in gpu) disposeMesh(gl, gpu[k]); },
-    _m: [], _c: [], _pool: [], _mats: [], _rots: [], _ents: [], _cam: {}, _tint: [0, 0, 0], _born: new WeakMap(), _ph: 0, _t: null,
+  const V = { gpu, pieces, dispose() { for (const k in gpu) disposeMesh(gl, gpu[k]); pieces.forEach(m => disposeMesh(gl, m)); },
+    _wreck: null, _m: [], _c: [], _pool: [], _mats: [], _rots: [], _ents: [], _cam: {}, _tint: [0, 0, 0], _born: new WeakMap(), _ph: 0, _t: null,
     _spr: { data: new Float32Array(MAX_SPR * 8), nOpaque: 0, nGlow: 0 } };
   setScene(V, scene);
   return V;
@@ -38,6 +39,9 @@ export function setScene(V, scene) {
   const n = (V.lamps = scene.lamps ?? []).length, key = V._key = new Float64Array(n);
   V.static = scene.meshes; V._w = new Float32Array(n); V._on = new Uint8Array(n); V._sel = []; V._byKey = (a, b) => key[a] - key[b];
 }
+
+// The lander's pieces to draw (a wreck from lander.js: the opening's, or the run's settled one on the surface), or null for none.
+export function setWreck(V, W) { V._wreck = W; }
 
 // A rotation taking +y to the unit normal n, placed at (x, y, z). A normal straight down (a ceiling) would divide by zero, so
 // it gets the half-turn about x instead (local +y maps to -y).
@@ -82,6 +86,8 @@ export function fillFrame(V, F, frame, t) {
   const M = frame.meshes = V._m;
   M.length = 0;
   for (const m of V.static) M.push(m);
+  const R = V._wreck;
+  if (R) for (let k = 0; k < R.pieces.length; k++) { const q = R.pieces[k]; if (near(q.x, q.z)) M.push(ent(V.pieces[k], pieceMatrix(R, k, mat()))); }
   for (const a of F.aliens) {
     if (!near(a.x, a.z)) continue;
     // R13 as amended by M1: a floater's 0.7 s wind-up pulses its flash between 0 and .22 at 6 Hz (a hit still flashes it fully)

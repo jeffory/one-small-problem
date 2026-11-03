@@ -247,3 +247,6 @@ test('pausing on hold or mid-ending stops the hold timer and the ending countdow
   await page.keyboard.press('Escape'); await expect.poll(() => paused(page)).toBe(true); const e = (await clock(page)).ending; await page.waitForTimeout(600);
   expect((await clock(page)).ending).toBe(e); await expect(page.locator('#end')).toBeHidden(); await page.keyboard.press('Escape');
   await expect(page.locator('#end')).toBeVisible({ timeout: 20_000 }); });
+test('a new run starts at the settled wreck (opening)', async ({ page }) => { const errors = watchErrors(page); await start(page);
+  expect(await page.evaluate(() => window.ospTest.wreck())).toEqual({ n: 11, still: 11 }); const s = await page.evaluate(() => window.ospTest.capture());
+  expect(s.inPalette).toBe(1); expect(s.colours).toBeGreaterThan(8); expect(errors).toEqual([]); });
