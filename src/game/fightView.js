@@ -5,7 +5,7 @@
 // dynamic light candidates) and flash (0-1, the blast's white flash, to tint[1]).
 import { uploadMesh, disposeMesh } from '../gfx/gl.js';
 import { cameraBasis, chainTo, trs, setT, setRx, setRy, setSc, rot3To, I3 } from '../gfx/math.js';
-import { buildModels, VIEW_MODEL } from './models.js';
+import { buildModels, VIEW_MODEL, TAPE_R } from './models.js';
 import { RIGS, partMatrixTo, worldSpheresTo } from './rigs.js';
 import { WEAPONS, TEAL } from './weapons.js';
 import { PLAYER } from './player.js';
@@ -22,6 +22,7 @@ const TRAIL = [[1, 1], [.7, .55], [.55, .35], [.42, .2]];
 // Lights (pre-flight F18): dynamic lights (plasma, booms, the muzzle, canisters) may take MAX_DYN of the 16 slots from the
 // lamps, which keep at least 16 - MAX_DYN. A lamp counts if its sphere comes within FOG_REACH m of the camera; one that was on
 // last frame is HYST m nearer for ranking, and a lamp fades in at LIGHT_FADE per second from 0 the frame it joins.
+export const TAPE_GLINT = { period: 2.5, on: .15, size: .1 };
 export const MAX_DYN = 6, HYST = 4, LIGHT_FADE = 4, FOG_REACH = 30;
 const byD = (a, b) => a.d - b.d, smooth = v => { const x = Math.max(0, Math.min(1, v)); return x * x * (3 - 2 * x); };
 
@@ -100,6 +101,7 @@ export function fillFrame(V, F, frame, t) {
   if (!fg.held && F.lv.id === 'surface') M.push(ent(G.flag, setT(mat(), fg.x, fg.y, fg.z), I3));
   for (const q of F.pickups) {
     if (!near(q.x, q.z)) continue;
+    if (q.kind === 'tape') { M.push(ent(G.tape, trs(mat(), q.x, q.y + TAPE_R - .01, q.z, 2.4 * (q.x + q.z), 1))); continue; } // lies still on the ground
     const gun = q.kind === 'pistol' || q.kind === 'scatter';
     M.push(ent(G[q.kind === 'cells' ? 'cell' : q.kind], trs(mat(), q.x, q.y + (gun ? .45 : .3) + .1 * Math.sin(2.5 * t + q.x), q.z, 1.5 * t, gun ? 1.6 : 1)));
   }
@@ -184,6 +186,9 @@ export function fillFrame(V, F, frame, t) {
   if (mz) add(mz[0], mz[1], mz[2], .1, TEAL[0], TEAL[1], TEAL[2]);
   // a golf ball glints for .15 s every 2.5 s, each on its own beat
   for (const b of F.balls) if (near(b.x, b.z) && (t + 1.7 * b.id) % 2.5 < .15) add(b.x, b.y + .06, b.z, .08, .5, .5, .45);
+  for (const q of F.pickups) if (q.kind === 'tape' && near(q.x, q.z)) {
+    const ph = t + 1.3 * (q.x + q.z); if (ph - TAPE_GLINT.period * Math.floor(ph / TAPE_GLINT.period) < TAPE_GLINT.on) add(q.x, q.y + 2 * TAPE_R - .03, q.z, TAPE_GLINT.size, .5, .5, .45);
+  }
   const ng = P.nGlow = keep(MAX_SPR - no);
   for (let i = 0; i < ng; i++) put(no + i, C[i]);
 

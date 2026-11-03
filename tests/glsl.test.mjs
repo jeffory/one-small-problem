@@ -12,3 +12,5 @@ test('keeps spaces between words and between +/- pairs', () => {
 import { readFileSync } from 'node:fs';
 test('the post pass mixes toward warm white by uK.y, capped at .85 (opening flash, pre-flight F14)', () => {
   assert.match(readFileSync('src/gfx/shaders/post.frag', 'utf8'), /mix\(\s*c\s*,\s*vec3\(\s*\.94\s*,\s*\.91\s*,\s*\.86\s*\)\s*,\s*min\(\s*\.85\s*,\s*uK\.y\s*\)\s*\)/); });
+test('the tape layer is a brighter silver (Plan 5)', () => {
+  assert.match(readFileSync('src/gfx/shaders/bake.frag', 'utf8'), /uLay==11\)\{[^}]*a=vec4\(vec3\(\.34,\.35,\.37\)\+\.12\*wv,wv\)/); });

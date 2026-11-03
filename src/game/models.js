@@ -1,6 +1,7 @@
 // Pure model builders (no GL): design-A aliens, held weapons, flag/pole and prop meshes as finishMesh output.
 import { createMesh, vtx, quadIdx, box, blob, lathe, finishMesh } from '../gfx/mesh.js';
 import { MAT } from '../gfx/materials.js';
+export const TAPE_R = .144; // duct-tape roll radius (m), also its rest height in fightView
 import { vn3 } from '../gen/noise.js';
 import { buildFlag } from './props.js';
 
@@ -67,7 +68,7 @@ export function buildModels() {
   // R18: a round shaft (the held pole is seen up close) and a small cloth near the tip, off toward +x
   const pole = make(m => { lathe(m, [0, 0, 0], [0, 1.6, 0], [[0, .024], [.97, .024], [1, .017]], 10, MAT.hull); box(m, 0, 1.4, -.006, .17, 1.57, .006, MAT.hull); });
   const flag = make(m => buildFlag(m, 0, 0, () => 0));
-  const tape = make(m => lathe(m, [-.03, 0, 0], [.03, 0, 0], [[0, .07], [.06, .09], [.94, .09], [1, .07]], 14, MAT.tape));
+  const tape = make(m => lathe(m, [-.048, 0, 0], [.048, 0, 0], [[0, .112], [.06, TAPE_R], [.94, TAPE_R], [1, .112]], 14, MAT.tape));
   const cell = make(m => lathe(m, [0, 0, 0], [0, .25, 0], [[0, .01], [.1, .04], [.9, .04], [1, .01]], 10, MAT.coilB));
   const canister = make(m => {
     lathe(m, [0, 0, 0], [0, .8, 0], [[0, .26], [.04, .3], [.96, .3], [1, .24]], 14, MAT.gunMetal);

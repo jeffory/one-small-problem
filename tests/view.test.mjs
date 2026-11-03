@@ -2,7 +2,7 @@ import test from 'node:test'; import assert from 'node:assert/strict'; import { 
 import { sampleGround } from '../src/gen/surface.js'; import { generateWorld } from '../src/gen/world.js'; import { buildSurfaceScene } from '../src/game/surfaceScene.js';
 import { createFight, stepFight, hurtPlayer } from '../src/game/fight.js'; import { createAlien } from '../src/game/aliens.js'; import { give } from '../src/game/weapons.js';
 import { createFightView, fillFrame } from '../src/game/fightView.js'; import { cameraBasis, xf, dot } from '../src/gfx/math.js';
-import { tilt, setWreck } from '../src/game/fightView.js'; import { readFileSync } from 'node:fs'; import { settleWreck } from '../src/game/lander.js';
+import { TAPE_GLINT } from '../src/game/fightView.js'; import { TAPE_R } from '../src/game/models.js'; import { tilt, setWreck } from '../src/game/fightView.js'; import { readFileSync } from 'node:fs'; import { settleWreck } from '../src/game/lander.js';
 const W = generateWorld('APOLLO-4471'), gl = fakeGL(), scene = buildSurfaceScene(gl, W), V = createFightView(gl, scene);
 const idle = { fwd: 0, strafe: 0, run: false, jump: false, fire: false, use: false, weapon: -1, wheel: 0 };
 const frame = () => ({ ...scene, exposure: 1, lights: { pos: new Float32Array(64), col: new Float32Array(64), count: 0 }, spheres: new Float32Array(32) });
@@ -109,3 +109,9 @@ test('the opening frame: glitter as small dim gold glows, the dust ring as opaqu
   let puffs = 0; for (let i = 0; i < fr.sprites.nOpaque; i++) if (D[i * 8 + 3] >= .35) puffs++; assert.ok(puffs >= 20, 'the dust ring'); });
 test('a real fight sets no flash and no eye override (opening)', () => { const F = createFight(W), fr = frame(); fillFrame(V, F, fr, 0);
   assert.equal(fr.tint[1], 0); assert.ok(Math.abs(fr.cam.y - (F.player.y + PLAYER.eye)) < 1e-6); });
+test('tape lies still on its edge on the ground and glints for .15 s in every 2.5 s (Plan 5)', () => { const F = createFight(W), fr = frame(), q = F.pickups.find(p => p.kind === 'tape');
+  put(F, q.x + 4, q.z); const at = t => { fillFrame(V, F, fr, t); return fr.meshes.find(m => m.gpu === V.gpu.tape && Math.hypot(m.model[12] - q.x, m.model[14] - q.z) < 1e-3); };
+  const a = [...at(0).model], b = [...at(1.3).model]; assert.deepEqual(a, b); assert.ok(Math.abs(a[13] - (q.y + TAPE_R - .01)) < 1e-5);
+  let on = 0; for (let t = 0; t < TAPE_GLINT.period; t += .05) { fillFrame(V, F, fr, t); const D = fr.sprites.data;
+    for (let i = fr.sprites.nOpaque; i < fr.sprites.nOpaque + fr.sprites.nGlow; i++) if (Math.hypot(D[i * 8] - q.x, D[i * 8 + 1] - (q.y + 2 * TAPE_R - .03), D[i * 8 + 2] - q.z) < 1e-3) { on++; break; } }
+  const want = TAPE_GLINT.on / .05; assert.ok(on >= Math.floor(want) && on <= Math.ceil(want) + 1, `${on}`); }); // derived from the table (pre-flight F1)

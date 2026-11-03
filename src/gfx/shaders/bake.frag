@@ -52,9 +52,9 @@ void main(){vec2 u=v;vec4 a=vec4(0);vec3 e=vec3(0);
  else if(uLay==8){a=vec4(.02,.02,.01,0.);e=vec3(.95,1.,.3);} // eyes
  else if(uLay==9){float g=step(.35,fract(u.y*6.));a=vec4(.04,.05,.045,g*.3);e=vec3(.3,1.,.7)*(.35+.65*g);} // coil
  else if(uLay==10){a=panel(u,vec3(.075,.075,.085),vec3(.11,.08,.05),vec3(.085,.06,.1),1.,e);} // alien panel
- else if(uLay==11){ // tape: dull grey cloth, fine diagonal weave
+ else if(uLay==11){ // tape: silver cloth tape, fine diagonal weave
   vec2 d=vec2(u.x+u.y,u.x-u.y);float wv=.5*vn(d*64.,vec2(64.))+.5*vn(d*96.,vec2(96.));
-  a=vec4(vec3(.16+.08*wv),wv);}
+  a=vec4(vec3(.34,.35,.37)+.12*wv,wv);}
  else if(uLay==12){ // scorch: charred black-brown, cell edges slightly lighter
   float n=fbm(u,vec2(6.),5);vec3 w=wor(u,9.);float ed=smoothstep(.1,0.,w.y-w.x);
   a=vec4(vec3(.012,.01,.008)+n*vec3(.028,.022,.017)+ed*vec3(.008,.006,.004),n*.5+ed*.3);}

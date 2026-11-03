@@ -1,4 +1,4 @@
-import test from 'node:test'; import assert from 'node:assert/strict'; import { buildModels, VIEW_MODEL } from '../src/game/models.js';
+import test from 'node:test'; import assert from 'node:assert/strict'; import { buildModels, VIEW_MODEL, TAPE_R } from '../src/game/models.js';
 import { RIGS, partMatrix, muzzleWorld } from '../src/game/rigs.js'; import { WEAPONS } from '../src/game/weapons.js'; import { LAYER_COUNT, MAT } from '../src/gfx/materials.js'; import { xf } from '../src/gfx/math.js';
 const M = buildModels(), rest = type => ({ type, x: 0, y: 0, z: 0, yaw: 0, t: 0, gait: 0, aim: 0, claw: 0, wave: 0, fall: 0 });
 const verts = (m, mat) => { const o = []; for (let i = 0; i < m.pos.length; i += 3) o.push(xf(mat, [m.pos[i], m.pos[i + 1], m.pos[i + 2]])); return o; };
@@ -21,3 +21,6 @@ test('scatter is at most 0.6 long; discs face up; props have the specified sizes
   for (const k of ['discScorch', 'discGoo']) { assert.equal(M[k].idx.length, 36, k); for (let i = 0; i < M[k].nrm.length; i += 3) assert.ok(M[k].nrm[i + 1] > .99, k); }
   const top = Math.max(...verts(M.canister, new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1])).map(v => v[1])); assert.ok(top >= .8 && top < 1, 'canister height'); });
 test('the golf ball model is a small ball in the golf material', () => { assert.ok(M.golf); assert.equal(M.golf.mat[0], MAT.golf[0]); assert.equal(MAT.golf[0], 19); });
+test('the tape roll is 1.6x its old size: radius TAPE_R .144 and .096 wide, in the tape material (Plan 5)', () => { const P = M.tape.pos; let r = 0, w = 0;
+  for (let i = 0; i < P.length; i += 3) { w = Math.max(w, Math.abs(P[i])); r = Math.max(r, Math.hypot(P[i + 1], P[i + 2])); }
+  assert.equal(TAPE_R, .144); assert.ok(Math.abs(r - TAPE_R) < 1e-6 && Math.abs(w - .048) < 1e-6, `${r} ${w}`); assert.equal(M.tape.mat[0], MAT.tape[0]); });
