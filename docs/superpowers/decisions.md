@@ -39,8 +39,8 @@ This file is the single place to find every decision made while building the gam
 - Merge commit: filled in by the controller at merge (branch `plan-6-escape`).
 - Release `dist/index.html`: 76,623 B (58.5% of the 131,072 B cap; the Plan 6 ceiling of about 95 KB, 97,280 B, is met)
 - Tests: 399 unit, the 1000-seed soak (both maps, the prison and escape plans), the 60-seed bot soak (60/60 boarded, no missed ship) and the smoke suite in Chromium and Firefox 152 tests pass.
-- New goldens: APOLLO-4471 `cab7471e`, EAGLE-0001 `2b8d1c18`, SOAK-0042 `0f2620e9`. The level 1 parts still hash as before (`60273c6a`, `39762eb2`, `ee4eda57`, pinned in `tests/golden.test.mjs`); `src/gen/surface.js`, `crater.js`, `passable.js`, `rng.js` and `noise.js` are unchanged since 11bcf76.
-- Final `SHIP.clock`: 430 s (spec 6: the bot's worst dash is 300.1 s, so 30% spare). The starting value was 240 s.
+- New goldens (re-pinned in the final review's fix wave, for the dash's half budgets and the clear lift dais): APOLLO-4471 `f39142f2`, EAGLE-0001 `18bac48f`, SOAK-0042 `0920e393` (before the wave `cab7471e`, `2b8d1c18`, `0f2620e9`). The level 1 parts still hash as before (`60273c6a`, `39762eb2`, `ee4eda57`, pinned in `tests/golden.test.mjs`); `src/gen/surface.js`, `crater.js`, `passable.js`, `rng.js` and `noise.js` are unchanged since 11bcf76.
+- Final `SHIP.clock`: 300 s (spec 6: the bot's worst dash is 200.5 s, so 33% spare; the soak rounds up to the next 30 s and counts a missed ship's dash). The starting value was 240 s; it was 430 s (worst dash 300.1 s) until the final review halved the dash's aliens.
 
 ## How the overnight run worked
 
@@ -199,7 +199,7 @@ Every `[call]` in `docs/superpowers/plans/2026-11-04-plan-6-escape.md`, by task.
 | `SFX.bang`, `SFX.bars` (T5) | A clang and a falling zap, mapped by `sfxFor`. |
 | `ESCAPE` (T6, `src/gen/encounters.js`) | The escape plan's table (dash encounter counts and gaps, e.g. `shipGap`). |
 | Rescue site facing (T6) | The site's `(dx, dz)` is the unit vector toward `world.rim`, so the ladder faces you as you come. |
-| `SHIP`, `FLARE`, `RING` (T8) | The dash tables, in `src/game/escape.js`. `SHIP.clock` started at 240 s and was retuned to 430 s by the bot soak (T12). |
+| `SHIP`, `FLARE`, `RING` (T8) | The dash tables, in `src/game/escape.js`. `SHIP.clock` started at 240 s and was retuned by the bot soak to 430 s (T12), then to 300 s after the final review's fixes. |
 | Clock HUD (T8) | `#clk` ("SHIP LEAVES m:ss") at the top centre, red under `SHIP.warn`; `#flash` moves from 56 to 76 px; the dead prompt reads "The ship left without you. Back to the crater rim...". |
 | `LIFT` (T9) | The ascent's climb (m/s^2), the seconds from boarding to the sting, and the fade (s) after the end gate. |
 | `SFX.click` (T9) | The stamp's click. |
@@ -227,7 +227,8 @@ Use this on real hardware (Radeon 890M, Chrome and Firefox). Tuning goes in the 
 - **Voices and songs:** the Pilot's voice in Chrome and Firefox; the prison and escape songs by ear.
 - **Run time and fps:** about 20-30 minutes on a first play? fps in the prison and on the dash with the ring alive.
 - **Rush crowd near the ship:** is it too much? Levers: `ESCAPE.shipGap`, `RING.cap`, fewer dash encounters.
-- **`SHIP.clock` 430 s:** likely generous for a human (the bot's worst dash is 300.1 s); tighten if the dash has no tension.
+- **`SHIP.clock` 300 s:** the bot's worst dash is 200.5 s (median 138.5 s); is it tense but fair for a human? Loosen it if first plays miss the ship; tighten it if the dash has no tension.
+- **Dash difficulty:** the dash's alien budgets are halved (`ESCAPE.dashScale` .5, the base's H2 remedy): about 20 aliens, 6 of them brutes, plus the rush. Too light? Raise `ESCAPE.dashScale`.
 - **Flare:** it reads from the rim for only about 16-25 s; long enough?
 - **Alcove bars:** they leave a dark gap under the 4.5 m recess; does it show?
 - **Lift hall:** the red alarm-lamp fixture; does it read as a lamp?
