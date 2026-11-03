@@ -1,0 +1,80 @@
+# Builds the single-file game and runs every test suite. Three jobs run in parallel:
+#   build  - unit tests, then the release build (which fails over the 131,072-byte cap); uploads the playable dist/index.html
+#   soak   - 1000 generated seeds checked, and the immortal bot playing 60 seeds to the comms room
+#   smoke  - Playwright in Chromium (SwiftShader WebGL) and Firefox against the release build
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# A newer push to the same branch or PR cancels the run still going.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Unit tests and build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - name: Release build (fails over 131,072 bytes)
+        run: |
+          npm run build
+          bytes=$(stat -c %s dist/index.html)
+          echo "dist/index.html: **$bytes bytes** ($((bytes * 100 / 131072))% of the 131,072-byte cap)" >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload the playable page
+        uses: actions/upload-artifact@v7
+        with:
+          path: dist/index.html
+          archive: false
+          if-no-files-found: error
+
+  soak:
+    name: Seed and bot soaks
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run test:seeds
+      - run: npm run test:bot
+
+  smoke:
+    name: Browser smoke tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium firefox
+      - run: npm run test:smoke
+      - name: Upload test results
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-results
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 7
