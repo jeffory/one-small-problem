@@ -306,12 +306,13 @@ function startHold(F, d) {
 }
 
 // The waves of H (the hold, or the rescue ship's ring: {t, plan (planWaves), next, enc}) at H.t: planned spawns come in order once
-// due, while fewer than HOLD.cap of H's aliens are alive (one that finds no free slot waits, and so do those after it), each at
-// its point pts[door] on the ground (a floater hover m over it), its id id0 + its place in the plan, in area.
-function spawnWaves(F, H, pts, id0, area, hover) {
+// due, while fewer than cap live aliens count (H's own, and any others counts takes; one that finds no free slot waits, and so do
+// those after it), each at its point pts[door] on the ground (a floater hover m over it), its id id0 + its place in the plan, in
+// area.
+function spawnWaves(F, H, pts, id0, area, hover, cap, counts = null) {
   const P = H.plan; let live = 0;
-  for (const a of F.aliens) if (a.enc === H.enc && a.state !== 'dead') live++;
-  for (; H.next < P.length && P[H.next].at <= H.t && live < HOLD.cap; live++) {
+  for (const a of F.aliens) if (a.state !== 'dead' && (a.enc === H.enc || counts?.(a))) live++;
+  for (; H.next < P.length && P[H.next].at <= H.t && live < cap; live++) {
     const q = P[H.next], d = pts[q.door], g = F.lv.ground(d.x, d.z);
     const a = createAlien({ type: q.type, x: d.x, y: q.type === 'fl' ? g + hover : g, z: d.z }, id0 + H.next++, H.enc);
     a.area = area; F.aliens.push(a);
@@ -324,7 +325,7 @@ function spawnWaves(F, H, pts, id0, area, hover) {
 function stepHold(F, dt) {
   const H = F.hold;
   H.t += dt;
-  spawnWaves(F, H, F.world.baseMap.spawnDoors, HOLD_ID, 3, HOVER);
+  spawnWaves(F, H, F.world.baseMap.spawnDoors, HOLD_ID, 3, HOVER, HOLD.cap);
   while (H.t >= HOLD.msg / 2 + H.msgs * HOLD.msg) F.events.push({ type: 'holdmsg', n: H.msgs++ });
   if (H.t >= HOLD.time) { F.ko = { phase: 'call', t: 0 }; F.events.push({ type: 'houston' }); }
 }
@@ -333,7 +334,8 @@ function stepHold(F, dt) {
 // fires its flare and throws a ring of dust (PUFF, from F.rng), and its hatch opens SHIP.hatch s later. Its clock runs from
 // arriving: each of SHIP.calls is called as it is passed, and at 0 it leaves without you, a death with no 'dead' cue (the area
 // restarts, ship and clock fresh). Once it is down and you are within RING.near, the rush: the hold's wave planner on RING.waves,
-// from RING.n points round the ship, its aliens alerted from the start.
+// from RING.n points round the ship, its aliens alerted from the start, each waiting while RING.cap live aliens of the dash are
+// near the ship (within RING.near) or are the ring's own.
 function stepShip(F, dt) {
   const S = F.ship, W = S.W;
   S.t += dt; W.lift = shipLift(S.t);
@@ -356,7 +358,7 @@ function stepShip(F, dt) {
     S.ring = { t: 0, plan: planWaves(F.rng, RING.n, RING.waves), next: 0, enc, pts: ringPoints(F.rng, S.at) };
     F.events.push({ type: 'rush' });
   }
-  if (S.ring) { S.ring.t += dt; spawnWaves(F, S.ring, S.ring.pts, RING.id, 6, RING.hover); }
+  if (S.ring) { S.ring.t += dt; spawnWaves(F, S.ring, S.ring.pts, RING.id, 6, RING.hover, RING.cap, a => a.area === 6 && Math.hypot(a.x - S.at.x, a.z - S.at.z) < RING.near); }
 }
 
 // R16: the player is pushed out of live walkers and canisters (horizontally, where their heights overlap), and out of the rescue

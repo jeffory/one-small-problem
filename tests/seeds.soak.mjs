@@ -109,7 +109,7 @@ function checkPrison(seed, B) {
 }
 // The escape plan (Plan 6): the climb (area 5) like level 1's crater, the dash (area 6) at p .6 to 1 with full budgets, golf 6 off
 // the route, and the rescue site. A site from the fallback is not rock-clear or not flat, so it fails here.
-let dashMin = Infinity, dashMax = 0, siteFlat = 0, shipGap = Infinity;
+let dashMin = Infinity, dashMax = 0, siteFlat = 0, shipGap = Infinity, dashGap = Infinity, dashSpread = Infinity, dashTight = 0;
 function checkEscape(seed, w, stands) {
   const bad = (m) => { fail++; console.error(seed, 'escape', m); };
   const E = w.escape, C = E.encounters.filter((e) => e.area === 5), D = E.encounters.filter((e) => e.area === 6), cost = (e) => e.aliens.reduce((s, a) => s + COST[a.type], 0);
@@ -142,6 +142,11 @@ function checkEscape(seed, w, stands) {
   E.encounters.forEach((e) => e.aliens.forEach((a) => clear(a, ALIENS[a.type].radius, a.type)));
   for (const c of E.canisters) clear(c, CANISTER.radius, 'canister');
   for (const q of [...E.pickups, ...E.golf]) clear(q, 0, q.kind ?? 'golf ' + q.id);
+  // Task 8 fix: the dash's encounters (their centres) and canisters stop ESCAPE.shipGap short of the site, so the rush has the
+  // last stretch. Printed, not gated: how close the dash's encounters come (a short route keeps its six, nearer together).
+  for (const q of [...D, ...E.canisters.filter((c) => c.area === 6)]) { const g = Math.hypot(q.x - S.x, q.z - S.z); dashGap = Math.min(dashGap, g); if (g < ESCAPE.shipGap) bad('dash encounter or canister ' + g.toFixed(1) + ' m from the site'); }
+  let tight = Infinity; for (let i = 1; i < D.length; i++) tight = Math.min(tight, Math.hypot(D[i].x - D[i - 1].x, D[i].z - D[i - 1].z));
+  dashSpread = Math.min(dashSpread, tight); if (tight < 40) dashTight++;
 }
 const hist = {}; let rerolls = 0, fail = 0, worst = 0, worstCrater = 0, rockMin = Infinity, worstEdge = Infinity, rockMax = 0, golfAll = 0, golfRock = 0;
 for (let n = 0; n < 1000; n++) {
@@ -219,7 +224,7 @@ console.log('base attempt histogram', JSON.stringify(bhist), 'rerolls', brerolls
 console.log('prison attempt histogram', JSON.stringify(phist));
 console.log('greenhouse canister clusters dropped', ghDropped + '/1000');
 console.log('golf balls beside a rock', golfRock + '/' + golfAll);
-console.log('escape: dash encounters min/max', dashMin, dashMax, 'worst site relief', siteFlat.toFixed(3), 'least item clearance off the rescue ship', shipGap.toFixed(3), 'm');
+console.log('escape: dash encounters min/max', dashMin, dashMax, 'worst site relief', siteFlat.toFixed(3), 'least item clearance off the rescue ship', shipGap.toFixed(3), 'm', 'nearest dash encounter or canister', dashGap.toFixed(1), 'm', 'closest dash encounters', dashSpread.toFixed(1), 'm apart (seeds under 40 m: ' + dashTight + ')');
 const rate = rerolls / 1000;
 console.log('attempt histogram', JSON.stringify(hist), 'rerolls', rerolls, 'rate', rate);
 console.log('worst centreline step', worst.toFixed(4), 'worst switchback step', worstCrater.toFixed(4), 'worst edge margin', worstEdge.toFixed(3), 'rocks min/max', rockMin, rockMax, 'failures', fail);

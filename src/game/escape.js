@@ -25,8 +25,9 @@ export const SHIP = { clock: 240, warn: 30, calls: [180, 120, 60, 30], r: 2, rea
 // size, so it shows at 400 m; trail: its smoke puffs, gap s of flight apart; col: its HDR colour.
 export const FLARE = { up: 150, rise: 3, fall: 40, size: .6, ang: .01, trail: 10, gap: .5, col: [2.4, .3, .08] };
 // The rush: once the ship is down and you are within near m of it, waves (the hold's planner: [start s, budget]) come in from n
-// points r m round it, ids from id; floaters fly hover m over the ground.
-export const RING = { near: 60, r: [30, 40], n: 6, id: 2000, hover: 3.5, waves: [[0, 4], [5, 5], [10, 6], [15, 6]] };
+// points r m round it, ids from id; floaters fly hover m over the ground. A spawn waits while cap live aliens of the dash are
+// within near of the ship or are the ring's own, as the hold's wait at HOLD.cap.
+export const RING = { near: 60, r: [30, 40], n: 6, id: 2000, hover: 3.5, waves: [[0, 4], [5, 5], [10, 6], [15, 6]], cap: 8 };
 
 const smooth = x => x * x * (3 - 2 * x);
 // The ship's height over the site t s after you arrive: the opening's descent curve, 0 from touchdown.

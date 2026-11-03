@@ -1,6 +1,6 @@
 import test from 'node:test'; import assert from 'node:assert/strict'; import { generateWorld } from '../src/gen/world.js'; import { BASE } from '../src/gen/base.js';
 import { AREAS, LEVEL, AREA_TEXT, GRAVITY, makeLevel, areaStart, stintEnd, advanceArea, wayTarget, wayfind } from '../src/game/areas.js'; import { lineOfSight, updateField, UNK } from '../src/game/nav.js'; import { give } from '../src/game/weapons.js';
-import { createFight, stepFight, hurtPlayer, skipTo, openBars, canBang, atExit, PICKUP, DEATH_TIME } from '../src/game/fight.js'; import { hurtAlien } from '../src/game/aliens.js'; import { MAX_CELLS } from '../src/game/weapons.js'; import { dawdling } from '../src/game/radio.js'; import { KO, BREAK, EXIT, exitOf } from '../src/game/escape.js';
+import { createFight, stepFight, hurtPlayer, skipTo, openBars, canBang, atExit, PICKUP, DEATH_TIME } from '../src/game/fight.js'; import { hurtAlien, createAlien } from '../src/game/aliens.js'; import { MAX_CELLS } from '../src/game/weapons.js'; import { dawdling } from '../src/game/radio.js'; import { KO, BREAK, EXIT, exitOf } from '../src/game/escape.js';
 const W = generateWorld('APOLLO-4471'), P = W.prisonMap, idle = { fwd: 0, strafe: 0, run: false, jump: false, fire: false, use: false, weapon: -1, wheel: 0 };
 const run = (F, inp, secs, dt = 1 / 60) => { for (let t = 0; t < secs; t += dt) stepFight(F, inp, dt); };
 const put = (F, x, z) => Object.assign(F.player, { x, z, y: F.lv.ground(x, z), vx: 0, vy: 0, vz: 0, kx: 0, kz: 0 });
@@ -100,7 +100,7 @@ test('the ship clock calls its marks; at 0 the ship leaves and the dash restarts
   assert.ok(Math.abs(t - SHIP.clock) < .11, `${t}`); assert.deepEqual(ev, [1, 2, 3, 4, 'missed']); run(F, idle, DEATH_TIME + .1);
   assert.deepEqual([F.state, F.area, F.ship.landed], ['play', 6, false]); assert.ok(F.ship.left > SHIP.clock - .2 && near(F.player, areaStart(W, 6))); });
 test('the rush: once landed and near, waves from RING.n points 30-40 m round the ship, ids from RING.id, at most HOLD.cap alive', () => {
-  assert.deepEqual(RING, { near: 60, r: [30, 40], n: 6, id: 2000, hover: 3.5, waves: [[0, 4], [5, 5], [10, 6], [15, 6]] });
+  assert.deepEqual(RING, { near: 60, r: [30, 40], n: 6, id: 2000, hover: 3.5, waves: [[0, 4], [5, 5], [10, 6], [15, 6]], cap: 8 });
   const P0 = planWaves(makeRng('r'), RING.n, RING.waves); RING.waves.forEach(([, b], w) => assert.equal(P0.filter(q => q.wave === w).reduce((s, q) => s + COST[q.type], 0), b));
   const F = createFight(W, 6), st = W.escape.site; F.aliens.length = 0; F.god = true; put(F, st.x + RING.near - 5, st.z); run(F, idle, 1); assert.equal(F.ship.ring, null);
   run(F, idle, SHIP.descent); assert.ok(F.ship.ring && F.events.some(e => e.type === 'rush')); assert.equal(F.ship.ring.pts.length, RING.n);
@@ -110,3 +110,9 @@ test('the rush: once landed and near, waves from RING.n points 30-40 m round the
 test('the landed ship is solid: you are pushed off its deck', () => {
   const F = createFight(W, 6), st = W.escape.site; F.aliens.length = 0; run(F, idle, SHIP.descent + .1); put(F, st.x + .5, st.z); stepFight(F, idle, 1 / 60);
   assert.ok(Math.hypot(F.player.x - st.x, F.player.z - st.z) >= SHIP.r + PLAYER.radius - 1e-6); });
+test('the rush holds back while RING.cap live aliens of the dash are within RING.near of the ship, as the hold caps its own (fix: the crowded rush)', () => {
+  const F = createFight(W, 6), st = W.escape.site, far = { x: 1e5, z: 1e5, p: 1, first: false, area: 6, room: -1, alerted: false, waved: false }; F.aliens.length = 0; F.god = true; put(F, st.x + RING.near - 5, st.z);
+  for (let i = 0; i < RING.cap; i++) { const x = st.x - 20, z = st.z - 10 + 3 * i, a = createAlien({ type: 'sk', x, y: F.lv.ground(x, z), z }, 500 + i, far); a.area = 6; F.aliens.push(a); } // asleep: their encounter is far off
+  const ring = () => F.aliens.filter(a => a.id >= RING.id && a.state !== 'dead').length;
+  run(F, idle, SHIP.descent + 6); assert.ok(F.ship.ring && F.ship.ring.t > 5); assert.equal(ring(), 0);
+  hurtAlien(F.aliens[0], 999, 0, 0); run(F, idle, 3); assert.equal(ring(), 1); });

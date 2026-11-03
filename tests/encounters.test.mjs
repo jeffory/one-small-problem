@@ -36,9 +36,10 @@ test('three golf balls hide off the route, on reachable ground; the share beside
 test('canisters keep 1.2 m from one another and 1 m from every pickup (R15)', () => { for (const P of [W.plan, generateWorld('SOAK-0005').plan, generateWorld('SOAK-0045').plan]) {
   const C = P.canisters; assert.ok(C.length >= 6);
   for (const c of C) { for (const d of C) if (d !== c) assert.ok(Math.hypot(d.x - c.x, d.z - c.z) >= 1.2 - 1e-9); for (const u of P.pickups) assert.ok(Math.hypot(u.x - c.x, u.z - c.z) >= 1 - 1e-9); } } });
-test('the escape plan: areas 5-6; the climb like the crater; the dash p .6-1, full budgets; golf 6 off the route', () => {
+test('the escape plan: areas 5-6; the climb like the crater; the dash p .6-1, full budgets, its encounters and canisters ESCAPE.shipGap clear of the rescue site; golf 6 off the route', () => {
   const E = W.escape, C = E.encounters.filter(e => e.area === 5), D = E.encounters.filter(e => e.area === 6);
-  assert.deepEqual(ESCAPE, { climbAt: [.25, .6, .95], climbP: [.35, .5], dashP: [.6, 1], golf: [.4, .65], site: [20, 30], flat: .6, rockGap: 6, tries: 80 });
+  assert.deepEqual(ESCAPE, { climbAt: [.25, .6, .95], climbP: [.35, .5], dashP: [.6, 1], golf: [.4, .65], site: [20, 30], flat: .6, rockGap: 6, tries: 80, shipGap: 60 });
+  const off = q => Math.hypot(q.x - E.site.x, q.z - E.site.z) >= ESCAPE.shipGap; assert.ok(D.every(off) && E.canisters.filter(c => c.area === 6).every(off));
   assert.ok([...E.encounters, ...E.pickups, ...E.canisters, ...E.golf].every(q => q.area === 5 || q.area === 6)); assert.deepEqual(planEscape(W), E);
   assert.equal(C.length, 3); C.forEach((e, i) => assert.ok(Math.abs(e.p - (.35 + .15 * ESCAPE.climbAt[i])) < 1e-9 && cost(e) === budgetAt(e.p)));
   assert.ok(D.length >= 6 && D.every(e => e.p >= .6 && e.p <= 1 && !e.first && cost(e) === budgetAt(e.p)));
