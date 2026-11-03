@@ -8,9 +8,10 @@ import { generateWorld } from './gen/world.js';
 import { checksumWorld } from './gen/checksum.js';
 import { createGL } from './gfx/gl.js';
 import { createRenderer } from './gfx/renderer.js';
-import { createFight, stepFight, hurtPlayer, enterArea, knockOut, skipTo, canBang, DOOR_REACH } from './game/fight.js';
+import { createFight, stepFight, hurtPlayer, enterArea, knockOut, skipTo, canBang, atExit, openBars, DOOR_REACH } from './game/fight.js';
 import { createFightView, fillFrame, setScene, setWreck } from './game/fightView.js';
 import { AREAS, areaStart, wayfind } from './game/areas.js';
+import { exitOf } from './game/escape.js';
 import { WEAPONS } from './game/weapons.js';
 import { buildSurfaceScene } from './game/surfaceScene.js';
 import { buildBaseScene } from './game/baseScene.js';
@@ -35,7 +36,7 @@ import { RES, loadSettings, saveSettings } from './ui/settings.js';
 const SCENE = ['sky', 'mode', 'sun', 'earth', 'curv', 'fog', 'fogDensity', 'occTex'], FLASH = new Set(['pickup', 'flag', 'golf', 'area']);
 // Footsteps on the ground play every STRIDE metres walked, at STEP_VOL.
 const STRIDE = 1.6, STEP_VOL = .4;
-const BACK = ['the wreck', 'the crater rim', 'the lift', 'the comms room door', 'the cell'];
+const BACK = ['the wreck', 'the crater rim', 'the lift', 'the comms room door', 'the cell', 'the hangar door', 'the crater rim'];
 const IDLE = { fwd: 0, strafe: 0, run: false, jump: false, fire: false, use: false, weapon: -1, wheel: 0 };
 const HELP = 'Click to look \u00b7 WASD move \u00b7 Shift run \u00b7 Space jump \u00b7 E use \u00b7 1-3 weapons \u00b7 mouse fire \u00b7 Esc pause';
 const hud = createHud(), canvas = document.getElementById('c');
@@ -66,7 +67,7 @@ function boot() {
   const speech = createSpeech();
   // The music map: the title the surface song, the opening none until its title drop, play the area's song (the hold's on hold,
   // none in Houston's call), the end screen the hold music. Asked every frame; the engine ignores a repeat.
-  const MUSIC = ['surface', 'crater', 'base', 'base', 'base'];
+  const MUSIC = ['surface', 'crater', 'base', 'base', 'base', 'crater', 'surface'];
   const music = () => audio.song(state === 'title' || state === 'opening' && run.titled ? 'surface' : state === 'play' ? run.F.ko ? null : run.F.hold ? 'hold' : MUSIC[run.F.area] : state === 'end' ? 'hold' : null);
   let S = loadSettings(store), paused = false, lockLostAt = -1e9, appliedRes = -1;
   // Menu clicks run inside the fatal path too: an exception stops the loop and shows the message, as in tick.
@@ -232,6 +233,7 @@ function boot() {
       hud.prompt(F.ko ? '' : F.state === 'dead' ? 'You died. Back to ' + BACK[F.area] + '...'
         : F.lv.id === 'surface' && !F.flag.held && Math.hypot(p.x - F.flag.x, p.z - F.flag.z) < 2.2 ? '[E] grab the flag'
         : canBang(F) ? '[E] bang on the bars'
+        : atExit(F) ? '[E] take the lift'
         : F.area === 1 && Math.hypot(p.x - U.x, p.z - U.z) <= DOOR_REACH ? '[E] enter the hangar'
         : d && !F.hold && Math.hypot(p.x - d.x, p.z - d.z) <= HOLD.reach ? '[E] call Houston'
         : F.hold ? 'ON HOLD ' + fmtTime(F.hold.t) : '');
@@ -294,6 +296,10 @@ function boot() {
     door, enter, warp, comms, hurt: n => hurtPlayer(run.F, n, 0, 0, 0), god: on => { run.F.god = on; },
     // Straight into the prison's cell (area 4), stripped as the knock-out leaves you.
     prison: () => skipTo(run.F, 4),
+    // Up the exit lift: from before the prison, into the cell first; the bars opened, you at the lift, one E.
+    lift: () => { const F = run.F, e = exitOf(F.world.prisonMap); if (F.area < 4) skipTo(F, 4); if (F.cell.shut) openBars(F); place(e.x + 1, e.z, 0); stepFight(F, { ...IDLE, use: true }, .001); },
+    // The start of the climb (area 5) or the dash (area 6).
+    climb: () => skipTo(run.F, 5), dash: () => skipTo(run.F, 6),
     // 1.2 m inside the bars facing them; with press, one E.
     bang: (press = true) => { const F = run.F, b = F.world.prisonMap.bars; place(b.x - b.dx * 1.2, b.z - b.dz * 1.2, Math.atan2(-b.dx, -b.dz));
       if (press) stepFight(F, { ...IDLE, use: true }, .001); },

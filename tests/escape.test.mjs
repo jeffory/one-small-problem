@@ -1,6 +1,6 @@
 import test from 'node:test'; import assert from 'node:assert/strict'; import { generateWorld } from '../src/gen/world.js'; import { BASE } from '../src/gen/base.js';
-import { AREAS, LEVEL, GRAVITY, makeLevel, areaStart, stintEnd } from '../src/game/areas.js'; import { lineOfSight, updateField, UNK } from '../src/game/nav.js'; import { give } from '../src/game/weapons.js';
-import { createFight, stepFight, hurtPlayer, skipTo, openBars, canBang, PICKUP, DEATH_TIME } from '../src/game/fight.js'; import { hurtAlien } from '../src/game/aliens.js'; import { MAX_CELLS } from '../src/game/weapons.js'; import { dawdling } from '../src/game/radio.js'; import { KO, BREAK } from '../src/game/escape.js';
+import { AREAS, LEVEL, AREA_TEXT, GRAVITY, makeLevel, areaStart, stintEnd, advanceArea, wayTarget, wayfind } from '../src/game/areas.js'; import { lineOfSight, updateField, UNK } from '../src/game/nav.js'; import { give } from '../src/game/weapons.js';
+import { createFight, stepFight, hurtPlayer, skipTo, openBars, canBang, atExit, PICKUP, DEATH_TIME } from '../src/game/fight.js'; import { hurtAlien } from '../src/game/aliens.js'; import { MAX_CELLS } from '../src/game/weapons.js'; import { dawdling } from '../src/game/radio.js'; import { KO, BREAK, EXIT, exitOf } from '../src/game/escape.js';
 const W = generateWorld('APOLLO-4471'), P = W.prisonMap, idle = { fwd: 0, strafe: 0, run: false, jump: false, fire: false, use: false, weapon: -1, wheel: 0 };
 const run = (F, inp, secs, dt = 1 / 60) => { for (let t = 0; t < secs; t += dt) stepFight(F, inp, dt); };
 const put = (F, x, z) => Object.assign(F.player, { x, z, y: F.lv.ground(x, z), vx: 0, vy: 0, vz: 0, kx: 0, kz: 0 });
@@ -53,4 +53,33 @@ test('the shut cell nudges every BREAK.idle s with no dawdling; none after the b
   const F = cellF(), ev = []; for (let t = 0; t < 2 * BREAK.idle + 1; t += 1 / 30) { stepFight(F, idle, 1 / 30); ev.push(...F.events.filter(e => e.type === 'nudge').map(e => e.n)); F.events.length = 0; }
   assert.deepEqual(ev, [1, 2]); assert.equal(dawdling('play', F), false); atBars(F); stepFight(F, { ...idle, use: true }, 1 / 60); F.events.length = 0;
   run(F, idle, BREAK.open + .1); assert.ok(!F.events.some(e => e.type === 'nudge')); F.god = true; run(F, idle, BREAK.pa); assert.ok(F.events.some(e => e.type === 'pa')); });
-test('arriving anywhere but the prison clears the cell (areas 5-6 do not exist yet, so a hook lands on 3)', () => { const F = cellF(); assert.ok(F.cell); skipTo(F, 3); assert.equal(F.cell, null); });
+test('arriving anywhere but the prison clears the cell ', () => { const F = cellF(); assert.ok(F.cell); skipTo(F, 3); assert.equal(F.cell, null); });
+
+test('stintEnd stops at the last area and rejects an area that does not exist', () => {
+  assert.deepEqual([stintEnd(5), stintEnd(6)], [6, 6]); assert.throws(() => stintEnd(LEVEL.length)); assert.throws(() => stintEnd(-1)); });
+test('areas 5-6 on the surface: the climb starts at the hangar door facing out, the dash at the rim facing your lander', () => {
+  assert.deepEqual(AREAS, ['surface', 'crater', 'base', 'comms', 'prison', 'climb', 'dash']); assert.deepEqual(LEVEL.slice(4), ['prison', 'surface', 'surface']);
+  assert.deepEqual(AREA_TEXT.slice(4), ['THE CELLS', 'THE CLIMB', 'THE DASH']); assert.equal(EXIT.reach, 2.5); const U = W.crater.use, d = W.crater.door, T = W.crater.top, s6 = areaStart(W, 6);
+  assert.deepEqual(areaStart(W, 5), { x: U.x, z: U.z, dx: d.dx, dz: d.dz }); const l = Math.hypot(W.lander.x - T.x, W.lander.z - T.z);
+  assert.deepEqual([s6.x, s6.z], [T.x, T.z]); assert.ok(Math.abs(s6.dx - (W.lander.x - T.x) / l) < 1e-12 && Math.abs(s6.dz - (W.lander.z - T.z) / l) < 1e-12);
+  const F = createFight(W, 5), n1 = W.plan.encounters.reduce((s, e) => s + e.aliens.length, 0);
+  assert.ok(F.aliens.length > 0 && F.aliens.every(a => (a.area === 5 || a.area === 6) && a.id > n1)); assert.ok(F.balls.every(b => b.id === 6)); });
+test('skipTo starts a new stint fresh, at the area start; a walk within a stint keeps its level (pre-flight F1)', () => {
+  const F = createFight(W); skipTo(F, 6); assert.deepEqual([F.area, F.lv.id], [6, 'surface']); assert.ok(near(F.player, areaStart(W, 6), 1e-9), 'at the rim, not the wreck');
+  const G = createFight(W); skipTo(G, 5); assert.ok(near(G.player, W.crater.use, 1e-9)); const lv = G.lv, B = W.base; put(G, B.x + B.R * 1.01, B.z); stepFight(G, idle, 1 / 60); assert.deepEqual([G.area, G.lv === lv], [6, true]); });
+test('a skip from the cell to the dash leaves no cell and no bars (spec 5)', () => {
+  const F = cellF(); skipTo(F, 6); assert.deepEqual([F.area, F.lv.id, F.cell, F.lv.bars ?? null], [6, 'surface', null, null]); assert.ok(near(F.player, areaStart(W, 6), 1e-9)); });
+test('E at the exit lift takes you up to the climb: a fresh surface at the hangar door', () => {
+  const F = cellF(), e = exitOf(P); openBars(F); put(F, e.x + 1, e.z); assert.ok(atExit(F)); stepFight(F, { ...idle, use: true }, 1 / 60);
+  assert.deepEqual([F.area, F.lv.id, F.gravity, F.cell], [5, 'surface', GRAVITY.surface, null]); assert.ok(near(F.player, W.crater.use, 1e-9));
+  assert.ok(F.events.some(v => v.type === 'area' && v.area === 5 && v.level && v.text === 'THE CLIMB')); assert.deepEqual(F.entry.owned, F.ars.owned); });
+test('the exit lift needs you within reach, alive, in play and in the prison', () => {
+  const F = cellF(), e = exitOf(P); put(F, e.x + EXIT.reach + .5, e.z); assert.equal(atExit(F), false); stepFight(F, { ...idle, use: true }, 1 / 60); assert.equal(F.area, 4);
+  put(F, e.x + 1, e.z); F.state = 'dead'; assert.equal(atExit(F), false); });
+test('back the way you came: E at the door does nothing in the climb; over the rim is the dash, back down stays the dash (Review Focus 4)', () => {
+  const F = createFight(W, 5), B = W.base; stepFight(F, { ...idle, use: true }, 1 / 60); assert.deepEqual([F.area, F.lv.id], [5, 'surface']);
+  assert.deepEqual([advanceArea(W, 5, B.x, B.z), advanceArea(W, 5, B.x + B.R * 1.01, B.z), advanceArea(W, 6, B.x, B.z)], [5, 6, 6]);
+  const G = createFight(W, 6); put(G, B.x + B.R * .9, B.z); stepFight(G, idle, 1 / 60); assert.equal(G.area, 6); assert.deepEqual(wayTarget(W, 6, G.player), { x: W.escape.site.x, z: W.escape.site.z }); });
+test('the arrow climbs the switchback to the rim, then points at the rescue site; none in the prison', () => {
+  const K = W.crater.path, n = K.length, vx = i => ({ x: K[i][0], z: K[i][1] }); for (let i = n - 1; i > 1; i--) assert.deepEqual(wayTarget(W, 5, vx(i)), vx(i - 1), `${i}`);
+  const t = wayTarget(W, 5, vx(1)); assert.deepEqual([t.x, t.z], [W.crater.top.x, W.crater.top.z]); assert.equal(wayTarget(W, 4, P.start), null); assert.ok(wayfind(createFight(W, 5))); });

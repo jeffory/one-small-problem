@@ -14,7 +14,7 @@ import { SCRIPT, CUES } from './script.js';
 export const RADIO = { key: .25, gap: .5, min: 1.6, cps: 14, slack: 1.5, pad: 2, stale: 5, chat: 4, low: 30, dawdle: 50, multi: [3, 4] };
 const EPS = 1e-9, NONE = Object.freeze([]), PROGRESS = new Set(['kill', 'pickup', 'flag', 'golf', 'area', 'restart', 'hold']);
 const PLAIN = { flag: 'grab', dead: 'dead', restart: 'restart', boom: 'boom', hold: 'hold', holdmsg: 'holding', bang: 'bang', guard: 'guard', freed: 'freed', pa: 'pa' };
-const AREA_CUES = new Set(['crater', 'base', 'comms']);
+const AREA_CUES = new Set(['crater', 'base', 'comms', 'climb', 'dash']);
 
 // R.q: the lines waiting, {id, key, who (a WHO letter), text, crit, at (R.clock when cued), voiced}; R.cur: the line on the air.
 // _t: when the phase began; _quiet: no reaction keys up before it; _used: once cues spent; _next: when each cooling cue is allowed

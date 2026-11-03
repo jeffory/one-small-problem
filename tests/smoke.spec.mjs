@@ -415,3 +415,8 @@ test('the bars open: the prompt, a bang, the Switchboard, a guard, the bars drop
   await page.evaluate(() => window.ospTest.bang(false)); await expect(page.locator('#prompt')).toHaveText('[E] bang on the bars'); await page.evaluate(() => window.ospTest.bang());
   await expect.poll(() => page.evaluate(() => window.ospTest.radio().line)).toContain('PRISONER. QUIET.'); await page.evaluate(s => window.ospTest.ff(s), BREAK.open + .2);
   const f = await fight(page); expect([f.cell.shut, f.cell.bang > BREAK.open]).toEqual([false, true]); expect(errors).toEqual([]); });
+
+test('the lift to the climb: up outside the hangar door, the surface palette-true, the arrow showing (Plan 6)', async ({ page }) => {
+  const errors = watchErrors(page); await start(page); await page.evaluate(() => window.ospTest.lift()); await expect.poll(() => area(page)).toBe('climb');
+  await expect(page.locator('#way')).toBeVisible(); expect(await page.evaluate(() => window.ospTest.audio().air)).toBe(false);
+  const s = await page.evaluate(() => window.ospTest.capture()); expect(s.inPalette).toBe(1); expect(s.colours).toBeGreaterThan(8); expect(errors).toEqual([]); });

@@ -8,7 +8,7 @@ export const CUES = {
   hold: { seq: 1 }, holding: { crit: 1 }, houston: { seq: 1 }, rescue: { seq: 1 },
   grab: { once: 1 }, pistol: { once: 1 }, scatter: { once: 1 }, tape: { cool: 20, p: .6 }, cells: { cool: 20, p: .5 }, low: { cool: 25 }, fall: { cool: 20 },
   first: { once: 1 }, brute: { cool: 20, p: .8 }, floater: { cool: 30, p: .7 }, multi: { cool: 20 }, kill: { cool: 15, p: .2 }, boom: { cool: 20, p: .5 },
-  golf: { at: 1 }, dawdle: {}, crater: {}, base: {}, comms: {}, dead: {}, restart: { p: .5 },
+  golf: { at: 1 }, dawdle: {}, crater: {}, base: {}, comms: {}, climb: {}, dash: { seq: 1 }, dead: {}, restart: { p: .5 },
   bang: { crit: 1 }, nudge: { at: 1 }, guard: { crit: 1 }, freed: { seq: 1 }, pa: { cool: 30 } };
 export const SCRIPT = {
   touchdown: ["Y|Contact light. Engine stop.", "H|We copy, you're down. Beautiful work."],
@@ -79,4 +79,6 @@ export const SCRIPT = {
   guard: ["H|One guard, coming to check on you. You have a flag pole. We like those odds."],
   freed: ["S|PRISONER OUT OF BOUNDS. PLEASE REMAIN CALM.", "H|Taken out with a flag pole. Somewhere a historian just fainted."],
   pa: ["S|ATTENTION. A PRISONER IS LOOSE. DO NOT FEED THE PRISONER.", "S|REMINDER. THE INTERROGATION CHAIR IS NOT FOR STAFF USE.", "S|WILL THE OWNER OF THE COW PLEASE COLLECT THE COW.", "S|ALL GUARDS TO CELL ONE. ALL GUARDS. ANY GUARDS.", "S|THIS FACILITY HAS GONE ZERO DAYS WITHOUT AN ESCAPE.", "S|PLEASE RETURN TO YOUR CELL. THANK YOU FOR YOUR COOPERATION."],
+  climb: ["H|That lift came up in the crater. You're right where you went in.", "H|Same switchback, other direction. Mind the drop.", "Y|Houston, I'm out. Heading up.", "H|Up the path. You know about the drop."],
+  dash: ["H|Rescue is on final, coming down by your lander.", "H|It's the same model as yours. Try not to let them blow this one up."],
   rescue: ["H|Copy. We heard. Rescue vehicle is go, touchdown at your lander in twenty min\u2014"] }; // cut off: its talk ending is the knock-out

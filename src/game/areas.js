@@ -1,17 +1,23 @@
 // The areas on their levels. A level is what the fight steps on: its ground and ceiling, bound, gravity, nav grid and plan.
-// A stint is a run of consecutive areas on one level (0-1, 2-3, 4): it is entered fresh, at its first area's start.
+// A stint is a run of consecutive areas on one level (0-1, 2-3, 4, 5-6): it is entered fresh, at its first area's start.
 // Pure: no DOM, GPU or clock.
 import { sampleGround, N, HALF, MAP_MARGIN, MAX_STEP } from '../gen/surface.js';
 import { BASE } from '../gen/base.js';
 
-export const AREAS = ['surface', 'crater', 'base', 'comms', 'prison'];
-export const LEVEL = ['surface', 'surface', 'base', 'base', 'prison'];
-export const AREA_TEXT = ['', 'THE CRATER', 'THE BASE', 'THE COMMS ROOM', 'THE CELLS'];
+export const AREAS = ['surface', 'crater', 'base', 'comms', 'prison', 'climb', 'dash'];
+export const LEVEL = ['surface', 'surface', 'base', 'base', 'prison', 'surface', 'surface'];
+export const AREA_TEXT = ['', 'THE CRATER', 'THE BASE', 'THE COMMS ROOM', 'THE CELLS', 'THE CLIMB', 'THE DASH'];
+// The areas on the crater's switchback, where a fall is a hard landing; elsewhere you take none (the surface is soft).
+export const CRATER_AREAS = [1, 5];
 // Gravity per level (the scenes read it too); WAKE: how near an encounter's centre (m) its aliens wake before it is alerted.
 export const GRAVITY = { surface: 3.0, base: 9.0, prison: 9 };
 export const WAKE = { surface: 60, base: 30, prison: 30 };
 // The last area of k's stint.
-export const stintEnd = k => { while (LEVEL[k + 1] === LEVEL[k]) k++; return k; };
+export const stintEnd = k => {
+  if (!(k >= 0 && k < LEVEL.length)) throw new Error('no area ' + k);
+  while (k < LEVEL.length - 1 && LEVEL[k + 1] === LEVEL[k]) k++;
+  return k;
+};
 
 // The base tile index nearest (x, z), or -1 outside the grid.
 const tile = (M, x, z) => {
@@ -39,32 +45,44 @@ export function setBars(lv, shut) {
   if (lv.bars) for (const t of lv.bars) lv.grid[t] = shut ? BASE.wall : lv.map.floor[t];
 }
 
-const START = [w => w.spawn, w => w.crater.top, w => w.baseMap.start, w => w.baseMap.commsDoor, w => w.prisonMap.start];
+const START = [w => w.spawn, w => w.crater.top, w => w.baseMap.start, w => w.baseMap.commsDoor, w => w.prisonMap.start,
+  w => ({ x: w.crater.use.x, z: w.crater.use.z, dx: w.crater.door.dx, dz: w.crater.door.dz }), w => {
+    const T = w.crater.top, dx = w.lander.x - T.x, dz = w.lander.z - T.z, l = Math.hypot(dx, dz);
+    return { x: T.x, z: T.z, dx: dx / l, dz: dz / l };
+  }];
 export const areaStart = (world, k) => START[k](world);
 
-// Areas only advance: over the base crater's rim into the crater, and onto a comms room tile in the base.
+// Areas only advance: over the base crater's rim into the crater, onto a comms room tile in the base, and out over the rim again
+// (from the climb) into the dash.
 export function advanceArea(world, k, x, z) {
   const B = world.base, M = world.baseMap;
   if (k === 0 && Math.hypot(x - B.x, z - B.z) < B.R) return 1;
   if (k === 2) { const t = tile(M, x, z); if (t >= 0 && M.room[t] === M.crit.at(-1)) return 3; }
+  if (k === 5 && Math.hypot(x - B.x, z - B.z) >= B.R) return 6;
   return k;
 }
 
 // The wayfinding arrow (Plan 5). Within WAY.near m of the target it hides.
 export const WAY = { near: 12 };
-// Where the arrow points from p: only the outdoor areas have a goal. The crater follows the switchback: the end of the segment p is
+// Where the arrow points from p: only the outdoor areas have a goal. A switchback walk (follow) goes to the end of the segment p is
 // nearest (by projection, so a long leg is not mistaken for its neighbour), or the vertex after it once p is within WAY.near of
-// that end; after the last vertex, the door. So the hide rule only ever applies at the door.
-export function wayTarget(world, k, p) {
-  if (k === 0) return world.crater.top;
-  if (k !== 1) return null;
-  const P = world.crater.path; let seg = 0, best = Infinity;
+// that end; after the last vertex, end. So the hide rule only ever applies at the end. The crater's way down ends at the door, the
+// climb is the same path reversed, ending at the rim, and the dash points at the rescue site.
+function follow(P, p, end) {
+  let seg = 0, best = Infinity;
   for (let i = 0; i + 1 < P.length; i++) {
     const ax = P[i][0], az = P[i][1], ex = P[i + 1][0] - ax, ez = P[i + 1][1] - az, t = Math.max(0, Math.min(1, ((p.x - ax) * ex + (p.z - az) * ez) / (ex * ex + ez * ez)));
     const d = Math.hypot(ax + ex * t - p.x, az + ez * t - p.z); if (d < best) { best = d; seg = i; }
   }
   let n = seg + 1; if (Math.hypot(P[n][0] - p.x, P[n][1] - p.z) < WAY.near) n++;
-  return n < P.length ? { x: P[n][0], z: P[n][1] } : world.crater.use;
+  return n < P.length ? { x: P[n][0], z: P[n][1] } : end;
+}
+export function wayTarget(world, k, p) {
+  if (k === 0) return world.crater.top;
+  if (k === 1) return follow(world.crater.path, p, world.crater.use);
+  if (k === 5) return follow(world.crater.path.slice().reverse(), p, world.crater.top);
+  if (k === 6) return { x: world.escape.site.x, z: world.escape.site.z };
+  return null;
 }
 // null, or { ang, m }: the target's bearing from where you face (positive to the right, in (-pi, pi]) and its distance in whole metres.
 export function wayfind(F) {

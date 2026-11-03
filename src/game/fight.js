@@ -13,10 +13,10 @@ import { stepBolts, groundNormal } from './bolts.js';
 import { lineOfSight, createField, updateField } from './nav.js';
 import { worldSpheres } from './rigs.js';
 import { ALIENS, createAlien, stepAlien, hurtAlien, move, level, muzzleAt } from './aliens.js';
-import { AREAS, AREA_TEXT, LEVEL, makeLevel, areaStart, advanceArea, stintEnd, setBars } from './areas.js';
+import { AREAS, AREA_TEXT, CRATER_AREAS, LEVEL, makeLevel, areaStart, advanceArea, stintEnd, setBars } from './areas.js';
 import { K } from '../gen/base.js';
 import { HOLD, planWaves, dishOf } from './hold.js';
-import { KO, BREAK } from './escape.js';
+import { KO, BREAK, EXIT, exitOf } from './escape.js';
 
 // Alien drops (pistol, scatter, flCells) are 20% up on Plan 2's 20, 16 and 15 after the first play-test (H5). Tape drops (Plan 5) come from the sim's
 // F.rng, not generation, so the goldens are untouched: tapeDrop is the chance per alien type, tapeOff the distance it lies from another drop.
@@ -82,6 +82,9 @@ function arrive(F, k) {
   const freed = !!F.cell?.freed;
   F.cell = { shut: !freed, bang: null, idle: 0, nudges: 0, pa: 0, freed }; setBars(F.lv, !freed);
 }
+
+// Whether E at the prison's exit lift would take you up now: in play, alive, within EXIT.reach of it.
+export const atExit = F => { const e = F.area === 4 && F.state === 'play' && !F.ko && exitOf(F.world.prisonMap); return !!e && Math.hypot(F.player.x - e.x, F.player.z - e.z) <= EXIT.reach; };
 
 // Whether E bangs on the bars now: in the shut cell, once, near them and facing them.
 export function canBang(F) {
@@ -209,7 +212,7 @@ export function stepFight(F, input, dt) {
   F.time += dt; F.shotT += dt; if (!F.ko && !F.won) F.run += dt;
   if (F.state === 'dead') {
     F.deadT += dt;
-    stepPlayer(F.player, STILL, dt, F.lv.ground, F.lv.bound, F.gravity, F.lv.ceil, F.area === 1 ? FALL.safe : Infinity);
+    stepPlayer(F.player, STILL, dt, F.lv.ground, F.lv.bound, F.gravity, F.lv.ceil, CRATER_AREAS.includes(F.area) ? FALL.safe : Infinity);
     flyBolts(F, dt); stepParts(F, dt); stepBooms(F, dt);
     if (F.deadT >= DEATH_TIME) restartArea(F);
     return;
@@ -226,6 +229,7 @@ export function stepFight(F, input, dt) {
   }
   if (input.use && F.area === 1 && Math.hypot(p.x - U.x, p.z - U.z) <= DOOR_REACH) enterArea(F, 2);
   if (input.use && F.area === 3 && !F.hold && F.state === 'play') { const d = dishOf(F.world.baseMap); if (Math.hypot(p.x - d.x, p.z - d.z) <= HOLD.reach) startHold(F, d); }
+  if (input.use && atExit(F)) enterArea(F, 5);
   if (input.use && canBang(F)) { F.cell.bang = 0; F.events.push({ type: 'bang' }); }
   const lv = F.lv;
   coolWeapon(A, dt);
@@ -233,7 +237,7 @@ export function stepFight(F, input, dt) {
   // 3. player, then the area you walked into (only the living get here: a dead body never changes area), then a hard landing's
   // cost (R18), after the area so a fatal fall over the rim restarts you at the crater top. Walking only ever advances within a
   // level (over the rim, through the comms door), so lv stays this step's level.
-  stepPlayer(p, input, dt, lv.ground, lv.bound, F.gravity, lv.ceil, F.area === 1 ? FALL.safe : Infinity);
+  stepPlayer(p, input, dt, lv.ground, lv.bound, F.gravity, lv.ceil, CRATER_AREAS.includes(F.area) ? FALL.safe : Infinity);
   const k = advanceArea(F.world, F.area, p.x, p.z); if (k > F.area) enterArea(F, k);
   if (p.land > FALL.safe) hurtPlayer(F, FALL.dmg * (p.land - FALL.safe), 0, 0, 0, 'fall');
   if (F.area === 4 && F.state === 'play' && !F.ko) stepCell(F, dt);
