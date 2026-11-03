@@ -37,10 +37,11 @@ const smooth = x => x * x * (3 - 2 * x);
 export const shipLift = t => t >= SHIP.descent ? 0 : SHIP.alt * (1 - t / SHIP.descent) ** 2;
 // The foot of the ship S's ladder, 3.9 m out of its front (the opening's EGRESS[3]).
 export const ladderAt = S => ({ x: S.at.x + 3.9 * S.at.dx, z: S.at.z + 3.9 * S.at.dz });
-// Where the flare is, back s before now (its smoke trail), or null before touchdown and once it is down.
+// Where the flare is, back s before now (its smoke trail), or null before touchdown, once it is down and once you are aboard (the
+// ship's clock stops there, and the rising cabin would pass through a flare still over it).
 export function flareAt(S, back = 0) {
   const a = S.t - SHIP.descent - back, F = FLARE;
-  if (!(a >= 0 && a <= F.rise + F.fall)) return null;
+  if (S.aboard || !(a >= 0 && a <= F.rise + F.fall)) return null;
   return { x: S.at.x, z: S.at.z, y: S.at.y + F.up * (a < F.rise ? smooth(a / F.rise) : 1 - (a - F.rise) / F.fall) };
 }
 // The rush's spawn points round at: one in each of RING.n equal slices of the circle, RING.r m out.

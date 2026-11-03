@@ -81,12 +81,13 @@ function populate(F, from) {
 // On arriving in area k, by any way in (a new fight, entering it, a restart): in the dash (area 6) a fresh rescue ship starts down
 // at the rescue site, its clock full; the cell's bars shut behind you in the prison (area 4); out of them there is no ship or cell.
 // The ship: t, seconds since you arrived; left, the clock; landed; calls, the clock's marks called; at, the site; W, its lander
-// (lander.js, turned so its ladder faces the rim); ring, the rush once it starts (see stepShip), else null.
+// (lander.js, turned so its ladder faces the rim); ring, the rush once it starts (see stepShip), else null; aboard, you have
+// boarded it (its flare is out).
 function arrive(F, k) {
   F.ship = null;
   if (k === 6) {
     const at = F.world.escape.site, W = createWreck(F.world, at, Math.atan2(at.dx, at.dz));
-    W.lift = SHIP.alt; F.ship = { t: 0, left: SHIP.clock, landed: false, calls: 0, at, W, ring: null };
+    W.lift = SHIP.alt; F.ship = { t: 0, left: SHIP.clock, landed: false, calls: 0, at, W, ring: null, aboard: false };
   }
   if (k !== 4) { F.cell = null; return; }
   const freed = !!F.cell?.freed;
@@ -249,7 +250,7 @@ export function stepFight(F, input, dt) {
   if (input.use && F.area === 3 && !F.hold && F.state === 'play') { const d = dishOf(F.world.baseMap); if (Math.hypot(p.x - d.x, p.z - d.z) <= HOLD.reach) startHold(F, d); }
   if (input.use && atExit(F)) enterArea(F, 5);
   if (input.use && canBang(F)) { F.cell.bang = 0; F.events.push({ type: 'bang' }); }
-  if (input.use && atLadder(F)) { F.won = true; F.wonAt = F.run; F.events.push({ type: 'board' }); }
+  if (input.use && atLadder(F)) { F.won = true; F.wonAt = F.run; F.ship.aboard = true; F.events.push({ type: 'board' }); }
   const lv = F.lv;
   coolWeapon(A, dt);
   if (input.fire && A.cur >= 0 && A.cool <= 0) fire(F);

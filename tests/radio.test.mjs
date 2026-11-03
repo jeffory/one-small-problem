@@ -83,6 +83,15 @@ test('once boarded, a pickup, a kill, a hurt, a golf ball, a clock mark or the r
   R = createRadio(always); radioEvents(R, [...ev, { type: 'board' }], F); assert.deepEqual(R.q.map(l => l.key), ['board']);
   assert.deepEqual([SCRIPT.board, SCRIPT.sting], [["P|Welcome aboard. Strap in. Don't touch anything."], ['Y|Houston\u2026 we have one more small problem.']]);
   assert.ok(CUES.board.seq && CUES.sting.seq); });
+// Review fix (Task 9): boarding drops the reactions waiting (radioEvents on 'board') and the shell cuts one on the air
+// (cutReaction, as at Houston), so neither airs in the lift-off: the boarding line keys at once, the sting as it is cued
+test('boarding drops a waiting reaction and cuts one on the air: only the boarding line, then the sting within RADIO.gap of its cue (Plan 6)', () => {
+  const F = { ko: null, won: true, hp: 100, state: 'play' }, dt = 1 / 60;
+  for (const onAir of [false, true]) {
+    const R = createRadio(always), keys = [], step = s => { for (let t = 0; t < s - 1e-9; t += dt) for (const a of stepRadio(R, dt, false, false)) if (a.do === 'key') keys.push([R.clock, a.line.key]); };
+    radioCue(R, 'low'); step(onAir ? .5 : 5); if (!onAir) { radioCue(R, 'fall'); step(.5); } // 'fall' waits in the quiet after 'low'; or 'low' is still talking
+    const n = keys.length; cutReaction(R); radioEvents(R, [{ type: 'board' }], F); step(6); radioCue(R, 'sting'); const ts = R.clock; step(10);
+    assert.deepEqual(keys.slice(n).map(k => k[1]), ['board', 'sting'], `on the air: ${onAir}`); assert.ok(keys.at(-1)[0] - ts <= RADIO.gap + dt + 1e-9, `on the air: ${onAir}`); } });
 // R18 (b): Houston picking up cuts a reaction on the air, so the punchline never waits behind it (a voice whose onend never comes
 // would hold a reaction for its whole fallback); a story line on the air plays on, and with nothing on the air there is nothing to cut
 import { cutReaction } from '../src/game/radio.js'; import { ENDING, endingOver } from '../src/game/hold.js';

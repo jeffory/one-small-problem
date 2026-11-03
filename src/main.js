@@ -256,7 +256,10 @@ function boot() {
     }
     const R = run.R;
     if (state === 'play' && F.events.some(e => e.type === 'ko')) { audio.sfx('thud'); speech.cancel(); radioDo(R, silence(R)); finish(); }
-    if (state === 'play' && F.events.some(e => e.type === 'board')) { state = 'liftoff'; run.L = createLiftoff(F); run.fade = null; hud.mode('none'); hud.prompt(''); }
+    if (state === 'play' && F.events.some(e => e.type === 'board')) { // a reaction on the air is cut, as at Houston: nothing but story airs in the lift-off
+      state = 'liftoff'; run.L = createLiftoff(F); run.fade = null; hud.mode('none'); hud.prompt('');
+      const cut = cutReaction(R); if (cut.length) { speech.cancel(); radioDo(R, cut); }
+    }
     if (R && (state === 'opening' || state === 'play' || state === 'liftoff')) { radioEvents(R, F.events, F); radioDo(R, stepRadio(R, dt, speech.ok, dawdling(state, F))); }
     if (state === 'play' && F.events.some(e => e.type === 'houston')) { const cut = cutReaction(R); if (cut.length) { speech.cancel(); radioDo(R, cut); } }
     if (state === 'liftoff') {
@@ -333,9 +336,9 @@ function boot() {
     cue: k => run.R && radioCue(run.R, k),
     // At the rescue ship's ladder facing it, one E (it boards once the ship is down); nothing outside the dash.
     board: () => { const F = run.F, S = F.ship; if (!S) return; const l = ladderAt(S); place(l.x, l.z, Math.atan2(S.at.dx, S.at.dz)); stepFight(F, { ...IDLE, use: true }, .001); },
-    // The clocks that pause stops: the opening's, the hold's, Houston's call's (to the knock-out) and the lift-off's, each null when
-    // not running.
-    clock: () => ({ opening: run.O?.t ?? null, hold: run.F.hold?.t ?? null, ko: run.F.ko?.t ?? null, liftoff: run.L?.t ?? null }),
+    // The clocks that pause stops: the opening's, the hold's, Houston's call's (to the knock-out), the lift-off's and its fade's
+    // (s into the fade to the end screen), each null when not running.
+    clock: () => ({ opening: run.O?.t ?? null, hold: run.F.hold?.t ?? null, ko: run.F.ko?.t ?? null, liftoff: run.L?.t ?? null, fade: run.fade }),
   };
 
   // --- the frame loop: advance the state, then draw the current run, in every state ---

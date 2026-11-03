@@ -134,3 +134,7 @@ test('the lift-off: the ascent stage rises with you, the aliens turn and wave, t
   for (let t = 0; t < LIFT.sting + 1; t += 1 / 30) { stepLiftoff(L, 1 / 30); ev.push(...L.events.map(e => e.key)); L.events.length = 0; waved = Math.max(waved, a.wave); }
   assert.ok(Math.abs(F.ship.W.up - LIFT.acc * L.t * L.t / 2) < 1e-9 && F.player.y - y0 > 10); assert.deepEqual(ev, ['click', 'sting']); assert.ok(L.sting && waved > .9);
   assert.ok(Math.abs(Math.atan2(st.x - a.x, st.z - a.z) - a.yaw) < 1e-9); });
+test('once you are aboard the flare is out, so the rising cabin never meets it (review fix)', () => {
+  const F = landed(), l = ladderAt(F.ship); run(F, idle, FLARE.rise); assert.ok(flareAt(F.ship)); put(F, l.x, l.z); stepFight(F, { ...idle, use: true }, 1 / 60);
+  assert.ok(F.won); const L = createLiftoff(F); for (let t = 0; t < LIFT.sting; t += 1 / 30) stepLiftoff(L, 1 / 30);
+  for (let k = 0; k <= FLARE.trail; k++) assert.equal(flareAt(F.ship, k * FLARE.gap), null, `${k}`); });

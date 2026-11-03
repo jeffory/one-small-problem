@@ -453,3 +453,13 @@ test('R18 moved: the end screen comes ENDING.min s after the sting once the radi
 test('R18 moved: at ENDING.max after the sting the fade starts whatever is on the air', async ({ page }) => {
   await noVoices(page); const errors = watchErrors(page); await start(page); await toLiftoff(page); const r = await throughLift(page, 3), last = r.s.at(-1);
   expect(Math.abs(r.T - ENDING.max - LIFT.fade)).toBeLessThanOrEqual(2 / 30); expect(last.line).not.toBe(null); expect([r.state, r.sub]).toEqual(['end', '']); expect(errors).toEqual([]); });
+// Review fix (Task 9): like the hold's and the knock-out's, the lift-off's clock and its fade stop while paused. The fade is entered and
+// paused in one evaluate (a synthetic Esc), so no frame can finish it first.
+test('pausing in the lift-off stops its clock and the fade to the end screen until you resume (pause, Plan 6)', async ({ page }) => {
+  await noVoices(page); const errors = watchErrors(page); await start(page); await toLiftoff(page); await page.keyboard.press('Escape'); await expect.poll(() => paused(page)).toBe(true);
+  const l = (await clock(page)).liftoff; await page.waitForTimeout(600); expect((await clock(page)).liftoff).toBe(l); await page.keyboard.press('Escape'); await expect.poll(() => paused(page)).toBe(false);
+  const f = await page.evaluate(() => { const o = window.ospTest; for (let i = 0; i < 3000 && o.clock().fade === null && o.state() === 'liftoff'; i++) o.ff(1 / 30);
+    o.ff(1 / 30); dispatchEvent(new KeyboardEvent('keydown', { code: 'Escape' })); return { fade: o.clock().fade, paused: o.paused(), state: o.state() }; });
+  expect([f.paused, f.state]).toEqual([true, 'liftoff']); expect(f.fade).toBeGreaterThan(0); await page.waitForTimeout(600);
+  expect((await clock(page)).fade).toBe(f.fade); await expect(page.locator('#end')).toBeHidden(); await page.keyboard.press('Escape');
+  await expect(page.locator('#end')).toBeVisible({ timeout: 10_000 }); expect(errors).toEqual([]); });
