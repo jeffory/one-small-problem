@@ -1,6 +1,6 @@
 import test from 'node:test'; import assert from 'node:assert/strict';
 import { generateWorld } from '../src/gen/world.js'; import { BASE } from '../src/gen/base.js';
-import { AREAS, LEVEL, GRAVITY, makeLevel, areaStart, advanceArea } from '../src/game/areas.js'; import { createFight, stepFight } from '../src/game/fight.js'; import { PLAYER } from '../src/game/player.js';
+import { AREAS, LEVEL, GRAVITY, makeLevel, areaStart, advanceArea, WAY, wayfind, wayTarget } from '../src/game/areas.js'; import { createFight, stepFight, enterArea } from '../src/game/fight.js'; import { PLAYER } from '../src/game/player.js';
 const W = generateWorld('APOLLO-4471'), M = W.baseMap, idle = { fwd: 0, strafe: 0, run: false, jump: false, fire: false, use: false, weapon: -1, wheel: 0 };
 const run = (F, inp, secs, dt = 1 / 60) => { for (let t = 0; t < secs; t += dt) stepFight(F, inp, dt); };
 const put = (F, x, z) => Object.assign(F.player, { x, z, y: F.lv.ground(x, z), vx: 0, vy: 0, vz: 0, kx: 0, kz: 0 });
@@ -49,3 +49,24 @@ test('R11: on a steep surface slope bolt, blast and goo decals face the true slo
   const B = createFight(W, 2), s = areaStart(W, 2); let x = s.x, z = s.z; // walk back from the lift centre to just short of the back wall
   while (B.lv.ground(x - s.dx * .6, z - s.dz * .6) < BASE.wall) { x -= s.dx * .1; z -= s.dz * .1; }
   for (const d of mark(B, x, z)) assert.ok(d.ny === 1 && Math.abs(d.nx) + Math.abs(d.nz) === 0, `${d.kind} ${[d.nx, d.ny, d.nz]}`); });
+
+test('the arrow points at the rim (crater.top) on the surface, in whole metres, positive to the right, for any wound yaw (Plan 5, Review Focus 2)', () => {
+  const F = createFight(W), T = W.crater.top, S = W.spawn, at = (x, z, yaw) => Object.assign(F.player, { x, z, yaw });
+  assert.equal(wayTarget(W, 0, S), T); assert.equal(wayTarget(W, 2, S), null); assert.equal(wayTarget(W, 3, S), null);
+  const y0 = Math.atan2(-(T.x - S.x), -(T.z - S.z)); at(S.x, S.z, y0); const w = wayfind(F);
+  assert.equal(w.m, Math.round(Math.hypot(T.x - S.x, T.z - S.z))); assert.ok(Math.abs(w.ang) < 1e-9);
+  for (const [dy, want] of [[Math.PI / 2, Math.PI / 2], [-Math.PI / 2, -Math.PI / 2], [Math.PI, Math.PI], [20 * Math.PI + .3, .3]]) { F.player.yaw = y0 + dy;
+    const a = wayfind(F).ang; assert.ok(Math.abs(Math.abs(a) - Math.abs(want)) < 1e-6 && (want === Math.PI || Math.sign(a) === Math.sign(want)), `${dy}: ${a}`); assert.ok(a > -Math.PI - 1e-12 && a <= Math.PI + 1e-12); }
+ });
+test('in the crater the arrow follows the switchback: the vertex after the nearest one, then the hangar door (crater.use) after the last (Plan 5, pre-flight F7)', () => {
+  const F = createFight(W), P = W.crater.path, U = W.crater.use, at = (x, z, yaw = 0) => Object.assign(F.player, { x, z, yaw }), vx = i => ({ x: P[i][0], z: P[i][1] });
+  assert.ok(P.length >= 3); for (let i = 0; i < P.length - 1; i++) assert.deepEqual(wayTarget(W, 1, vx(i)), vx(i + 1), `${i}`);
+  assert.deepEqual(wayTarget(W, 1, vx(P.length - 1)), U);
+  assert.deepEqual(wayTarget(W, 1, { x: P[0][0] + 1, z: P[0][1] }), vx(1)); // near the top: the next vertex, not the door
+  assert.deepEqual(wayTarget(W, 1, { x: U.x + 3 * (U.x - P.at(-1)[0]), z: U.z + 3 * (U.z - P.at(-1)[1]) }), U); // past the end: the door
+  enterArea(F, 1); at(P[1][0], P[1][1] + 30.4); assert.deepEqual(wayfind(F), { ang: 0, m: 30 }); // nearest is path[0], so it aims at path[1], due -z
+  const L = P.at(-1); at(U.x + 3 * (U.x - L[0]), U.z + 3 * (U.z - L[1]), Math.atan2(-(U.x - (U.x + 3 * (U.x - L[0]))), -(U.z - (U.z + 3 * (U.z - L[1]))))); const w = wayfind(F);
+  assert.ok(Math.abs(w.ang) < 1e-9 && w.m === Math.round(3 * Math.hypot(U.x - L[0], U.z - L[1]))); });
+test('the arrow hides within WAY.near of its target, when dead, and indoors (Plan 5)', () => { const F = createFight(W), T = W.crater.top;
+  assert.equal(WAY.near, 12); Object.assign(F.player, { x: T.x + WAY.near + .1, z: T.z }); assert.ok(wayfind(F)); F.player.x = T.x + WAY.near - .1; assert.equal(wayfind(F), null);
+  F.player.x = T.x + 50; F.state = 'dead'; assert.equal(wayfind(F), null); for (const k of [2, 3]) assert.equal(wayfind(createFight(W, k)), null); });

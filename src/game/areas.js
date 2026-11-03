@@ -33,3 +33,22 @@ export function advanceArea(world, k, x, z) {
   if (k === 2) { const t = tile(M, x, z); if (t >= 0 && M.room[t] === M.crit.at(-1)) return 3; }
   return k;
 }
+
+// The wayfinding arrow (Plan 5). Within WAY.near m of the target it hides.
+export const WAY = { near: 12 };
+// Where the arrow points from p: only the outdoor areas have a goal. The crater follows the switchback (the path vertex after the nearest), then the door.
+export function wayTarget(world, k, p) {
+  if (k === 0) return world.crater.top;
+  if (k !== 1) return null;
+  const P = world.crater.path; let n = 0, best = Infinity;
+  for (let i = 0; i < P.length; i++) { const d = Math.hypot(P[i][0] - p.x, P[i][1] - p.z); if (d < best) { best = d; n = i; } }
+  return n + 1 < P.length ? { x: P[n + 1][0], z: P[n + 1][1] } : world.crater.use;
+}
+// null, or { ang, m }: the target's bearing from where you face (positive to the right, in (-pi, pi]) and its distance in whole metres.
+export function wayfind(F) {
+  const t = F.state === 'play' && wayTarget(F.world, F.area, F.player);
+  if (!t) return null;
+  const p = F.player, dx = t.x - p.x, dz = t.z - p.z, d = Math.hypot(dx, dz);
+  if (d < WAY.near) return null;
+  return { ang: Math.atan2(dx * Math.cos(p.yaw) - dz * Math.sin(p.yaw), -dx * Math.sin(p.yaw) - dz * Math.cos(p.yaw)), m: Math.round(d) };
+}

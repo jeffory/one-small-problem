@@ -7,10 +7,10 @@ export const HELP_TIME = 20, STAMP_TIME = 3.5;
 
 export function createHud() {
   const $ = id => document.getElementById(id), msg = $('msg'), help = document.createElement('div'), debug = document.createElement('div');
-  const stat = $('stat'), prompt = $('prompt'), flash = $('flash'), x = $('x'), stamp = $('stamp'), sub = $('sub'), num = document.createElement('span'), rest = document.createTextNode('');
-  const MODES = { none: [], opening: [prompt, x], play: [stat, prompt, flash, x, help] };
+  const stat = $('stat'), prompt = $('prompt'), flash = $('flash'), way = $('way'), wa = $('wa'), wd = $('wd'), x = $('x'), stamp = $('stamp'), sub = $('sub'), num = document.createElement('span'), rest = document.createTextNode('');
+  const MODES = { none: [], opening: [prompt, x], play: [stat, prompt, flash, way, x, help] };
   $('hud').append(help, debug);
-  let low = false, shown = false, stampT = 0;
+  let low = false, wangle = '', wtext = '', shown = false, stampT = 0;
   const unstamp = () => { clearTimeout(stampT); stamp.style.display = 'none'; };
   return {
     help: t => { if (help.textContent !== t) help.textContent = t; },
@@ -25,6 +25,13 @@ export function createHud() {
       if (rest.data !== t) rest.data = t;
       if (low !== hp < 25) { low = hp < 25; num.style.color = low ? '#b8301a' : ''; }
     },
+    // The wayfinding arrow: null hides it; { ang, m } turns the chevron (clockwise degrees) and writes the metres, each only on change.
+    way: w => {
+      way.classList.toggle('on', !!w); if (!w) return;
+      const r = `rotate(${Math.round(w.ang * 180 / Math.PI)}deg)`, t = `${w.m} m`;
+      if (r !== wangle) { wangle = r; wa.style.transform = r; }
+      if (t !== wtext) { wtext = t; wd.textContent = t; }
+    },
     prompt: t => { if (prompt.textContent !== t) prompt.textContent = t; },
     // The radio's subtitle, "SPEAKER: line", with the red keyed dot while keyed ('' takes it down).
     sub: (t, keyed) => { if (sub.textContent !== t) sub.textContent = t; sub.classList.toggle('on', !!keyed); },
@@ -37,7 +44,7 @@ export function createHud() {
     ready: () => { msg.style.display = 'none'; },
     fatal: t => {
       msg.textContent = t; msg.style.display = 'flex';
-      for (const e of [stat, prompt, flash, x, stamp, sub, $('title'), $('end'), $('pause')]) e.style.display = 'none';
+      for (const e of [stat, prompt, flash, way, x, stamp, sub, $('title'), $('end'), $('pause')]) e.style.display = 'none';
     },
   };
 }

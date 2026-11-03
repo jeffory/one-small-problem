@@ -75,7 +75,7 @@ test('weapon keys work without pointer lock; the capture click never fires (Revi
   await page.mouse.click(300, 300); await page.waitForTimeout(300); expect((await fight(page)).shots).toBe(0); });
 test('the HUD overlays let the capture click through to the canvas (M7)', async ({ page }) => {
   await start(page); await page.evaluate(() => window.ospTest.grab()); await page.waitForTimeout(300);
-  const hits = await page.evaluate(() => ['hud', 'seed', 'stat', 'prompt', 'flash', 'x', 'sub'].map(id => { const r = document.getElementById(id).getBoundingClientRect();
+  const hits = await page.evaluate(() => ['hud', 'seed', 'stat', 'prompt', 'flash', 'x', 'sub', 'way'].map(id => { const r = document.getElementById(id).getBoundingClientRect();
     return r.width && r.height ? [id, document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)?.id] : null; }).filter(Boolean));
   expect(hits.length).toBeGreaterThanOrEqual(4); for (const [id, at] of hits) expect(at, id).toBe('c'); });
 test('below 25 health only the number turns red, and an unchanged status line is not rewritten (M8)', async ({ page }) => {
@@ -402,3 +402,11 @@ test('a hit reddens the edges of the frame and leaves its centre (Plan 5)', asyn
   let f = await frames(); await expect.poll(frames).toBeGreaterThan(f + 1); const a = await cap();
   await page.evaluate(() => window.ospTest.hurt(15)); f = await frames(); await expect.poll(frames).toBeGreaterThan(f + 1); const b = await cap();
   expect(b.edge - a.edge).toBeGreaterThan(.02); expect(Math.abs(b.mid - a.mid)).toBeLessThan(.01); expect(errors).toEqual([]); });
+
+test('the wayfinding arrow shows on the surface in whole metres, and hides while paused and in the base (Plan 5)', async ({ page }) => {
+  const errors = watchErrors(page), way = page.locator('#way'); await start(page);
+  await expect(way).toBeVisible(); await expect(page.locator('#wd')).toHaveText(/^\d+ m$/);
+  await page.keyboard.press('Escape'); await expect.poll(() => paused(page)).toBe(true); await expect(way).toBeHidden();
+  await page.keyboard.press('Escape'); await expect.poll(() => paused(page)).toBe(false); await expect(way).toBeVisible();
+  await page.evaluate(() => window.ospTest.enter()); await expect.poll(() => page.evaluate(() => window.ospTest.area())).toBe('base'); await expect(way).toBeHidden();
+  expect(errors).toEqual([]); });

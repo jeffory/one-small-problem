@@ -9,7 +9,7 @@ import { createGL } from './gfx/gl.js';
 import { createRenderer } from './gfx/renderer.js';
 import { createFight, stepFight, hurtPlayer, enterArea, DOOR_REACH } from './game/fight.js';
 import { createFightView, fillFrame, setScene, setWreck } from './game/fightView.js';
-import { AREAS, areaStart } from './game/areas.js';
+import { AREAS, areaStart, wayfind } from './game/areas.js';
 import { WEAPONS } from './game/weapons.js';
 import { buildSurfaceScene } from './game/surfaceScene.js';
 import { buildBaseScene } from './game/baseScene.js';
@@ -221,6 +221,7 @@ function boot() {
       const stride = Math.hypot(p.x - W.x, p.z - W.z); W.x = p.x; W.z = p.z;
       if (p.onGround && stride < 3) for (W.d += stride; W.d >= STRIDE; W.d -= STRIDE) audio.sfx('step', STEP_VOL);
       hud.status({ hp: Math.ceil(F.hp), cells: F.ars.cells, weapon: WEAPONS[F.ars.cur]?.name ?? '' });
+      hud.way(state === 'play' ? wayfind(F) : null);
       if (F.time >= HELP_TIME) hud.help('');
       for (const ev of F.events) if (FLASH.has(ev.type) && ev.text) hud.flash(ev.text);
       const d = F.area === 3 && dishOf(run.world.baseMap);
