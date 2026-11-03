@@ -4,7 +4,7 @@ import { BASE, K } from './base.js';
 import { budgetAt } from './encounters.js';
 
 // Lamp colours are the look test's. kind: 0 steady, 1 red flicker (spawn doors), 2 pulsing (reactor core).
-export const LIGHT = { amber: { col: [1.3, .8, .32], r: 8 }, teal: { col: [.35, 1.3, .85], r: 8 }, red: { col: [2.2, .25, .08], r: 5, kind: 1 }, core: { col: [.5, 2.6, 1.6], r: 12, kind: 2 } };
+export const LIGHT = { amber: { col: [1.3, .8, .32], r: 8 }, teal: { col: [.35, 1.3, .85], r: 8 }, red: { col: [2.2, .25, .08], r: 5, kind: 1 }, core: { col: [.5, 2.6, 1.6], r: 12, kind: 2 }, alarm: { col: [2.2, .25, .08], r: 8, kind: 1 } };
 // LAMP_DROP: room lamps hang this far above the floor, the look test's height (R16).
 export const LIGHT_CAP = 10, LAMP_DROP = 2.65, CORRIDOR_LAMP = 6, BASE_SCALE = .5;
 // Heights above a floor tile where the cap is sampled: a standing eye and a jumping one (pre-flight F28).
@@ -104,7 +104,7 @@ export function planBase(B) {
   for (let k = 1; k <= L - 2; k++) {
     const p = cfg.p[0] + (cfg.p[1] - cfg.p[0]) * k / (L - 1), Bk = Math.floor(budgetAt(p) * BASE_SCALE), types = [];
     let b = Bk;
-    if (Bk >= 6 && (k % 2 === 0 || p >= .8)) { types.push('br'); b -= 4; }
+    if (rooms[k].theme === cfg.brute || (Bk >= 6 && (k % 2 === 0 || p >= .8))) { types.push('br'); b -= 4; }
     if (clear[k].some(tall)) { // pre-flight F11: the rule reads the tile
       if (Bk >= 2 && b >= 2 && (k % 3 === 1 || rng.next() < .4)) { types.push('fl'); b -= 2; }
       if (Bk >= 8 && b >= 2 && rng.next() < .3) { types.push('fl'); b -= 2; }
@@ -135,6 +135,7 @@ export function planBase(B) {
   const brute = (k) => comp[k - 1].types.includes('br');
   for (let k = 1; k <= L - 3; k++) if (brute(k + 1)) take('tape', k);
   for (const r of B.side) take('tape', r);
+  for (const th of cfg.tape) take('tape', themed(th).id);
   for (const th of cfg.cells) take('cells', themed(th).id);
   for (const r of B.side) if (!golfRooms.includes(r)) take('cells', r);
 
@@ -169,5 +170,7 @@ export function planBase(B) {
     }
     return { x: (r.x0 + r.x1 - 1) / 2 - half, z: (r.z0 + r.z1 - 1) / 2 - half, p, room: k, first: false, area: cfg.area, aliens };
   });
+  // The guard (Task 3): a lone skitterer at the cell block's door, prepended with no draws.
+  if (cfg.guard) { const in1 = rooms[1].in; encounters.unshift({ x: in1.x, z: in1.z, p: cfg.p[0], room: 1, first: true, guard: true, area: cfg.area, aliens: [{ type: 'sk', x: in1.x, y: 0, z: in1.z }] }); }
   return { encounters, pickups, canisters, golf };
 }

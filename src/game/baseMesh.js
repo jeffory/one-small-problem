@@ -2,6 +2,7 @@
 // and the themed props, as two finishMesh outputs so the renderer needs two draw calls. Pure: no GL, no DOM.
 import { createMesh, quad, box, beam, prism, blob, lathe, finishMesh } from '../gfx/mesh.js';
 import { MAT } from '../gfx/materials.js';
+import { buildBars } from './props.js';
 import { K } from '../gen/base.js';
 import { makeRng } from '../gen/rng.js';
 import { vn3 } from '../gen/noise.js';
@@ -99,6 +100,34 @@ export function buildBaseMeshes(B) {
       for (let k = 0; k <= 6; k++) { const r = 1.35 * k / 6, f = r * r / 4; back.push([f, r]); front.unshift([f + .05, r]); }
       lathe(P, a, at(1), [...back, ...front], 16, MAT.hull);
       lathe(P, at(.5), at(1), [[0, .02], [1, .02]], 5, MAT.gunMetal); lathe(P, at(.95), at(1.15), [[0, .1], [1, .03]], 8, MAT.gunMetal);
+    } else if (p.kind === 'bars') {
+      buildBars(P, x, y, z, p.w, Math.abs(p.dz), Math.abs(p.dx), 2.6);
+    } else if (p.kind === 'cow') { // along the alcove, head toward +u; a is along it, c across it, both in metres from the alcove's centre
+      const ux = Math.abs(p.dz), uz = Math.abs(p.dx), at = (a, up, c = 0) => [x + ux * a + uz * c, y + up, z + uz * a + ux * c];
+      blob(P, at(0, .95), ux ? [.75, .45, .35] : [.35, .45, .75], 12, 8, MAT.hull, null);
+      blob(P, at(.82, 1.05), ux ? [.26, .24, .2] : [.2, .24, .26], 10, 7, MAT.hull, null);
+      for (const a of [-.5, .5]) for (const c of [-.2, .2]) beam(P, at(a, 0, c), at(a, .6, c), .05, MAT.gunMetal);
+      for (const c of [-.14, .14]) beam(P, at(.8, 1.25, c), at(.8, 1.55, c * 2.2), .025, MAT.gunMetal);
+    } else if (p.kind === 'chair') { // a reclined seat on a pedestal (2 x 2, 1 m tall), a probe arm down from the ceiling
+      const top = rooms[room[tileOf(x, z)]].ceil;
+      lathe(P, [x, y, z], [x, y + .85, z], [[0, .6], [.5, .3], [1, .45]], 10, MAT.gunMetal);
+      beam(P, [x - .15, y + .92, z], [x + .65, y + .88, z], .3, MAT.hull); beam(P, [x - .15, y + .95, z], [x - .65, y + 1.5, z], .3, MAT.hull);
+      beam(P, [x + .3, top, z + .5], [x + .3, y + 2.2, z + .5], .04, MAT.gunMetal); beam(P, [x + .3, y + 2.2, z + .5], [x - .05, y + 1.7, z + .15], .035, MAT.gunMetal);
+      lathe(P, [x - .05, y + 1.7, z + .15], [x - .15, y + 1.5, z + .05], [[0, .05], [1, .004]], 6, MAT.gunMetal);
+    } else if (p.kind === 'shelf') { // posts and three boards, 2 m tall, junk on every board
+      const ux = p.w > p.d ? 1 : 0, uz = 1 - ux, hl = (ux ? p.w : p.d) / 2 - .06, hs = (ux ? p.d : p.w) / 2 - .06;
+      for (const a of [-hl, hl]) for (const c of [-hs, hs]) beam(P, [x + ux * a + uz * c, y, z + uz * a + ux * c], [x + ux * a + uz * c, y + 2, z + uz * a + ux * c], .04, MAT.crate);
+      for (const up of [.1, 1, 1.9]) {
+        box(P, x - (ux ? hl : hs), y + up - .03, z - (uz ? hl : hs), x + (ux ? hl : hs), y + up + .03, z + (uz ? hl : hs), MAT.crate);
+        for (let k = 1 + rng.int(3); k > 0; k--) {
+          const a = rng.range(-hl + .2, hl - .2), sz = rng.range(.12, .3), ht = rng.range(.1, .35), cx = x + ux * a, cz = z + uz * a;
+          box(P, cx - sz, y + up + .03, cz - sz, cx + sz, y + up + .03 + ht, cz + sz, rng.next() < .5 ? MAT.foil : MAT.gunMetal);
+        }
+      }
+    } else if (p.kind === 'exit') { // the escape lift: a raised grate disc, four posts and an amber ring at 3 m
+      lathe(P, [x, y - .3, z], [x, y + .04, z], [[0, 1.6], [1, 1.6]], 20, MAT.grate);
+      for (let k = 0; k < 4; k++) { const a = Math.PI / 4 + k * Math.PI / 2, px = x + Math.cos(a) * 1.5, pz = z + Math.sin(a) * 1.5; beam(P, [px, y, pz], [px, y + 3, pz], .06, MAT.hull); }
+      for (let k = 0; k < 16; k++) { const a = k * Math.PI / 8, b = (k + 1) * Math.PI / 8; beam(P, [x + Math.cos(a) * 1.6, y + 3, z + Math.sin(a) * 1.6], [x + Math.cos(b) * 1.6, y + 3, z + Math.sin(b) * 1.6], .04, MAT.amber); }
     } else if (p.kind === 'strip') {
       const ux = Math.abs(p.dz), uz = Math.abs(p.dx), t = tileOf(x + p.dx * .5, z + p.dz * .5), th = rooms[room[t]]?.theme;
       slab(P, x + p.dx * .025, z + p.dz * .025, ux, uz, -.6, .6, .025, y - .03, y + .03, TEAL[th] || (th !== 'hangar' && (room[t] & 1)) ? MAT.lamp : MAT.amber);
@@ -114,8 +143,12 @@ export function buildBaseMeshes(B) {
   }
   // Lamp fixtures: a pipe drop from the ceiling and a small box in the lamp's colour. The core has none; the red lamps are the door boxes.
   for (const l of B.lights || []) {
-    if (l.kind) continue;
     const t = tileOf(l.x, l.z); if (kind[t] === K.wall) continue;
+    if (l.kind === 1) { // pre-flight F20: spawn doors carry the red lamps' boxes; one without a door (the lift hall's) gets a small box of its own
+      if (!B.spawnDoors.some(d => Math.abs(l.x - (d.x + d.dx * .6)) < .05 && Math.abs(l.z - (d.z + d.dz * .6)) < .05)) { box(P, l.x - .15, l.y - .08, l.z - .15, l.x + .15, l.y + .08, l.z + .15, MAT.red); beam(P, [l.x, vc(t), l.z], [l.x, l.y + .08, l.z], .03, MAT.pipes); }
+      continue;
+    }
+    if (l.kind) continue;
     const c = vc(t); if (c - l.y < .12) continue;
     beam(P, [l.x, c, l.z], [l.x, l.y + .1, l.z], .03, MAT.pipes); box(P, l.x - .16, l.y - .1, l.z - .16, l.x + .16, l.y + .1, l.z + .16, l.col[0] > l.col[2] ? MAT.amber : MAT.lamp);
   }

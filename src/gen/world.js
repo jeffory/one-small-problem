@@ -3,7 +3,7 @@ import { generateSurface, surfaceAccept, N, HALF, MAX_STEP, MAP_MARGIN } from '.
 import { passable } from './passable.js';
 import { carveCrater } from './crater.js';
 import { planFight } from './encounters.js';
-import { generateBase } from './base.js';
+import { generateBase, baseAccept, PRISON_PLAN } from './base.js';
 import { lightBase, planBase } from './baseplan.js';
 
 const cell = (p) => [Math.round(p.x + HALF), Math.round(p.z + HALF)];
@@ -20,5 +20,8 @@ export function generateWorld(seed) {
   world.baseMap = generateBase(seed);
   lightBase(world.baseMap);
   world.baseMap.plan = planBase(world.baseMap);
+  world.prisonMap = generateBase(seed, baseAccept, PRISON_PLAN);
+  lightBase(world.prisonMap);
+  world.prisonMap.plan = planBase(world.prisonMap);
   return world;
 }

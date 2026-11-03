@@ -8,16 +8,23 @@ import { reachMap } from './passable.js';
 // rooms and the player has somewhere to fall back to (hands-on, 2026-11-03: the 12 m grid gave 3 m corridors).
 export const BASE = { n: 144, cell: 18, grid: 8, jitter: 1, wall: 99, step: .35, minHead: 2.6, corridor: 3, lintel: 2.7, cover: 1.1, attempts: 32,
   crit: [8, 12], side: [3, 5], loops: [1, 2],
-  ceil: { lift: 3.5, side: 3.5, plain: [4, 5], hangar: 8, lab: 4.5, reactor: 9, greenhouse: 6, comms: 9, corridor: 3 },
-  size: { lift: 6, hangar: 10, lab: 9, reactor: 10, greenhouse: 10, side: [5, 7], plain: [6, 9] } };
+  ceil: { lift: 3.5, side: 3.5, plain: [4, 5], hangar: 8, lab: 4.5, reactor: 9, greenhouse: 6, comms: 9, corridor: 3,
+    cell: 2.8, cellblock: 4.5, guard: 4, interro: 3.5, evidence: 3.5, hall: 7 },
+  size: { lift: 6, hangar: 10, lab: 9, reactor: 10, greenhouse: 10, side: [5, 7], plain: [6, 9],
+    cell: 5, cellblock: { long: 15, short: 8 }, guard: [8, 10], interro: 7, evidence: [7, 9] } };
 // A base's config: the generator reads everything that makes one base differ from another here (Plan 6). BASE_PLAN is the
 // Moon base: rng stream, span ranges, theme order along the path, light colours, pickups and the pacing curve.
 export const BASE_PLAN = { stream: '/base', area: 2, attempts: BASE.attempts, crit: BASE.crit, side: BASE.side, loops: BASE.loops,
   start: 'lift', first: 'hangar', end: 'comms', at: [['lab', .35], ['reactor', .6], ['greenhouse', .8]], p: [.5, 1],
   golf: { room: 'side', id: 3 }, cells: ['hangar', 'reactor'], cans: [['hangar', 3], ['reactor', 3], ['greenhouse', 2]],
-  amber: ['lift', 'hangar', 'comms'], teal: ['lab', 'reactor', 'greenhouse'], red: [] };
-export const THEMES = ['plain', 'side', 'lift', 'hangar', 'lab', 'reactor', 'greenhouse', 'comms'];
-export const PROPS = ['lift', 'saucer', 'jarRover', 'jarProbe', 'jar', 'core', 'bed', 'dish', 'strip'];
+  amber: ['lift', 'hangar', 'comms'], teal: ['lab', 'reactor', 'greenhouse'], red: [], guard: false, brute: null, tape: [] };
+// The prison (Plan 6): its own rng stream, 6 to 8 rooms from the barred cell to the lift hall, one loop.
+export const PRISON_PLAN = { ...BASE_PLAN, stream: '/prison', area: 4, attempts: 64, crit: [6, 8], side: [2, 3], loops: [1, 1],
+  start: 'cell', first: 'cellblock', end: 'hall', at: [['guard', .4], ['interro', .6], ['evidence', .8]], p: [.4, .9],
+  guard: true, brute: 'guard', golf: { room: 'evidence', id: 5 }, cells: ['evidence', 'guard'], tape: ['evidence'],
+  cans: [['guard', 3], ['evidence', 2]], amber: ['guard', 'interro', 'evidence'], teal: ['cell', 'cellblock', 'side'], red: ['hall'] };
+export const THEMES = ['plain', 'side', 'lift', 'hangar', 'lab', 'reactor', 'greenhouse', 'comms', 'cell', 'cellblock', 'guard', 'interro', 'evidence', 'hall'];
+export const PROPS = ['lift', 'saucer', 'jarRover', 'jarProbe', 'jar', 'core', 'bed', 'dish', 'strip', 'bars', 'cow', 'chair', 'shelf', 'exit'];
 export const K = { wall: 0, floor: 1, cover: 2, prop: 3 };
 
 // Neighbour offsets in scan order (-z, -x, +x, +z), and the four inward wall normals of a room.
@@ -105,7 +112,9 @@ function build(seed, attempt, rng, cfg) {
     let x0, z0, x1, z1;
     if (th === cfg.end) { x0 = bx * C + C - 10; z0 = by * C + C - 10; x1 = x0 + 20; z1 = z0 + 20; }
     else {
-      const sz = BASE.size[th], wd = typeof sz === 'number' ? sz : span(rng, sz), ht = typeof sz === 'number' ? sz : span(rng, sz);
+      // The cell block's long side runs along its entry link, along x when that link's cells share a row.
+      const sz = BASE.size[th], blk = sz.long !== undefined, xl = blk && lc[id - 1][0][1] === lc[id - 1][1][1];
+      const wd = blk ? (xl ? sz.long : sz.short) : typeof sz === 'number' ? sz : span(rng, sz), ht = blk ? (xl ? sz.short : sz.long) : typeof sz === 'number' ? sz : span(rng, sz);
       x0 = place(cs[0][0] * C, wd); z0 = place(cs[0][1] * C, ht); x1 = x0 + wd; z1 = z0 + ht;
     }
     const c = th === 'plain' ? rng.range(BASE.ceil.plain[0], BASE.ceil.plain[1]) : BASE.ceil[th];
@@ -171,7 +180,7 @@ function build(seed, attempt, rng, cfg) {
       kind[t] = k;
       if (k === K.wall) { floor[t] = BASE.wall; ceil[t] = 0; } else floor[t] = base + rise;
     }
-    if (name) props.push(prop(name, px + fw / 2 - .5 - half, base, pz + fh / 2 - .5 - half, name === 'bed' ? fw : 0, name === 'bed' ? fh : 0));
+    if (name) props.push(prop(name, px + fw / 2 - .5 - half, base, pz + fh / 2 - .5 - half, name === 'bed' || name === 'shelf' ? fw : 0, name === 'bed' || name === 'shelf' ? fh : 0));
     return true;
   };
   // Tiles within R m of the room centre (doubled coordinates keep the test in integers).
@@ -200,6 +209,40 @@ function build(seed, attempt, rng, cfg) {
       if (w >= 7 && h >= 7 && rng.next() < .4) { const lift = rng.next() < .5 ? .3 : -.3; band(r, 2, (t) => { floor[t] = lift; }); }
       if (w >= 8 && h >= 8) for (let k = 0; k < 2; k++) feature(r, [[1, 1]], false, K.wall, 0);
       for (let k = 0; k < 2; k++) feature(r, CRATE, false, K.cover, BASE.cover);
+    } else if (th === 'cellblock') {
+      // Alcoves along both long walls, from 2 tiles in from each corner, then every 3: the 2 wall-band tiles just outside
+      // the room, kept as a recess (wall to collision, sight and nav) behind a barred mouth. (nx, nz) points into the room.
+      const xl = w >= h, len = xl ? w : h, ux = xl ? 1 : 0, uz = 1 - ux, alc = [];
+      for (const side of [-1, 1]) for (let p = 2; p + 1 <= len - 3; p += 3) {
+        const nx = xl ? 0 : -side, nz = xl ? -side : 0;
+        const i0 = xl ? r.x0 + p : side < 0 ? r.x0 - 1 : r.x1, j0 = xl ? (side < 0 ? r.z0 - 1 : r.z1) : r.z0 + p, tl = [];
+        let ok = true;
+        for (let m = 0; m < 2; m++) {
+          const i = i0 + ux * m, j = j0 + uz * m;
+          if (kind[T(i, j)] !== K.wall || kind[T(i - nx, j - nz)] !== K.wall) ok = false;
+          for (const [di, dj] of doors[r.id]) if (Math.max(Math.abs(di - i), Math.abs(dj - j)) < 2) ok = false;
+          tl.push(T(i, j));
+        }
+        if (ok) alc.push({ tl, nx, nz, i0, j0 });
+      }
+      if (!alc.length) return null;
+      for (const a of alc) {
+        for (const t of a.tl) { kind[t] = K.prop; floor[t] = BASE.wall; ceil[t] = r.ceil; room[t] = r.id; }
+        props.push(prop('bars', a.i0 + ux / 2 + a.nx / 2 - half, 0, a.j0 + uz / 2 + a.nz / 2 - half, 2, 0, a.nx, a.nz));
+      }
+      const c = alc[rng.int(alc.length)];
+      props.push(prop('cow', c.i0 + ux / 2 - half, 0, c.j0 + uz / 2 - half, 0, 0, c.nx, c.nz));
+    } else if (th === 'guard') {
+      for (let k = 4 + rng.int(3); k > 0; k--) feature(r, CRATE, false, K.cover, BASE.cover);
+    } else if (th === 'interro') {
+      if (!feature(r, [[2, 2]], true, K.prop, 1, 'chair')) return null;
+    } else if (th === 'evidence') {
+      if (!feature(r, [[3, 1], [1, 3]], true, K.prop, 2, 'shelf')) return null;
+      for (let k = 1 + rng.int(3); k > 0; k--) feature(r, [[3, 1], [1, 3]], false, K.prop, 2, 'shelf');
+    } else if (th === 'hall') {
+      band(r, 8, (t) => { floor[t] = .3; });
+      props.push(prop('exit', cx, .3, cz));
+      for (let k = 8 + rng.int(3); k > 0; k--) feature(r, CRATE, false, K.cover, BASE.cover);
     } else if (th === 'comms') {
       // The dais and the dish pedestal: a centred 6 x 6 at +.3, its inner 4 x 4 at +.6, the centre 2 x 2 a prop.
       band(r, 7, (t) => { floor[t] = .3; }); band(r, 8, (t) => { floor[t] = .6; }); band(r, 9, (t) => { kind[t] = K.prop; floor[t] = 2.5; });
@@ -241,10 +284,18 @@ function build(seed, attempt, rng, cfg) {
   // 8. The start (the lift's centre tile, facing along its one corridor) and the comms door (comms `in`, facing in).
   const lift = rooms[0], comms = rooms[L - 1];
   const start = { x: ((lift.x0 + lift.x1) >> 1) - half, z: ((lift.z0 + lift.z1) >> 1) - half, dx: into[1][0], dz: into[1][1] };
+  // A cell start is shut by bars across link 0's corridor mouth: the 3 corridor tiles touching the cell, the middle one the centre.
+  let bars = null;
+  if (cfg.start === 'cell') {
+    const l = links[0], xl = lc[0][0][1] === lc[0][1][1], tiles = [];
+    for (let m = 0; m < W; m++) tiles.push(xl ? T(lift.x1 === l.x0 ? l.x0 : l.x1 - 1, l.z0 + m) : T(l.x0 + m, lift.z1 === l.z0 ? l.z0 : l.z1 - 1));
+    const mid = tiles[W >> 1];
+    bars = { tiles, x: mid % n - half, z: (mid - mid % n) / n - half, dx: start.dx, dz: start.dz };
+  }
   const commsDoor = { x: comms.in.x, z: comms.in.z, dx: into[L - 1][0], dz: into[L - 1][1] };
   const crit = [], side = [];
   for (let k = 0; k < L + S; k++) (k < L ? crit : side).push(k);
-  return { seed, attempt, cfg, n, half, floor, ceil, kind, room, rooms, links, crit, side, start, commsDoor, spawnDoors, props };
+  return { seed, attempt, cfg, n, half, floor, ceil, kind, room, rooms, links, crit, side, start, commsDoor, spawnDoors, props, bars };
 }
 
 // Accept a layout when every walkable tile is reachable from the start by steps of at most BASE.step.

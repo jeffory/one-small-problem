@@ -4,7 +4,7 @@ import { generateWorld } from '../src/gen/world.js';
 import { CRATER } from '../src/gen/crater.js';
 import { budgetAt, COST, CRATER_P, CRATER_AT } from '../src/gen/encounters.js';
 import { reachMap } from '../src/gen/passable.js';
-import { BASE, K as TILE } from '../src/gen/base.js';
+import { BASE, K as TILE, PRISON_PLAN, baseAccept } from '../src/gen/base.js';
 import { LIGHT_CAP, BASE_SCALE } from '../src/gen/baseplan.js';
 import { HOLD, dishOf, callSpot } from '../src/game/hold.js';
 // The base comes from generateWorld, one per seed: a layout that fails to construct or is rejected re-rolls, and that is
@@ -83,6 +83,27 @@ function checkBase(seed, B, golfSurface) {
     }
   }
 }
+// The prison (Plan 6): same checks as tests/prison.test.mjs on every seed, plus reachability of every item and alien.
+const phist = {};
+function checkPrison(seed, B) {
+  const bad = (m) => { fail++; console.error(seed, 'prison', m); };
+  const n = B.n, h = B.half, tile = (o) => Math.round(o.z + h) * n + Math.round(o.x + h), P = B.plan, L = B.crit.length;
+  phist[B.attempt] = (phist[B.attempt] || 0) + 1;
+  if (!baseAccept(B)) bad('baseAccept');
+  if (!inRange(L, PRISON_PLAN.crit) || !inRange(B.side.length, PRISON_PLAN.side) || B.links.filter((l) => l.loop).length !== 1) bad('room counts');
+  if (B.crit.map((r) => B.rooms[r].theme).filter((t) => t !== 'plain').join() !== 'cell,cellblock,guard,interro,evidence,hall' || B.side.some((r) => B.rooms[r].theme !== 'side')) bad('theme order');
+  const shut = B.floor.slice(); for (const t of B.bars.tiles) shut[t] = BASE.wall;
+  const sealed = reachMap(shut, n, [Math.round(B.start.x + h), Math.round(B.start.z + h)], BASE.step, 0); let cellTiles = 0;
+  for (let t = 0; t < n * n; t++) if (sealed[t] === 1) { if (B.room[t] !== 0) bad('cell not sealed'); cellTiles++; }
+  if (cellTiles !== 25) bad('cell tiles ' + cellTiles);
+  const reach = reachMap(B.floor, n, [Math.round(B.start.x + h), Math.round(B.start.z + h)], BASE.step, 0), stand = (o) => B.kind[tile(o)] === TILE.floor && reach[tile(o)] === 1;
+  if (P.golf.length !== 1 || P.golf[0].id !== 5 || B.rooms[B.room[tile(P.golf[0])]].theme !== 'evidence') bad('golf 5');
+  const g = P.encounters[0], guardRoom = P.encounters.find((e) => B.rooms[e.room].theme === 'guard');
+  if (!(g.guard && g.first && g.room === 1 && g.aliens.length === 1)) bad('the guard');
+  if (!guardRoom.aliens.some((a) => a.type === 'br')) bad('no brute in the guard room');
+  for (const e of P.encounters) { if (e.area !== 4) bad('encounter area'); for (const a of e.aliens) if (!stand(a)) bad('alien off reachable floor, room ' + e.room); }
+  for (const q of [...P.pickups, ...P.canisters, ...P.golf]) if (q.area !== 4 || !stand(q)) bad('item off reachable floor');
+}
 const hist = {}; let rerolls = 0, fail = 0, worst = 0, worstCrater = 0, rockMin = Infinity, worstEdge = Infinity, rockMax = 0, golfAll = 0, golfRock = 0;
 for (let n = 0; n < 1000; n++) {
   const seed = 'SOAK-' + String(n).padStart(4, '0');
@@ -148,12 +169,14 @@ for (let n = 0; n < 1000; n++) {
     if (C.some((c, i) => C.some((d, j) => j > i && gap(c, d) < 1.2))) bad('canisters closer than 1.2 m');
     if (C.some((c) => P.pickups.some((u) => gap(c, u) < 1))) bad('canister within 1 m of a pickup');
     checkBase(seed, w.baseMap, P.golf.length);
+    checkPrison(seed, w.prisonMap);
     if (w.attempt > 0) rerolls++;
     hist[w.attempt] = (hist[w.attempt] || 0) + 1;
     rockMin = Math.min(rockMin, w.rocks.length); rockMax = Math.max(rockMax, w.rocks.length);
   } catch (e) { fail++; console.error(seed, e.message); }
 }
 console.log('base attempt histogram', JSON.stringify(bhist), 'rerolls', brerolls, 'rate', brerolls / 1000);
+console.log('prison attempt histogram', JSON.stringify(phist));
 console.log('greenhouse canister clusters dropped', ghDropped + '/1000');
 console.log('golf balls beside a rock', golfRock + '/' + golfAll);
 const rate = rerolls / 1000;

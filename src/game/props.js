@@ -25,6 +25,13 @@ export function buildBunker(M, crater) {
   transformFrom(M, first, W);
 }
 
+// A barred front: posts every .25 m across w along (ux, uz) from y to y + h, with a rail at each end, glowing teal.
+export function buildBars(M, x, y, z, w, ux, uz, h) {
+  const a = [x - ux * w / 2, z - uz * w / 2], b = [x + ux * w / 2, z + uz * w / 2], k = Math.round(w / .25);
+  for (let i = 0; i <= k; i++) beam(M, [a[0] + (b[0] - a[0]) * i / k, y, a[1] + (b[1] - a[1]) * i / k], [a[0] + (b[0] - a[0]) * i / k, y + h, a[1] + (b[1] - a[1]) * i / k], .035, MAT.lamp);
+  for (const v of [y + .05, y + h - .05]) beam(M, [a[0], v, a[1]], [b[0], v, b[1]], .035, MAT.lamp);
+}
+
 // R17: an alien beacon stalk under each guide lamp: a fleshy stalk from just under the ground up to a softly glowing bulb round the
 // lamp. The bulb is emissive, so it shows at any range, even where the lamp itself isn't one of the frame's 16 lights.
 export function buildGuides(M, lamps, groundAt) {
