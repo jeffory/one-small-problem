@@ -8,8 +8,8 @@ This file is the single place to find every decision made while building the gam
 |---|---|
 | Design and the user's own decisions (tagged `[user]`), plus Claude's calls (`[call]`) | `docs/superpowers/specs/2026-11-02-one-small-problem-design.md` |
 | Each plan's design calls, marked `[call]` in the text | `docs/superpowers/plans/*.md` |
-| Pre-flight amendments, tagged `(pre-flight Fn)` in the plan text | Plans 3 and 4 |
-| Every execution ruling, deferred minor finding and parked item for Plans 3 and 4 | `docs/superpowers/ledgers/*.md` |
+| Pre-flight amendments, tagged `(pre-flight Fn)` in the plan text | Plans 3, 4 and 5 |
+| Every execution ruling, deferred minor finding and parked item for Plans 3, 4 and 5 | `docs/superpowers/ledgers/*.md` |
 | The user's pending hands-on checklist | below, and in project memory (`hands-on-checklist`) |
 
 ## State at the end of the overnight run (2026-11-03)
@@ -27,6 +27,12 @@ This file is the single place to find every decision made while building the gam
 - If any generation table changes, re-pin the goldens in the same commit.
 - WebKit/Safari was never run. Playwright's WebKit can't launch on Fedora 44 because it needs libicu74 and libjpeg-turbo8.
 - The user has not yet played Plans 2–4 on real hardware.
+
+## State after Plan 5 (overnight run 2, 2026-11-04)
+
+- The user asked for a second overnight run: Plan 5 (polish) and Plan 6 (the escape, a second level). Their approved list and the designs are in `docs/superpowers/specs/2026-11-03-plan-5-polish-design.md` and `2026-11-03-plan-6-escape-design.md`.
+- Before Plan 5, `main` gained the CI fix (281663a): GitHub's runners have no GPU and no sound card, so Firefox runs headed under xvfb with a silent PulseAudio sink, the pause-menu flash check waits for the flash, and CI retries a failed test once. It was proven in an Ubuntu 24.04 container (126/126) but **has not been pushed**: no push happens without the user's say-so.
+- Plan 5 was merged locally (fast-forward). 348 unit tests, the 1000-seed soak, the 60-seed bot soak and 130 smoke tests pass. The release is about 68.3 KB. Generation is untouched, so the goldens are unchanged.
 
 ## How the overnight run worked
 
@@ -146,6 +152,24 @@ The user reported: "it's extremely difficult when you go into the base because t
 | H5 | The user asked: "Can the aliens drop like 20% more ammo?" Every alien drop carries 20% more cells: pistol 20 → 24, scattergun 16 → 19, floater cells 15 → 18. Drop chances are unchanged, so the rng and the goldens are too; placed tape and cells and the final-stand supplies stay at 25. `PICKUP` in `src/game/fight.js` |
 
 If it is still too hard (or now too easy), the knobs are `BASE_SCALE` (alien budget), `BASE.cell` (corridor length) and `PICKUP` (drop sizes). 18 is the most a 20 m comms room allows: past that, its shifted corridor no longer stays inside the neighbouring room's band. Shorter cells also need the soak's 6–15 m corridor bound changed.
+
+## Plan 5 (polish) rulings
+
+The full text, with the cost of each ruling if wrong, is in `ledgers/2026-11-03-plan-5-polish-ledger.md`.
+
+| Ruling | Decision |
+|---|---|
+| F1 | Each tuning table's starting value is pinned once, in the test that names it, so a hands-on retune changes the table and its one pin. |
+| F2 | A dropped tape never lands in a wall or off a ledge (symmetric height check). |
+| F3 | A recast of voices never cuts the line being spoken. |
+| F6 | No low-health red rim after Houston picks up, so the win and the end screen don't pulse red. |
+| F7 → FR1 | In the crater the arrow follows the switchback. F7's first rule (the vertex after the nearest one) swung backward mid-leg, so the final review replaced it: aim at the end of the nearest switchback leg, then the next corner once within 12 m, then the door. |
+| F8, F9 | Hands-on checks: the pole can't reach floaters overhead; with exactly one local voice, You and the Switchboard can land on an online voice. |
+| F10-F14 | Test-helper sharing, stale comments, qualified R-numbers, superseded Plan 2 checklist lines. |
+| FR3 | Voices are told apart by name, so a duplicated voice entry is never cast twice. |
+| FR4 | The vignette (`VIG`) and tape glint (`TAPE_GLINT`) tables are pinned like the others. |
+
+Starting values to tune by hand: the swing (`WEAPONS[0]`: reach 2.6, arc .65, band −.3 to 2.2), tape drops (`PICKUP.tapeDrop`: skitterer 10%, floater 20%, brute always; first scoring kill always), tape size (`TAPE_R` .144), the vignette (`VIG`), the arrow (`WAY.near` 12 m).
 
 ## Deferred minor findings
 

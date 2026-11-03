@@ -27,7 +27,7 @@ Room: the build is at 67 KB of 128 KB. Level 2 is estimated at 12–20 KB packed
    - **Houston:** *"Copy. We heard. Rescue vehicle is go, touchdown at your lander in twenty min—"*
    - The dash is part of the line, as in the opening's *"I'm stepping off the—"*. When that line's talk ends, a heavy **thud** plays, the radio dies (no closing Quindar tone) and the screen cuts to black **[call]**.
 3. **Black.** The title stamp, in the opening's style, reads **ANOTHER SMALL PROBLEM** **[call]**.
-4. **The wake-up.** The view opens on the floor of a cell, blurred by the Plan 5 vignette, with the look locked. You get up, as in the opening's knock-down. The radio crackles back:
+4. **The wake-up.** The view opens on the floor of a cell, with the Plan 5 vignette closed in and the look locked. You get up, as in the opening's knock-down. The radio crackles back:
    - **Houston:** *"…come in. Come in. You were out for two hours."*
    - **You:** *"They took my guns."*
    - **Houston:** *"Did they take the flag? …They left the flag. They think it's a religious item."*
