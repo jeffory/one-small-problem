@@ -48,10 +48,10 @@ export function radioCue(R, key, n) {
 }
 
 // The fight's events as cues, one per event (Houston's, two: the pair, then the rescue line Houston is cut off in). An area from 4
-// on is level 2, whatever else is filtered (the prison's comes in the knock-out). The progress events restart the dawdle clock. While knocked out only Houston and the wake cue, so nothing steps on the punchline or the
-// cut-off line (R18); once boarded only the boarding line, so nothing steps on it or the stowaway sting, and boarding drops every
-// line still waiting, story or reaction (the shell cuts the one on the air with cutAll); an alien killed by another's bolt (team 1)
-// isn't yours to react to (R25).
+// on is level 2, whatever else is filtered (the prison's comes in the knock-out). The progress events restart the dawdle clock.
+// While knocked out only Houston and the wake cue, so nothing steps on the punchline or the cut-off line (R18); once boarded only
+// the boarding line, so nothing steps on it or the stowaway sting, and boarding drops every line still waiting, story or reaction
+// (the shell cuts the one on the air with cutAll); an alien killed by another's bolt (team 1) isn't yours to react to (R25).
 export function radioEvents(R, events, F) {
   for (const e of events) {
     const t = e.type;

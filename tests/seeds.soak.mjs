@@ -111,7 +111,8 @@ function checkPrison(seed, B) {
   for (const q of [...P.pickups, ...P.canisters, ...P.golf]) if (q.area !== 4 || !stand(q)) bad('item off reachable floor');
 }
 // The escape plan (Plan 6): the climb (area 5) like level 1's crater, the dash (area 6) at p .6 to 1 with its budgets scaled by
-// ESCAPE.dashScale (final review FR2), golf 6 off the route, and the rescue site. A site from the fallback is not rock-clear or not flat, so it fails here.
+// ESCAPE.dashScale (final review FR2), golf 6 off the route, and the rescue site. A site from the fallback is not rock-clear or
+// not flat, so it fails here.
 let dashMin = Infinity, dashMax = 0, siteFlat = 0, shipGap = Infinity, dashGap = Infinity, dashSpread = Infinity, dashTight = 0;
 function checkEscape(seed, w, stands) {
   const bad = (m) => { fail++; console.error(seed, 'escape', m); };

@@ -206,7 +206,8 @@ export function planFight(world) {
 
 // The escape (Plan 6), level 1's ground walked backwards on streams of its own: the climb up the switchback (area 5), like level 1's
 // crater; the dash from the rim toward the wreck (area 6) with no lone first skitterer, its budgets at ESCAPE.dashScale and its
-// encounters stopping ESCAPE.shipGap short of the rescue site; golf ball 6 by the dash; and the rescue site (its own stream, so placed first, as it always was).
+// encounters stopping ESCAPE.shipGap short of the rescue site; golf ball 6 by the dash; and the rescue site (its own stream, so
+// placed first, as it always was).
 // climbAt, climbP: the climb's encounter fractions and p range (as CRATER_AT, CRATER_P); dashP: the dash's p range; dashScale: its
 // alien budgets' scale (as the base's BASE_SCALE, the user's H2 remedy: at full budgets the dash was as hard as the base they found
 // too hard; final review FR2); golf: golf 6's band of the dash; site: its range (m) from your lander; flat: the most (m) world.h
