@@ -369,3 +369,14 @@ test('the music stays ducked in the gaps between the switchboard intro\'s lines,
   expect(gaps.length).toBeGreaterThan(20); for (const g of gaps) expect(g.duck, JSON.stringify(g)).toBe(true); // two gaps of RADIO.gap s
   const free = s.filter(x => !x.line && !x.q.some(story)); expect(free.length).toBeGreaterThan(0); for (const g of free) expect(g.duck, JSON.stringify(g)).toBe(false);
   expect(errors).toEqual([]); });
+// R20: a fatal error or a lost GPU context lets go of everything: the music stops (the AudioContext no longer running), the voice
+// is cancelled and the mouse is released, under the message. Both start mid-opening, the New Game click's lock held and the music on.
+for (const [how, text, act] of [['an error in the frame loop', 'Something went wrong', () => window.ospTest.fault()],
+  ['a lost GPU context', 'Graphics context lost', () => document.getElementById('c').getContext('webgl2').getExtension('WEBGL_lose_context').loseContext()]])
+  test(`${how} stops the sound and releases the mouse (R20)`, async ({ page }) => {
+    await page.goto(URLS[1][1] + '#APOLLO-4471'); await ready(page); await page.click('#new'); await expect.poll(() => state(page)).toBe('opening');
+    await expect.poll(() => page.evaluate(() => document.pointerLockElement !== null), { timeout: 15_000 }).toBe(true);
+    await expect.poll(() => page.evaluate(() => window.ospTest.audio().ctx), { timeout: 15_000 }).toBe('running');
+    await page.evaluate(act); await expect(page.locator('#msg')).toContainText(text); await expect(page.locator('#msg')).toBeVisible();
+    await expect.poll(() => page.evaluate(() => window.ospTest.audio().ctx)).not.toBe('running');
+    await expect.poll(() => page.evaluate(() => document.pointerLockElement)).toBe(null); });

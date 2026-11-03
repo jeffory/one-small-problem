@@ -83,7 +83,7 @@ function boot() {
   addEventListener('resize', resize); apply();
   canvas.addEventListener('webglcontextlost', e => {
     e.preventDefault(); lost = true; cancelAnimationFrame(raf);
-    hud.fatal('Graphics context lost. Reload the page to continue.');
+    hud.fatal('Graphics context lost. Reload the page to continue.'); halt();
   });
   if (DEBUG) addEventListener('keydown', e => {
     if (e.code === 'KeyP') palMode = (palMode + 1) % 3; // 1 dithered -> 2 flat -> 0 off
@@ -318,8 +318,11 @@ function boot() {
   // Anything that throws in the loop or a menu click stops the frames and says so.
   function fail(e) {
     lost = true; cancelAnimationFrame(raf);
-    hud.fatal('Something went wrong: ' + e.message + '. Reload the page to continue.');
+    hud.fatal('Something went wrong: ' + e.message + '. Reload the page to continue.'); halt();
   }
+  // After a fatal error or a lost context nothing is left running under the message: the sound stops, the voice is cancelled and
+  // the mouse let go (R20). After the message, so it shows whatever these do.
+  function halt() { audio.pause(); speech.cancel(); input.unlock(); }
   toTitle(false);
   raf = requestAnimationFrame(tick);
 }
