@@ -1,6 +1,6 @@
 import test from 'node:test'; import assert from 'node:assert/strict'; import { generateWorld } from '../src/gen/world.js'; import { flagSpot } from '../src/gen/surface.js'; import { makeRng } from '../src/gen/rng.js';
 import { createFight } from '../src/game/fight.js'; import { PLAYER } from '../src/game/player.js'; import { settleWreck, stepWreck, WRECK } from '../src/game/lander.js';
-import { OPEN, EGRESS, createOpening, stepOpening } from '../src/game/opening.js';
+import { OPEN, EGRESS, FX, createOpening, stepOpening } from '../src/game/opening.js';
 const W = generateWorld('APOLLO-4471'), L = W.lander, idle = { fwd: 0, strafe: 0, run: false, jump: false, fire: false, use: false, weapon: -1, wheel: 0 };
 const ahead = Math.atan2(-W.spawn.dx, -W.spawn.dz), wrap = a => Math.atan2(Math.sin(a), Math.cos(a)), flat = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
 const fresh = () => { const F = createFight(W); return { F, O: createOpening(W, F) }; };
@@ -82,9 +82,10 @@ test('the glitter handed on to play lies on or over the ground, none of it insid
 // R10: the drawn terrain at (x, z): the mesh's triangle there (each quad split from its (i, j) corner to (i + 1, j + 1)).
 const drawn = (x, z) => { const gx = x + W.half, gz = z + W.half, i = Math.floor(gx), j = Math.floor(gz), fx = gx - i, fz = gz - j, h = (a, b) => W.h[(j + b) * W.N + i + a];
   return fz >= fx ? h(0, 0) + (h(1, 1) - h(0, 1)) * fx + (h(0, 1) - h(0, 0)) * fz : h(0, 0) + (h(1, 0) - h(0, 0)) * fx + (h(1, 1) - h(1, 0)) * fz; };
-test('the blast\'s glitter thins out: each speck\'s life is drawn, 9 s on average, the expiries spread over 3 s or more (opening, R10)', () => {
-  const { F, O } = fresh(); prompt(O, F, 'down'); const L9 = O.view.parts.filter(q => q.kind === 'foil').map(q => q.life);
-  assert.equal(L9.length, 140); assert.ok(Math.max(...L9) - Math.min(...L9) >= 3, `${Math.min(...L9)}-${Math.max(...L9)}`); assert.ok(Math.abs(L9.reduce((a, b) => a + b) / L9.length - 9) < .5); });
+test('the blast\'s glitter thins out: each speck\'s life is drawn from FX.foil.life, the expiries spread over 3 s or more (opening, R10)', () => {
+  const { F, O } = fresh(); prompt(O, F, 'down'); const L9 = O.view.parts.filter(q => q.kind === 'foil').map(q => q.life), [lo, hi] = FX.foil.life;
+  assert.equal(L9.length, FX.foil.n); assert.ok(L9.every(l => l >= lo && l <= hi)); assert.ok(Math.max(...L9) - Math.min(...L9) >= 3, `${Math.min(...L9)}-${Math.max(...L9)}`);
+  assert.ok(Math.abs(L9.reduce((a, b) => a + b) / L9.length - (lo + hi) / 2) < .5); });
 test('the floater comes down to the ground before it goes, never vanishing in mid-air (opening, R10)', () => {
   const { F, O } = fresh(); prompt(O, F, 'company'); const fl = O.view.aliens.find(a => a.type === 'fl'); prompt(O, F, 'down');
   while (O.view.aliens.includes(fl) && O.phase !== 'done') hold(O, idle, 1 / 60); assert.notEqual(O.phase, 'done', 'it goes before the title drop');
@@ -94,3 +95,22 @@ test('a flag planted 3.5 m out, facing the lander, stands on the drawn ground, n
   p.x = L.x + u[0] * d; p.z = L.z + u[1] * d; p.y = F.lv.ground(p.x, p.z); p.yaw = Math.atan2(u[0], u[1]); hold(O, { ...idle, use: true }, 1 / 60);
   assert.ok(O.planted && Math.abs(flat(F.flag, L) - (OPEN.far - 1)) < 1e-3); assert.ok(F.lv.ground(F.flag.x, F.flag.z) - drawn(F.flag.x, F.flag.z) > .1, 'the ramp is there');
   assert.ok(Math.abs(F.flag.y - drawn(F.flag.x, F.flag.z)) <= .05, `${F.flag.y - drawn(F.flag.x, F.flag.z)} m off the ground`); });
+// R11: the plan's unvoiced radio queue (Task 11: RADIO key .25, gap .5, min 1.6, cps 14; story lines first in, first out, each keying
+// on once the one before has unkeyed and gapped) over the opening's SCRIPT lines (the nag at its longest). Each is {key, talk, end}.
+const RQ = { key: .25, gap: .5, min: 1.6, cps: 14 }, SAY = { touchdown: ['Contact light. Engine stop.', "We copy, you're down. Beautiful work."],
+  step: ["Okay Houston, I'm stepping off the—"], nag: ["Whenever you're ready with that flag. No pressure. Just the whole planet watching."],
+  autoplant: ["We're going to count that as planted."], planted: ['Flag is up. It looks great on the telemetry.'], company: ['…Houston, are we expecting anyone?'],
+  telemetry: ['…say again? We just lost all telemetry from the lander.'], title: ['Houston… we have one small problem.'] };
+const radio = ev => { let free = 0; const out = []; for (const e of ev) if (e.type === 'radio') for (const s of SAY[e.key]) {
+  const talk = Math.max(free, e.t) + RQ.key, end = talk + Math.max(RQ.min, s.length / RQ.cps); out.push({ key: e.key, talk, end }); free = end + RQ.key + RQ.gap; } return out; };
+test('the radio keeps the storyboard\'s order: each line is spoken before its beat, and the title line on the stamp (opening, R11)', () => {
+  for (const plants of [true, false]) { // a prompt planter, and one who never presses E (nag, then autoplant)
+    const { F, O } = fresh(), ev = prompt(O, F, 'ground'); if (plants) hold(O, { ...idle, use: true }, 1 / 60, 1 / 60, ev);
+    while (O.phase !== 'company') hold(O, idle, 1 / 60, 1 / 60, ev); const rise = O.t; hold(O, idle, 60, 1 / 60, ev);
+    const R = radio(ev), at = k => R.find(l => l.key === k).talk, when = type => has(ev, type).t, story = plants ? ['step', 'planted'] : ['step', 'nag', 'autoplant'];
+    assert.deepEqual(R.map(l => l.key), ['touchdown', 'touchdown', ...story, 'company', 'telemetry', 'title']);
+    assert.ok(R[1].end < at('step'), 'down and copied before the first step');
+    for (const k of story) assert.ok(at(k) < rise, `${k} before the aliens rise (${at(k).toFixed(2)} vs ${rise.toFixed(2)})`);
+    assert.ok(at('company') < when('wreck'), `"expecting anyone?" before the blast (${at('company').toFixed(2)} vs ${when('wreck').toFixed(2)})`);
+    assert.ok(at('telemetry') < when('title'), `the telemetry line before the title drop (${at('telemetry').toFixed(2)} vs ${when('title').toFixed(2)})`);
+    assert.ok(Math.abs(at('title') - when('title')) <= 1.5, `"one small problem" on the stamp (${at('title').toFixed(2)} vs ${when('title').toFixed(2)})`); } });

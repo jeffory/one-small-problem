@@ -208,6 +208,25 @@ export function settleWreck(world) {
   return W;
 }
 
+// The ground as drawn at (x, z): sampleBilinear of the occlusion (the terrain and the rocks), but with every corner that
+// stampOccluders raised into the deck's column (only collision and shadows have it) read from the bare terrain, so what stands
+// beside the descent stage stands on the dust, not on the deck's collision ramp (R10). Rocks never reach under the deck (they
+// stand 5.5 m out). Four taps, no allocation.
+export function drawnGround(world, x, z) {
+  const { N, half } = world;
+  let gx = x + half, gz = z + half;
+  gx = gx < 0 ? 0 : gx > N - 1 ? N - 1 : gx;
+  gz = gz < 0 ? 0 : gz > N - 1 ? N - 1 : gz;
+  const xi = Math.min(Math.floor(gx), N - 2), zi = Math.min(Math.floor(gz), N - 2), fx = gx - xi, fz = gz - zi;
+  const a = drawnAt(world, xi, zi), b = drawnAt(world, xi + 1, zi), c = drawnAt(world, xi, zi + 1), d = drawnAt(world, xi + 1, zi + 1);
+  return a + (b - a) * fx + (c - a) * fz + (a - b - c + d) * fx * fz;
+}
+// Height sample (i, j) as drawn: the terrain inside the deck's disc (stampDisc's own test), else the occlusion.
+function drawnAt(world, i, j) {
+  const L = world.lander, r = LANDER_OCC.deck[0], ox = i - world.half - L.x, oz = j - world.half - L.z, k = j * world.N + i;
+  return 1 - (ox * ox + oz * oz) / (r * r) > 0 ? world.h[k] : world.occ[k];
+}
+
 // The wreck's shadow heights: the generated occlusion with the cabin's column (every sample within LANDER_OCC.cabin's radius)
 // lowered to the deck. The sim keeps the generated column (out of reach: the deck is higher than a jump), so generation is unchanged.
 export function wreckOcc(world) {

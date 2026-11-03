@@ -4,37 +4,39 @@
 // but for the knock-down. Pure: no DOM, GPU or clock; its randomness is O.rng and the wreck's own seed, so the same dt sequence
 // plays the same opening.
 import { makeRng } from '../gen/rng.js';
-import { flagSpot, sampleBilinear, LANDER_OCC } from '../gen/surface.js';
+import { flagSpot, sampleBilinear } from '../gen/surface.js';
 import { PLAYER, stepPlayer, knock } from './player.js';
 import { ALIENS, createAlien, waveAt } from './aliens.js';
 import { muzzleWorld } from './rigs.js';
-import { PIECES, createWreck, blast, stepWreck } from './lander.js';
+import { PIECES, createWreck, blast, stepWreck, drawnGround } from './lander.js';
 import { MAX_PARTS } from './fight.js';
 
 // The beats; times (s) count from the beat each follows. alt: the lander's height (m) as the descent starts; descent: the start to
 // touchdown; dust: the height (m) under which the engine sprays dust; hatch: touchdown to the hatch opening, which swings over hatchT;
 // cabin, crawl, climb: your speeds (m/s) in the cabin, crawling out to the porch, and down the ladder; far, near: where the flag can
-// go (m from the lander's centre); nag, auto: your first step to Houston's nudge and to Houston planting it for you; company: the
-// plant to the aliens, who rise over rise, then speak (line), wave and fire, their bolts flying for flight; from the blast, flash
+// go (m from the lander's centre); nag, auto: your first step to Houston's nudge and to Houston planting it for you; talk: your first
+// step to the earliest the aliens' wait can start, so the step line is over before the flag's (R11); company: that wait, from the
+// plant, to the aliens, who rise over rise, then speak (line), wave and fire, their bolts flying for flight; from the blast, flash
 // (held, then faded over), down (the knock-down: look, its pitch (rad) up at Earth, and downEye, its eye (m), back to PLAYER.eye over
 // getUp), tele (the telemetry line) and title (the drop); aliens: the actors d m down the route, side m apart across it; parts: the
 // most particles at once.
 export const OPEN = { alt: 24, descent: 9, dust: 5, hatch: 5.5, hatchT: .8, cabin: 1.2, crawl: 1, climb: 1.2, near: 15, far: 3.5, nag: 15, auto: 30,
-  company: 2.5, rise: 1.5, line: 1, wave: 1.5, fire: 4.5, flight: .45, flash: [.12, 1.2], down: 2, look: .75, downEye: .3, getUp: .7,
+  talk: 3.5, company: 2.5, rise: 1.5, line: 1, wave: 1.5, fire: 4.5, flight: .45, flash: [.12, 1.2], down: 2, look: .75, downEye: .3, getUp: .7,
   tele: .6, title: 5.5, aliens: { d: 40, side: 6, types: ['sk', 'br', 'fl'] }, parts: 500 };
 // The way out, [x, y, z, eye] in lander space (y the feet): the cabin, the hatch, the porch, the foot of the ladder.
 export const EGRESS = [[0, 2.5, .2, 1.05], [0, 2.5, 1.45, .45], [0, 2.45, 2.0, 1.7], [0, 0, 3.9, 1.7]];
 
-// The show's particles and lights. Ranges are [lo, hi]; speeds m/s, sizes and distances m, times s.
+// The show's particles and lights, a tuning table like OPEN. Ranges are [lo, hi]; speeds m/s, sizes and distances m, times s.
 // dust: the touchdown spray, from the ground r out under the bell, v outward and up; rate a second; it lies `rest` after landing.
 // plume: the exhaust's glow sprites from the bell's mouth (y up, lander space), v down and up to side across, size s; rate a second.
 // glow: its light (y up, radius s, colour col times a flicker) and the cabin's (radius s, colour col).
 // boot: the puff at your first step. spark, foil, puff: the blast's (foil: v in a random direction plus up, each its own life, so
 // they thin out rather than all going at once (R10); puff: a ring r out, y up).
 // knock: the blast's shove (out, up). rise: the actors' heights over the ground, from and to (walkers, the floater); sink: from `at`
-// s after the blast they sink at v, the walkers out of sight and gone at `end`, the floater down to the ground and gone once there. boom: its life. bolt: the actors' bolt radius. disc: the cabin's room (radius);
-// drop: the knock-down eye's fall; turn: its look rate (rad/s).
-const FX = {
+// s after the blast they sink at v, the walkers out of sight and gone at `end`, the floater down to the ground and gone once there.
+// boom: its life. bolt: the actors' bolt radius. disc: the cabin's room (radius); drop: the knock-down eye's fall; turn: its look
+// rate (rad/s).
+export const FX = {
   dust: { r: [1, 3], v: [6, 12], up: [1, 3], rate: 80, rest: [1, 2] },
   plume: { y: .5, v: [8, 14], side: 1, s: [.4, .8], life: [.12, .25], rate: 60 },
   glow: { plume: { y: .2, s: 9, col: [1.3, .8, .35], flicker: [.8, 1] }, cabin: { s: 2.2, col: [.5, .32, .12] } },
@@ -192,7 +194,9 @@ function eye(O, t) {
 // --- the flag ---
 
 // In range, E plants it a metre ahead. Houston nags at OPEN.nag and plants it at OPEN.auto: a metre ahead in range, else at
-// the flag spot, so you plant near the lander and see the blast, and the opening never stalls.
+// the flag spot, so you plant near the lander and see the blast, and the opening never stalls. The aliens come OPEN.company after
+// the plant, but never before OPEN.talk + OPEN.company after your first step: the radio speaks its story lines in turn, and a quick
+// plant would otherwise push "are we expecting anyone?" past the blast and the title line over 3 s past the stamp (R11).
 function flag(O, input, beat, t) {
   const p = O._F.player, L = O._L, d = Math.hypot(p.x - L.x, p.z - L.z), ok = d >= OPEN.far && d <= OPEN.near;
   if (ok) O.prompt = '[E] plant the flag';
@@ -203,19 +207,8 @@ function flag(O, input, beat, t) {
 }
 function plant(O, x, z, t) {
   const F = O._F;
-  F.flag.x = x; F.flag.z = z; F.flag.y = drawnGround(O._world)(x, z); F.flag.held = false;
-  O.planted = true; O.prompt = ''; O._compT = t + OPEN.company;
-}
-
-// The ground as drawn, for the flag's pole (R10): the occlusion (the terrain and the rocks) with the lander's footprint, which only
-// collision and shadows have, back down to the terrain, so a flag beside the descent stage stands on the dust, not on the deck's
-// collision ramp. Rocks never reach under the deck (they stand 5.5 m out), so that is all of it; elsewhere it is F.lv.ground.
-function drawnGround(world) {
-  const { N, half, lander: L, h } = world, o = new Float32Array(world.occ), r = LANDER_OCC.deck[0];
-  for (let j = Math.max(0, Math.floor(L.z + half - r)); j <= Math.min(N - 1, Math.ceil(L.z + half + r)); j++)
-    for (let i = Math.max(0, Math.floor(L.x + half - r)); i <= Math.min(N - 1, Math.ceil(L.x + half + r)); i++)
-      if (Math.hypot(i - half - L.x, j - half - L.z) < r) o[j * N + i] = h[j * N + i];
-  return (x, z) => sampleBilinear(o, x, z);
+  F.flag.x = x; F.flag.z = z; F.flag.y = drawnGround(O._world, x, z); F.flag.held = false; // on the dust, not the deck's collision ramp (R10)
+  O.planted = true; O.prompt = ''; O._compT = Math.max(t, O._groundT + OPEN.talk) + OPEN.company;
 }
 
 // --- company ---
