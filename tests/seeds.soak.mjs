@@ -6,6 +6,7 @@ import { budgetAt, COST, CRATER_P, CRATER_AT } from '../src/gen/encounters.js';
 import { reachMap } from '../src/gen/passable.js';
 import { BASE, K as TILE } from '../src/gen/base.js';
 import { LIGHT_CAP, BASE_SCALE } from '../src/gen/baseplan.js';
+import { HOLD, dishOf, callSpot } from '../src/game/hold.js';
 // The base comes from generateWorld, one per seed: a layout that fails to construct or is rejected re-rolls, and that is
 // routine (pre-flight F7: printed, not gated). Only a seed that exhausts all BASE.attempts (32) attempts fails the soak,
 // because generateBase then throws (ruling R2).
@@ -59,6 +60,15 @@ function checkBase(seed, B, golfSurface) {
       if (c > LIGHT_CAP) { bad('LIGHT_CAP exceeded ' + c); break; }
     }
     for (const r of B.rooms) if (!B.lights.some((l) => l.kind === 0 && B.room[tile(l)] === r.id)) bad('no steady lamp in room ' + r.id + ' ' + r.theme);
+    // The final stand (Task 5): the array, the call spot beside it, the dais supplies and the spawn doors, all on comms room floor.
+    const cr = B.crit[L - 1], dish = dishOf(B), floorAt = (o) => B.kind[tile(o)] === TILE.floor;
+    if (!dish) bad('no dish');
+    else {
+      if (!stand(callSpot(B), cr)) bad('call spot off reachable comms room floor');
+      const spots = HOLD.spots.filter(([u, v]) => floorAt({ x: dish.x + u, z: dish.z + v })).length;
+      if (spots < HOLD.tape + HOLD.cells) bad('supply spots on floor ' + spots);
+    }
+    for (const d of B.spawnDoors) if (!floorAt(d) || B.room[tile(d)] !== cr) bad('spawn door off comms room floor');
     // R16: no lamp reaches a walkable tile it cannot see (a 2D sight line to the tile's centre, sampled every 5 cm; wall tiles block).
     for (const l of B.lights) {
       const fx = l.x + h, fz = l.z + h, R = Math.ceil(l.r) + 1; let leak = false;

@@ -13,10 +13,11 @@ import { WEAPONS } from './game/weapons.js';
 import { buildSurfaceScene } from './game/surfaceScene.js';
 import { buildBaseScene } from './game/baseScene.js';
 import { createBot, botStep } from './game/bot.js';
+import { HOLD, ENDING, dishOf, callSpot } from './game/hold.js';
 import { createInput, look } from './game/input.js';
 import { createHud, HELP_TIME } from './ui/hud.js';
 import { createMenus } from './ui/menus.js';
-import { shareLink, recordBest } from './ui/score.js';
+import { shareLink, recordBest, fmtTime } from './ui/score.js';
 import { RES, loadSettings, saveSettings } from './ui/settings.js';
 
 // The scene fields a frame carries (the view supplies the meshes and lights); the events whose text flashes up; where a death
@@ -38,8 +39,9 @@ function boot() {
   addEventListener('hashchange', () => location.reload());
 
   const { gl, hdrOK } = createGL(canvas), renderer = createRenderer(gl, hdrOK), V = createFightView(gl, { meshes: [] }), store = storage();
-  // run: the Moon on screen, {kind: 'attract' | 'play', seed, world, scene, F, bot (attract only)}. state: where the flow is (see the top).
-  let run = null, state = 'title';
+  // run: the Moon on screen, {kind: 'attract' | 'play', seed, world, scene, F, bot (attract only)}. state: where the flow is (see the
+  // top). endT: seconds of the ending so far.
+  let run = null, state = 'title', endT = 0;
   // S: the settings (loaded once, kept in memory even where the store refuses them). Paused: the pause menu is up, nothing
   // advances. lockLostAt: when a lost pointer lock paused the game, so the Esc that did it can't also resume it.
   let S = loadSettings(store), paused = false, lockLostAt = -1e9, appliedRes = -1;
@@ -142,7 +144,8 @@ function boot() {
   // first only. The title steps the attract run with the bot's input; play and ending step yours, with flashes, status and
   // prompt; the end screen steps nothing. A level swap is handled for whatever run is on screen, and the events are cleared
   // here, so each call (a frame or an ff step) sees only its own (pre-flight F3). When the bot is done (the comms room, or
-  // stalled) a fresh attract Moon replaces it; the hash is never touched.
+  // stalled) a fresh attract Moon replaces it; the hash is never touched. Houston picking up starts the ending, which goes to
+  // the end screen after ENDING.min s once the radio is idle, or after ENDING.max s whatever it is saying.
   function advance(dt, inp) {
     const F = run.F, B = run.bot, n = Math.max(1, Math.ceil(dt / .05)), h = dt / n, playing = state === 'play' || state === 'ending';
     if (state === 'title') for (let k = 0; k < n && !B.done; k++) { const b = botStep(B, F, h); stepFight(F, k ? { ...b, use: false, weapon: -1, wheel: 0 } : b, h); }
@@ -153,9 +156,17 @@ function boot() {
       hud.status({ hp: Math.ceil(F.hp), cells: F.ars.cells, weapon: WEAPONS[F.ars.cur]?.name ?? '' });
       if (F.time >= HELP_TIME) hud.help('');
       for (const ev of F.events) if (FLASH.has(ev.type) && ev.text) hud.flash(ev.text);
+      const d = F.area === 3 && dishOf(run.world.baseMap);
       hud.prompt(F.state === 'dead' ? 'You died. Back to ' + BACK[F.area] + '...'
         : F.lv.id === 'surface' && !F.flag.held && Math.hypot(p.x - F.flag.x, p.z - F.flag.z) < 2.2 ? '[E] grab the flag'
-        : F.area === 1 && Math.hypot(p.x - U.x, p.z - U.z) <= DOOR_REACH ? '[E] enter the hangar' : '');
+        : F.area === 1 && Math.hypot(p.x - U.x, p.z - U.z) <= DOOR_REACH ? '[E] enter the hangar'
+        : d && !F.hold && Math.hypot(p.x - d.x, p.z - d.z) <= HOLD.reach ? '[E] call Houston'
+        : F.hold && !F.won ? 'ON HOLD ' + fmtTime(F.hold.t) : '');
+    }
+    if (state === 'play' && F.events.some(e => e.type === 'houston')) { state = 'ending'; endT = 0; }
+    else if (state === 'ending') {
+      const quiet = true; // the radio is idle (always, until Task 11 gives it a queue)
+      if ((endT += dt) >= ENDING.min && quiet || endT >= ENDING.max) finish();
     }
     F.events.length = 0;
     if (state === 'title' && B.done) { stopRun(); startRun('attract', randomSeed()); }
@@ -181,6 +192,13 @@ function boot() {
     place(U.x, U.z, Math.atan2(d.dx, d.dz));
   }
   function enter() { door(); stepFight(run.F, { ...IDLE, use: true }, .001); }
+  // At the comms array's call spot facing the dish, one tiny step on so the area turns to the comms room (from the surface,
+  // through the hangar door first).
+  function comms() {
+    const { F, world } = run, c = callSpot(world.baseMap), d = dishOf(world.baseMap);
+    if (F.lv.id === 'surface') enter();
+    place(c.x, c.z, Math.atan2(c.x - d.x, c.z - d.z)); stepFight(F, IDLE, .001);
+  }
   // Fast-forward: sec seconds of 1/30 s steps, inp held on every one.
   function ff(sec, inp = {}) { for (let i = Math.round(sec * 30); i > 0; i--) advance(1 / 30, { ...IDLE, ...inp }); }
   const T = window.ospTest = {
@@ -192,11 +210,14 @@ function boot() {
     attract: () => run.bot ? { seed: run.seed, stage: run.bot.stage, done: run.bot.done } : null,
     player: () => { const p = run.F.player; return { x: p.x, y: p.y, z: p.z }; },
     fight: () => { const F = run.F, p = F.player, s = areaStart(run.world, F.area);
-      return { hp: F.hp, cells: F.ars.cells, cur: F.ars.cur, state: F.state, kills: F.kills, bolts: F.bolts.length, shots: F.shots, area: AREAS[F.area], golf: F.golf, time: F.time, atStart: Math.hypot(p.x - s.x, p.z - s.z) < 1 }; },
+      return { hp: F.hp, cells: F.ars.cells, cur: F.ars.cur, state: F.state, kills: F.kills, bolts: F.bolts.length, shots: F.shots, area: AREAS[F.area], golf: F.golf, time: F.time, atStart: Math.hypot(p.x - s.x, p.z - s.z) < 1,
+        hold: F.hold?.t ?? null, won: F.won }; },
     area: () => AREAS[run.F.area],
     grab: () => { const F = run.F, p = F.player; p.x = F.flag.x + 1; p.z = F.flag.z; p.y = F.lv.ground(p.x, p.z); stepFight(F, { ...IDLE, use: true }, .001); },
     give: () => { const A = run.F.ars; for (let i = 0; i < WEAPONS.length; i++) A.owned[i] = true; A.cells = 150; if (A.cur < 0) A.cur = 0; },
-    door, enter, warp, hurt: n => hurtPlayer(run.F, n, 0, 0, 0),
+    door, enter, warp, comms, hurt: n => hurtPlayer(run.F, n, 0, 0, 0), god: on => { run.F.god = on; },
+    // The clocks that pause stops: the opening's (Task 8), the hold's and the ending's, each null when not running.
+    clock: () => ({ opening: null, hold: run.F.hold?.t ?? null, ending: state === 'ending' ? endT : null }),
   };
 
   // --- the frame loop: advance the state, then draw the current run, in every state ---

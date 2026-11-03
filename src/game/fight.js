@@ -11,6 +11,8 @@ import { lineOfSight, createField, updateField } from './nav.js';
 import { worldSpheres } from './rigs.js';
 import { ALIENS, createAlien, stepAlien, hurtAlien, move, level, muzzleAt } from './aliens.js';
 import { AREAS, AREA_TEXT, LEVEL, makeLevel, areaStart, advanceArea } from './areas.js';
+import { K } from '../gen/base.js';
+import { HOLD, planWaves, dishOf } from './hold.js';
 
 export const PICKUP = { tape: 25, cells: 25, pistol: 20, scatter: 16, flCells: 15, pistolDrop: .3 };
 export const CANISTER = { hp: 15, radius: .45, blast: 5, dmg: 70, knock: 9, fuse: .2 };
@@ -22,6 +24,8 @@ export const GOLF_TOTAL = 5, DOOR_REACH = 2.5;
 // a particle stops it like a wall.
 const CORPSE = 8, SINK = 2, MAX_PARTS = 300, DECALS = { scorch: 40, goo: 24 }, BOOM_LIFE = .6, FIELD_DT = .25, GRAB = 2.2, REACH = 1.2;
 const CAN_Y = .4, CAN_H = .9, WALL = .35, TAU = 2 * Math.PI, sqrt = Math.sqrt, STILL = { fwd: 0, strafe: 0, run: false, jump: false };
+// HOLD_ID: the first hold alien's id; HOVER: a hold floater's height above its door's floor (its top just under the lintel).
+const HOLD_ID = 1000, HOVER = 1.7;
 
 // A fight starting at area k, on that area's level, at its start, with nothing held.
 export function createFight(world, k = 0) {
@@ -30,7 +34,7 @@ export function createFight(world, k = 0) {
     encs: [], aliens: [], bolts: [], pickups: [], canisters: [], balls: [], parts: [], decals: [], booms: [],
     flag: { x: fs.x, y: sampleGround(world, fs.x, fs.z), z: fs.z, held: false }, entry: { owned: [false, false, false], cells: 0, flagHeld: false },
     state: 'play', deadT: 0, time: 0, kills: 0, shots: 0, shotT: 9, hurtT: 0, field: createField(), fieldT: 0, events: [], god: false,
-    found: [], golf: 0 };
+    found: [], golf: 0, hold: null, won: false };
   clearDecals(F);
   const C = F._ctx = { ground: lv.ground, ceil: lv.ceil, px: 0, py: 0, pz: 0, field: F.field, rng: F.rng, others: F.aliens,
     los: a => lineOfSight(F.lv.ground, muzzleAt(a, C), [C.px, C.py + PLAYER.eye, C.pz], F.lv.ceil),
@@ -80,9 +84,10 @@ export function enterArea(F, k) {
   F.events.push({ type: 'area', area: k, id: AREAS[k], level: fresh, text: AREA_TEXT[k] });
 }
 
-// cause (optional) rides on the 'hurt' event: 'fall' for a hard landing (R18), for Plan 4's radio.
+// cause (optional) rides on the 'hurt' event: 'fall' for a hard landing (R18), for Plan 4's radio. Once Houston has picked up
+// nothing hurts you.
 export function hurtPlayer(F, dmg, kx, ky, kz, cause) {
-  if (F.state === 'dead') return;
+  if (F.state === 'dead' || F.won) return;
   F.hp -= dmg;
   if (F.god) F.hp = Math.max(1, F.hp);
   F.hurtT = Math.min(1, F.hurtT + dmg / 20);
@@ -98,10 +103,10 @@ function die(F) {
 
 // Back to the current area's start with what you entered it with, facing it (and any later area of the level) fresh. Earlier
 // areas of the level keep the pickups, intact canisters and golf balls you left there; every alien goes, so those you fled from
-// are gone. Found golf balls stay found.
+// are gone. Found golf balls stay found. A death on hold takes you off hold (its aliens and supplies are area 3's).
 export function restartArea(F) {
   const E = F.entry, A = F.ars, k = F.area;
-  F.aliens.length = 0;
+  F.aliens.length = 0; F.hold = null;
   keep(F.pickups, q => q.area < k);
   keep(F.canisters, c => c.area < k && !(c.hp <= 0 || c.fuse > 0));
   keep(F.balls, b => b.area < k);
@@ -157,7 +162,7 @@ export function stepFight(F, input, dt) {
   }
   const p = F.player, A = F.ars, U = F.world.crater.use;
   // 2. weapon input; the flag stands on the surface level only; E at the hangar door takes you into the base, where the rest of
-  // this step runs
+  // this step runs; E at the comms array puts you on hold
   if (input.weapon >= 0) selectWeapon(A, input.weapon);
   if (input.wheel) cycleWeapon(A, input.wheel);
   if (input.use && F.lv.id === 'surface' && !F.flag.held && Math.hypot(p.x - F.flag.x, p.z - F.flag.z) <= GRAB) {
@@ -166,6 +171,7 @@ export function stepFight(F, input, dt) {
     F.events.push({ type: 'flag', text: WEAPONS[0].name, x: F.flag.x, y: F.flag.y, z: F.flag.z });
   }
   if (input.use && F.area === 1 && Math.hypot(p.x - U.x, p.z - U.z) <= DOOR_REACH) enterArea(F, 2);
+  if (input.use && F.area === 3 && !F.hold && F.state === 'play') { const d = dishOf(F.world.baseMap); if (Math.hypot(p.x - d.x, p.z - d.z) <= HOLD.reach) startHold(F, d); }
   const lv = F.lv;
   coolWeapon(A, dt);
   if (input.fire && A.cur >= 0 && A.cool <= 0) fire(F);
@@ -184,6 +190,8 @@ export function stepFight(F, input, dt) {
     const e = a.enc, dx = p.x - e.x, dz = p.z - e.z;
     if (e.alerted || dx * dx + dz * dz < wake * wake) stepAlien(a, C, dt); else a.t += dt;
   }
+  // 5a. on hold: the waves come in, until Houston picks up
+  if (F.hold && !F.won) stepHold(F, dt);
   // 5b. the player can't stand inside a live walker or a canister
   bodies(F);
   // 6. bolts, 7. deaths, 8. canisters
@@ -197,6 +205,39 @@ export function stepFight(F, input, dt) {
   F.hurtT = Math.max(0, F.hurtT - 2 * dt);
   // 11. death check (hurtPlayer already enters death; this catches hp set directly)
   if (F.state === 'play' && F.hp <= 0) { if (F.god) F.hp = 1; else die(F); }
+}
+
+// On hold at the array d (the dish): the waves are planned now, from the sim rng, so a retry after a death gets new ones. The
+// hold's aliens share one enc, alerted from the start, at the dish. The supplies go on the dais: tape on the first HOLD.tape of
+// HOLD.spots that are floor, cells on the next HOLD.cells.
+function startHold(F, d) {
+  const M = F.world.baseMap, enc = { x: d.x, z: d.z, p: 1, first: false, area: 3, room: -1, alerted: true, waved: false };
+  F.hold = { t: 0, plan: planWaves(F.rng, M.spawnDoors.length), next: 0, msgs: 0, enc };
+  let k = 0;
+  for (const [u, v] of HOLD.spots) {
+    const x = d.x + u, z = d.z + v;
+    if (k === HOLD.tape + HOLD.cells || M.kind[Math.round(z + M.half) * M.n + Math.round(x + M.half)] !== K.floor) continue;
+    const kind = k++ < HOLD.tape ? 'tape' : 'cells';
+    F.pickups.push({ kind, x, y: F.lv.ground(x, z), z, n: PICKUP[kind], area: 3 });
+  }
+  F.events.push({ type: 'hold' });
+}
+
+// dt seconds on hold. Planned spawns come in order once due, while fewer than HOLD.cap hold aliens are alive (one that finds no
+// free slot waits, and so do those after it), each at its door, first moving next step. Mission Control's on-hold message is
+// due every HOLD.msg s from HOLD.msg / 2; at HOLD.time Houston picks up.
+function stepHold(F, dt) {
+  const H = F.hold, P = H.plan, D = F.world.baseMap.spawnDoors;
+  H.t += dt;
+  let live = 0;
+  for (const a of F.aliens) if (a.enc === H.enc && a.state !== 'dead') live++;
+  for (; H.next < P.length && P[H.next].at <= H.t && live < HOLD.cap; live++) {
+    const q = P[H.next], d = D[q.door], g = F.lv.ground(d.x, d.z);
+    const a = createAlien({ type: q.type, x: d.x, y: q.type === 'fl' ? g + HOVER : g, z: d.z }, HOLD_ID + H.next++, H.enc);
+    a.area = 3; F.aliens.push(a);
+  }
+  while (H.t >= HOLD.msg / 2 + H.msgs * HOLD.msg) F.events.push({ type: 'holdmsg', n: H.msgs++ });
+  if (H.t >= HOLD.time) { F.won = true; F.events.push({ type: 'houston' }); }
 }
 
 // R16: the player is pushed out of live walkers and canisters (horizontally, where their heights overlap). A push to where the

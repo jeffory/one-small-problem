@@ -225,3 +225,22 @@ test('under the pause menu a raw lock refused late never falls back, and a lock 
   await askLockOn(page, 'controls'); await page.click('#controls');
   await expect.poll(() => page.evaluate(() => window.LOCKS)).toBe(1); await expect.poll(() => page.evaluate(() => document.pointerLockElement)).toBe(null);
   await page.click('#resume'); await expect.poll(() => paused(page)).toBe(false); expect(errors).toEqual([]); });
+export const toComms = async page => { await page.evaluate(() => { const o = window.ospTest; o.grab(); o.give(); o.comms(); });
+  await expect.poll(() => page.evaluate(() => window.ospTest.area()), { timeout: 10_000 }).toBe('comms'); await expect(page.locator('#prompt')).toContainText('call Houston'); };
+export const onHold = async page => { await page.keyboard.press('KeyE'); await expect.poll(() => fight(page).then(f => f.hold)).not.toBe(null); };
+const clock = page => page.evaluate(() => window.ospTest.clock());
+test('the comms array puts you on hold; Houston picks up after the final stand; then the end screen (final stand)', async ({ page }) => {
+  const errors = watchErrors(page); await start(page); await toComms(page); await onHold(page); await expect(page.locator('#prompt')).toContainText('ON HOLD');
+  await page.evaluate(() => { window.ospTest.god(true); window.ospTest.ff(91); }); await expect.poll(() => state(page)).toBe('ending');
+  await expect(page.locator('#end')).toBeVisible({ timeout: 20_000 }); expect(await state(page)).toBe('end'); expect(errors).toEqual([]); });
+test('dying during the final stand restarts you at the comms door, off hold (final stand)', async ({ page }) => {
+  const errors = watchErrors(page); await start(page); await toComms(page); await onHold(page); await page.evaluate(() => window.ospTest.hurt(999));
+  await expect(page.locator('#prompt')).toContainText('the comms room door'); await expect.poll(() => fight(page).then(f => f.state), { timeout: 10_000 }).toBe('play');
+  const f = await fight(page); expect([f.area, f.atStart, f.hold]).toEqual(['comms', true, null]); expect(errors).toEqual([]); });
+test('pausing on hold or mid-ending stops the hold timer and the ending countdown until you resume (Review Focus 3)', async ({ page }) => {
+  await start(page); await toComms(page); await onHold(page); await page.keyboard.press('Escape'); await expect.poll(() => paused(page)).toBe(true);
+  const h = (await clock(page)).hold; await page.waitForTimeout(600); expect((await clock(page)).hold).toBe(h); await page.keyboard.press('Escape');
+  await page.evaluate(() => { window.ospTest.god(true); window.ospTest.ff(91); }); await expect.poll(() => state(page)).toBe('ending');
+  await page.keyboard.press('Escape'); await expect.poll(() => paused(page)).toBe(true); const e = (await clock(page)).ending; await page.waitForTimeout(600);
+  expect((await clock(page)).ending).toBe(e); await expect(page.locator('#end')).toBeHidden(); await page.keyboard.press('Escape');
+  await expect(page.locator('#end')).toBeVisible({ timeout: 20_000 }); });

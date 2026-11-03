@@ -1,13 +1,15 @@
 // The attract bot: plays a run behind the title through the same Input the keyboard gives, and turns the player as a mouse
 // would. It grabs the flag, follows the route and the crater switchback to the hangar door, then a distance field through the
-// base to the comms room; it aims at the nearest alien it can see, with noise, fires when on target, and dodges. It never
-// gives up a run by dying (the fight is god mode), only by finishing it or stalling. Pure: no DOM, GPU or clock, and its noise
+// base to the comms room (and with the finale on, on to the array, where it calls and holds out by the call spot until Houston
+// picks up); it aims at the nearest alien it can see, with noise, fires when on target, and dodges. It never gives up a run by
+// dying (the fight is god mode), only by finishing it or stalling. Pure: no DOM, GPU or clock, and its noise
 // comes from the rng it is given, so the same seed and frame times replay the same run.
 import { lineOfSight, descend } from './nav.js';
 import { worldSpheres } from './rigs.js';
 import { PLAYER } from './player.js';
 import { WEAPONS } from './weapons.js';
 import { DOOR_REACH } from './fight.js';
+import { HOLD, dishOf, callSpot } from './hold.js';
 import { BASE } from '../gen/base.js';
 import { N, MAX_STEP, MAP_MARGIN, distToPolyline } from '../gen/surface.js';
 import { cameraBasis } from '../gfx/math.js';
@@ -19,8 +21,8 @@ import { cameraBasis } from '../gfx/math.js';
 export const BOT = { wp: 3, turn: 5, fire: .052, sight: 40, noise: .04, strafe: 1.3, stuck: 3, stall: 45, use: 1.6 };
 // GAIN: the drop in the distance left (m or field steps) that counts as progress; JIG: how long a jiggle lasts (s); NOISE_T: how
 // often the aim noise is redrawn (s); DODGE: the dodge strafe; POLE: how near (m) a target must be to swing the flag pole at it;
-// SCATTER: how near for the scattergun.
-const GAIN = 1, JIG = 1, NOISE_T = .5, DODGE = .6, POLE = 2.4, SCATTER = 10, PITCH = 1.5;
+// SCATTER: how near for the scattergun; STAY: on hold it keeps within this of the call spot (m): it walks back once half of it away.
+const GAIN = 1, JIG = 1, NOISE_T = .5, DODGE = .6, POLE = 2.4, SCATTER = 10, PITCH = 1.5, STAY = 1;
 const DI = [1, -1, 0, 0], DJ = [0, 0, 1, -1], IDLE = { fwd: 0, strafe: 0, run: false, jump: false, fire: false, use: false, weapon: -1, wheel: 0 };
 const wrap = a => Math.atan2(Math.sin(a), Math.cos(a)), clamp = (v, m) => Math.max(-m, Math.min(m, v));
 
@@ -55,29 +57,38 @@ function down(d, n, h, x, z) {
 
 // A bot for a fight on world, from the wreck. finale: it plays on into the comms room (Task 5) instead of stopping at its door.
 // path: the route, the switchback and the hangar door's use spot; k: the waypoint it heads for; sf: the surface field to the
-// use spot; bf: the base field to the comms door (made on arrival). still/best: the progress timer and its mark (see botStep).
+// use spot; bf: the base field to the comms door, cf: to the call spot (each made on arrival). still/best: the progress timer
+// and its mark (see botStep).
 export function createBot(world, rng, finale = false) {
   const U = world.crater.use, h = world.half;
   return { rng, finale, stage: 'flag', path: [...world.route, ...world.crater.path.slice(1), [U.x, U.z]], k: 1,
-    sf: gridField(world.occ, N, Math.round(U.x + h), Math.round(U.z + h), MAX_STEP, Infinity, MAP_MARGIN), bf: null, done: null,
+    sf: gridField(world.occ, N, Math.round(U.x + h), Math.round(U.z + h), MAX_STEP, Infinity, MAP_MARGIN), bf: null, cf: null, done: null,
     still: 0, best: Infinity, jig: 0, side: 1, noiseT: 0, ny: 0, np: 0, dodgeT: 0, dodge: 1 };
 }
 
 // dt seconds of play: the Input for this step. It also turns F.player, at most BOT.turn rad/s in yaw and in pitch.
 export function botStep(bot, F, dt) {
   const p = F.player, A = F.ars, W = F.world, R = bot.rng;
-  // 1. done at the comms room's door (unless it plays the finale), or stalled
+  // 1. done at the comms room's door (unless it plays the finale), when Houston picks up, or stalled
   if (F.area === 3 && !bot.finale) bot.done = 'comms';
+  if (F.won) bot.done = 'houston';
   if (bot.done) return { ...IDLE };
-  // the stage: each belongs to one level, so a new level is always a new stage, and progress starts over
-  const stage = F.lv.id === 'base' ? 'base' : F.flag.held ? 'route' : 'flag', inp = { ...IDLE, run: true };
+  // the stage: each belongs to one level (in the base, to the comms room, then the array, then on hold), so a new level is
+  // always a new stage, and progress starts over
+  const stage = F.lv.id !== 'base' ? (F.flag.held ? 'route' : 'flag') : F.area < 3 ? 'base' : F.hold ? 'hold' : 'call', inp = { ...IDLE, run: true };
   if (stage !== bot.stage) Object.assign(bot, { stage, still: 0, best: Infinity, jig: 0 });
 
-  // 2. the goal (gx, gz) and the distance left, rem
-  let gx, gz, rem;
+  // 2. the goal (gx, gz) and the distance left, rem; on hold, the call spot, and parked: standing within STAY / 2 of it
+  let gx, gz, rem, parked = false;
   if (stage === 'base') {
     const B = W.baseMap, s = down(bot.bf ??= baseField(B, B.commsDoor.x, B.commsDoor.z), B.n, B.half, p.x, p.z);
     [gx, gz, rem] = s || [B.commsDoor.x, B.commsDoor.z, Infinity];
+  } else if (stage === 'call') {
+    const B = W.baseMap, c = callSpot(B), d = dishOf(B), s = down(bot.cf ??= baseField(B, c.x, c.z), B.n, B.half, p.x, p.z);
+    [gx, gz, rem] = s || [c.x, c.z, Infinity];
+    inp.use = Math.hypot(d.x - p.x, d.z - p.z) <= HOLD.reach - .3;
+  } else if (stage === 'hold') {
+    const c = callSpot(W.baseMap); gx = c.x; gz = c.z; rem = 0; parked = Math.hypot(gx - p.x, gz - p.z) < STAY / 2;
   } else if (stage === 'flag') {
     gx = F.flag.x; gz = F.flag.z; rem = Math.hypot(gx - p.x, gz - p.z); inp.use = rem < BOT.use;
   } else {
@@ -98,9 +109,12 @@ export function botStep(bot, F, dt) {
   // BOT.stall s without progress gives the run up (ruling R4, the probed rule). Pre-flight F18's variant, a separate stall timer
   // that only an all-time best resets, was measured at 468/480 runs: it gave up on bots knocked far back that won the ground
   // back too slowly, and stranded BOT-0036 behind the hangar bunker. In 72 test pens this rule always gives up by 47.6 s.
-  if (rem < bot.best - GAIN) { bot.best = rem; bot.still = 0; }
-  else { const s0 = bot.still; bot.still += dt; if (Math.floor(bot.still / BOT.stuck) > Math.floor(s0 / BOT.stuck)) { bot.jig = JIG; bot.side = R.next() < .5 ? -1 : 1; bot.best = rem; } }
-  if (bot.still > BOT.stall) { bot.done = 'stall'; return { ...IDLE }; }
+  // On hold there is nowhere left to go: the hold itself ends the run.
+  if (stage !== 'hold') {
+    if (rem < bot.best - GAIN) { bot.best = rem; bot.still = 0; }
+    else { const s0 = bot.still; bot.still += dt; if (Math.floor(bot.still / BOT.stuck) > Math.floor(s0 / BOT.stuck)) { bot.jig = JIG; bot.side = R.next() < .5 ? -1 : 1; bot.best = rem; } }
+    if (bot.still > BOT.stall) { bot.done = 'stall'; return { ...IDLE }; }
+  }
 
   // 4. the target: the nearest live alien in sight whose first sphere the eye can see; the aim noise is redrawn every NOISE_T s
   const ex = p.x, ey = p.y + PLAYER.eye, ez = p.z, eye = [ex, ey, ez]; let T = null, td = BOT.sight;
@@ -111,15 +125,16 @@ export function botStep(bot, F, dt) {
   }
   if ((bot.noiseT -= dt) <= 0) { bot.noiseT += NOISE_T; bot.ny = R.range(-BOT.noise, BOT.noise); bot.np = R.range(-BOT.noise, BOT.noise); }
 
-  // 5. turn toward the target (with the noise), else the goal, level
-  let wy = Math.atan2(p.x - gx, p.z - gz), wp = 0;
+  // 5. turn toward the target (with the noise), else the goal (parked, keep the facing), level
+  let wy = parked ? p.yaw : Math.atan2(p.x - gx, p.z - gz), wp = 0;
   if (T) { const dx = T[0] - ex, dz = T[2] - ez; wy = Math.atan2(-dx, -dz) + bot.ny; wp = clamp(Math.atan2(T[1] - ey, Math.hypot(dx, dz)) + bot.np, PITCH); }
   const m = BOT.turn * dt;
   p.yaw += clamp(wrap(wy - p.yaw), m); p.pitch += clamp(wp - p.pitch, m);
 
-  // 6. move toward the goal whatever the facing (analog keys); with a target walk, dodging side to side; jiggle when stuck
+  // 6. move toward the goal whatever the facing (analog keys), unless parked; with a target walk, dodging side to side
+  // (on hold the walk back to the call spot outpulls the dodge); jiggle when stuck
   const rel = Math.atan2(p.x - gx, p.z - gz) - p.yaw;
-  inp.fwd = Math.cos(rel); inp.strafe = -Math.sin(rel);
+  if (!parked) { inp.fwd = Math.cos(rel); inp.strafe = -Math.sin(rel); }
   if ((bot.dodgeT += dt) >= BOT.strafe) { bot.dodgeT -= BOT.strafe; bot.dodge = -bot.dodge; }
   if (T) { inp.strafe += DODGE * bot.dodge; inp.run = false; }
   if (bot.jig > 0) { bot.jig -= dt; inp.jump = true; inp.strafe = bot.side; }
