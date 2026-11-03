@@ -31,7 +31,7 @@
   - A *stint* is a run of consecutive areas on one level: 0–1, 2–3, 4, 5–6. `populate(F, from)` takes only `from`'s stint.
 - **Ids:** plan aliens from 1 (level 1, then the escape plan), opening 900+, hold 1000+, the rescue ring `RING.id` 2000+. Golf 0–2 surface, 3–4 base, 5 evidence locker, 6 dash.
 - **Tables:**
-  - Each table is pinned once, in the test that names it, and other tests read it (Plan 5 F1): `KO` (T1), `BREAK` (T5), `EXIT` (T7), `SHIP` `FLARE` `RING` (T8), `LIFT` (T9), `SIGHTS` (T11) and `ESCAPE` (T6, in `src/gen/encounters.js`).
+  - Each table is pinned once, in the test that names it, and other tests read it (Plan 5 F1): `KO` (T1), `BREAK` (T5), `EXIT` (T7), `SHIP` `FLARE` `RING` `PUFF` (T8; `PUFF` pre-flight F14), `LIFT` (T9), `SIGHTS` (T11) and `ESCAPE` (T6, in `src/gen/encounters.js`).
   - Every number is a starting value for the hands-on check. The only retune is `SHIP.clock`, from the bot soak by the spec's rule (T12).
 - **UI:** HUD text `#b8ae9c`, dim `#7a7266`, alert `#b8301a`. Overlays are `pointer-events:none`, and names read from outside are never `_`-prefixed.
 - **Commits** end with the line `Claude-Session: https://claude.ai/code/session_01FNs5CY5HQgPxxGzTsprcX7`, passed as a second `-m`.
@@ -51,7 +51,7 @@ The rule each test guards stays; only its freeze point moves.
 
 ## Review Focus
 
-1. **A pause during Houston's call, the black or the wake, or mid cut-off line.** The knock-out happens once, its clock stops while paused, and a paused line replays (Plan 4 R15). Pinned in T1 (`knockOut` only acts in `'call'`) and T10 (smoke).
+1. **A pause during Houston's call, the black or the wake, or mid cut-off line.** The knock-out happens once, its clock stops while paused, and a paused line replays (Plan 4 Review Focus 3, `pauseRadio`; pre-flight F21). Pinned in T1 (`knockOut` only acts in `'call'`) and T10 (smoke).
 2. **Dying in the same step the guard dies.** You restart freed: bars open, its pistol and cells in your kit. Pinned in T5.
 3. **E at the ladder in the clock's last step.** Boarding wins: E is read before the clock runs. Pinned in T9.
 4. **Going back the way you came.** E at the hangar door in area 5 does nothing; back over the rim, area 6 stays area 6 with the arrow on the ship. Pinned in T7.
@@ -151,14 +151,14 @@ test('the knock-out comes KO.call s after Houston or at once by knockOut, only o
 ```js
 test('silence: the radio dies at once, queue and all, with no closing tone (Plan 6)', () => {
   const R = createRadio(always); radioCue(R, 'houston'); radioCue(R, 'rescue'); run(R, .5); assert.deepEqual(silence(R), [{ do: 'off' }]);
-  assert.deepEqual([R.cur, R.q.length], [null, 0]); assert.ok(run(R, 3).every(a => a.do !== 'unkey')); assert.deepEqual(silence(R), []); });
+  assert.deepEqual([R.cur, R.q.length], [null, 0]); assert.deepEqual(run(R, 3), []); assert.deepEqual(silence(R), []); }); // pre-flight F23: the queue is empty, so nothing keys or unkeys
 ```
 
 **`smoke.spec.mjs`** (import `KO` from escape.js and `HOLD`):
 - **"the comms array…":**
   - poll `fight().ko` not null instead of `'ending'`, with an `#end` timeout of `40_000`;
   - R9: `expect(f.time - f.run).toBeGreaterThan(5)`, with `'TIME ' + fmtTime(f.run)`.
-- **"pausing on hold or mid-ending…":** becomes "…or in Houston's call…", using `fight().ko === 'call'` and `clock().ko`.
+- **"pausing on hold or mid-ending…":** becomes "…or in Houston's call…", using `fight().ko === 'call'` and `clock().ko`; its `#end` wait becomes `40_000`, since the call lasts about 12.6 s plus any replay (pre-flight F17).
 - **The dawdle smoke:** poll `fight().ko` to `'call'`.
 - **"two whole games":** `#end` timeout `40_000`.
 - **Replace `throughEnding` and its two tests with:**
@@ -173,7 +173,7 @@ const throughCall = (page, holds = 0) => page.evaluate(([n, H]) => { const o = w
 test('R18 moved: the knock-out comes as the rescue line\'s talk ends, with no closing tone', async ({ page }) => {
   await noVoices(page); const errors = watchErrors(page); await start(page); await toComms(page); await onHold(page); const r = await throughCall(page), last = r.s.at(-1);
   expect(r.s.some(x => x.sub.includes('one small problem'))).toBe(true); expect(last.line).toContain('twenty min'); expect(last.t).toBeLessThan(KO.call);
-  expect(r.downs).toBe(last.downs); expect([r.state, r.sub, r.ko]).toEqual(['end', '', 'out']); expect(errors).toEqual([]); });
+  expect(r.downs).toBe(r.s.find(x => x.line?.includes('twenty min')).downs); /* pre-flight F6: the sample at the rescue line itself; T10 inherits this check through throughCall */ expect([r.state, r.sub, r.ko]).toEqual(['end', '', 'out']); expect(errors).toEqual([]); });
 test('R18 moved: at KO.call the knock-out comes whatever is on the air', async ({ page }) => {
   await noVoices(page); const errors = watchErrors(page); await start(page); await toComms(page); await onHold(page); const r = await throughCall(page, 3), last = r.s.at(-1);
   expect(Math.abs(last.t - KO.call)).toBeLessThanOrEqual(2 / 30); expect(last.line).not.toBe(null); expect(r.s.some(x => x.sub.includes('twenty min'))).toBe(false);
@@ -184,7 +184,7 @@ test('R18 moved: at KO.call the knock-out comes whatever is on the air', async (
 
 - [ ] **Step 3: Implement** as in Interfaces. Update the header comments of `main.js` (states), `fight.js` (`F.ko`) and `radio.js` (R18 "while knocked out").
 
-- [ ] **Step 4: Run the tests:** `npm test`, then `npm run test:smoke -- -g "final stand|R18|dawdle|two whole games|end screen"`. Expected: all pass, with the goldens unchanged.
+- [ ] **Step 4: Run the tests:** `npm test`, then `npm run test:smoke -- -g "final stand|R18|dawdle|two whole games|end screen|Houston's call"`. Expected: all pass, with the goldens unchanged.
 
 - [ ] **Step 5: Commit**
 
@@ -223,7 +223,7 @@ Today's base must come out exactly: its golden part doesn't move.
 - **`planBase`:**
   - Draws on `makeRng(B.seed + B.cfg.stream + '/fight/' + B.attempt)`.
   - `p = cfg.p[0] + (cfg.p[1] - cfg.p[0]) * k / (L - 1)`, bitwise today's.
-  - Items take `area: cfg.area`.
+  - Items and encounters take `area: cfg.area` (the encounter map's hard-coded `area: 2` goes; pre-flight F25).
   - Golf rooms are `cfg.golf.room === 'side' ? B.side.slice(0, 2) : [themed(cfg.golf.room).id]`, with ids from `cfg.golf.id`.
   - Cells go in `cfg.cells`; canisters follow `cfg.cans`. Draws stay in today's order.
 - **`buildBaseMeshes`:** draws on `makeRng(B.seed + B.cfg.stream + '/mesh')`.
@@ -310,6 +310,7 @@ git commit -m "gen: the base generator reads a config; BASE_PLAN reproduces toda
   - **`chair`:** a reclined seat on a pedestal, under a probe arm `beam` from the ceiling with a `lathe` tip.
   - **`shelf`:** posts and three boards (`MAT.crate`), 2 m tall, carrying junk from the mesh rng.
   - **`exit`:** a `MAT.grate` disc r 1.6, four posts to 3 m and a `MAT.amber` ring.
+  - **Alarm lamps** (pre-flight F20): `buildBaseMeshes` skips the fixture of every `kind` 1 lamp, since spawn-door boxes stand in for it; a `kind` 1 lamp with no spawn door (the lift hall's) gets a small red fixture box instead, so the hall's light has a source.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -395,6 +396,7 @@ git commit -m "gen: the prison (PRISON_PLAN): barred cell, cell block and cow, g
   - **`export function openBars(F)`:** `F.cell.shut = false; setBars(F.lv, false); F.events.push({ type: 'bars' })`.
   - **`export function strip(F)`:** owned `[true, false, false]`, cells 0, `cur` 0, `cool` 0, the flag held, `hp = KO.hp`.
   - **`export function skipTo(F, k)`:** `if (F.area < 4 && k >= 4) strip(F); F.ko = null; F.hold = null; enterArea(F, k);`.
+  - **`enterArea(F, k)` starts a fresh stint (pre-flight F1):** it rebuilds the level, repopulates and places you at `areaStart` when `const fresh = LEVEL[k] !== F.lv.id || stintEnd(k) !== stintEnd(F.area)`, i.e. on a new level or a new stint (`stintEnd` is defined above). Walking 0->1, 2->3 and 5->6 stays within a stint, so play is unchanged. Without the stint test, `skipTo(F, 6)` from area 0 would stay on 'surface' with you at the wreck, and the `ospTest` hooks of T7-T9 and T12's bot tests would pass vacuously.
 - **The bars on screen:**
   - `models.js`: a `bars` model (`buildBars`, 3 m wide along x, 2.7 m tall).
   - `fightView.js`: while `F.cell?.shut`, draws `G.bars` at `F.lv.map.bars` with `trs(mat(), b.x, 0, b.z, Math.atan2(b.dx, b.dz), 1)`.
@@ -402,6 +404,7 @@ git commit -m "gen: the prison (PRISON_PLAN): barred cell, cell block and cow, g
   - `swap()` builds `lv.id === 'surface' ? buildSurfaceScene(gl, run.world) : buildBaseScene(gl, lv.map)`, and `useScene` calls `audio.air(lv.id !== 'surface')`.
   - `BACK` gains `'the cell'`; `MUSIC` gains `'base'` (T11 makes it `'prison'`).
   - `ospTest.prison = () => skipTo(run.F, 4)`; `fight()` adds `cell: F.cell && { ...F.cell }`.
+  - The DEBUG `warp` branches on `F.lv.map` (the base and the prison aim at their map's exit), not on `F.lv.id === 'base'`, so in the prison it no longer aims at the lander (pre-flight F26).
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -584,16 +587,18 @@ The checksum appends the prison and the escape plan here, and the goldens are re
 - Modify: `src/gen/{encounters,world,checksum}.js`, `src/game/areas.js`, `tests/{golden,encounters,areas}.test.mjs`, `tests/seeds.soak.mjs`
 
 **Interfaces:**
-- **`routePlanner(world)`** builds today's `reach` and returns `{ standable, compose, place, pick, cluster3, golfIn, plan }`.
+- **`routePlanner(world)`** builds today's `reach` and returns `{ standable, compose, place, pick, cluster3, golfIn, walk, switchback, plan }`.
   - `plan = { encounters: [], pickups: [], canisters: [], golf: [] }`; `pick` and `cluster3` read and push into it.
   - `golfIn(gr, pts, [lo, hi], id, area)` is today's golf loop body for one band.
-  - `planFight` becomes a thin caller: the same calls, arguments and order. **The level 1 hash test is the proof.**
+  - **`walk(pts, rng, area, p0, dp, firstOne)`** (pre-flight F7) is planFight's route loop moved out whole: the count/encounter loop along `pts` with `p = p0 + dp * s / L` (`firstOne`: the first encounter is `first`, as level 1's), the four `onRoute` pickups and the canister clusters at hosts `[1, 3, last]`.
+  - **`switchback(pts, rng, area, ats, P)`** (pre-flight F7) is the crater block moved out whole: encounters at the fractions `ats` of `pts` with `p = P[0] + (P[1] - P[0]) * at`, tape at .5, cells at .8 and the canister cluster 5-9 m from the last encounter.
+  - `planFight` becomes a thin caller of `walk` and `switchback`: the same calls, arguments and order, so no logic block is written twice. `planEscape` calls the same two. **The level 1 hash test is the proof.**
 - **`ESCAPE` [call]**, values pinned in the first encounters test below.
 - **`export function planEscape(world) => { encounters, pickups, canisters, golf, site }`**, on a fresh planner:
-  - **Climb** (area 5, `'/escape/climb/'`, along `up` = `crater.path` reversed):
+  - **Climb** (area 5, `'/escape/climb/'`, along `up` = `crater.path` reversed; `switchback(up, rng, 5, ESCAPE.climbAt, ESCAPE.climbP)`):
     - encounters at `climbAt` of its length, with `p = climbP[0] + (climbP[1] - climbP[0]) * at`, placed by `place(c, compose(p, i, cr), [-6, 6], [-4, 8], up, at * Lp, cr)`;
     - tape at .5 and cells at .8, with a canister cluster 5–9 m from the last encounter, as level 1's crater.
-  - **Dash** (area 6, `'/escape/dash/'`, along `back` = the route reversed, rim → spawn):
+  - **Dash** (area 6, `'/escape/dash/'`, along `back` = the route reversed, rim → spawn; `walk(back, rng, 6, ESCAPE.dashP[0], ESCAPE.dashP[1] - ESCAPE.dashP[0], false)`):
     - `count = max(5, floor((Lr - FIRST_AT) / GAP))`, with encounters at `s = FIRST_AT + k * (Lr - 8 - FIRST_AT) / count`;
     - `p = dashP[0] + (dashP[1] - dashP[0]) * s / Lr`, placed by `place(c, compose(p, k, rng), [-14, 14], [-4, 10], back, s + 12, rng)`, none `first`;
     - level 1's four `onRoute` pickups, and canister clusters at hosts `[1, 3, last]`.
@@ -660,7 +665,7 @@ It **fails** on any seed whose site came from the fallback.
 
 - [ ] **Step 4: Re-pin, then run the tests**
 
-The level 1 test must be green before `GOLDEN` is touched; if it isn't, the refactor moved a draw, so fix the refactor, not the test. Then pin the actual values the golden test's failures print.
+The level 1 test must be green before `GOLDEN` is touched (it covers `walk` and `switchback` too, pre-flight F7); if it isn't, the refactor moved a draw, so fix the refactor, not the test. Then pin the actual values the golden test's failures print.
 
 Run: `npm test && npm run test:seeds && npm run test:bot`
 
@@ -709,7 +714,7 @@ git commit -m "gen: route-generic planner and the escape plan; checksum appends 
 
 - [ ] **Step 1: Write the failing tests**
 
-In `escape.test.mjs`, import `AREA_TEXT`, `advanceArea`, `wayTarget`, `wayfind`, `atExit`, `EXIT` and `exitOf`, then add:
+In `escape.test.mjs` (`skipTo` is already imported), import `AREA_TEXT`, `advanceArea`, `wayTarget`, `wayfind`, `atExit`, `EXIT` and `exitOf`, then add:
 
 ```js
 test('areas 5-6 on the surface: the climb starts at the hangar door facing out, the dash at the rim facing your lander', () => {
@@ -719,6 +724,9 @@ test('areas 5-6 on the surface: the climb starts at the hangar door facing out, 
   assert.deepEqual([s6.x, s6.z], [T.x, T.z]); assert.ok(Math.abs(s6.dx - (W.lander.x - T.x) / l) < 1e-12 && Math.abs(s6.dz - (W.lander.z - T.z) / l) < 1e-12);
   const F = createFight(W, 5), n1 = W.plan.encounters.reduce((s, e) => s + e.aliens.length, 0);
   assert.ok(F.aliens.length > 0 && F.aliens.every(a => (a.area === 5 || a.area === 6) && a.id > n1)); assert.ok(F.balls.every(b => b.id === 6)); });
+test('skipTo starts a new stint fresh, at the area start; a walk within a stint keeps its level (pre-flight F1)', () => {
+  const F = createFight(W); skipTo(F, 6); assert.deepEqual([F.area, F.lv.id], [6, 'surface']); assert.ok(near(F.player, areaStart(W, 6), 1e-9), 'at the rim, not the wreck');
+  const G = createFight(W); skipTo(G, 5); assert.ok(near(G.player, W.crater.use, 1e-9)); const lv = G.lv, B = W.base; put(G, B.x + B.R * 1.01, B.z); stepFight(G, idle, 1 / 60); assert.deepEqual([G.area, G.lv === lv], [6, true]); });
 test('E at the exit lift takes you up to the climb: a fresh surface at the hangar door', () => {
   const F = cellF(), e = exitOf(P); openBars(F); put(F, e.x + 1, e.z); assert.ok(atExit(F)); stepFight(F, { ...idle, use: true }, 1 / 60);
   assert.deepEqual([F.area, F.lv.id, F.gravity, F.cell], [5, 'surface', GRAVITY.surface, null]); assert.ok(near(F.player, W.crater.use, 1e-9));
@@ -759,12 +767,12 @@ git commit -m "sim: the exit lift, the climb (area 5) and the dash (area 6)" -m 
 ### Task 8: The dash: the rescue ship, its flare, its clock and the rush
 
 **Files:**
-- Modify: `src/game/{escape,lander,hold,fight,fightView,radio,script}.js`, `src/gfx/renderer.js`, `src/ui/hud.js`, `src/shell.html`, `src/main.js`
+- Modify: `src/game/{escape,lander,opening,hold,fight,fightView,radio,script}.js`, `src/gfx/renderer.js`, `src/ui/hud.js`, `src/shell.html`, `src/main.js`
 - Test: `tests/{escape,view,hold,radio}.test.mjs`, `tests/smoke.spec.mjs`
 
 **Interfaces:**
 - **`escape.js` [call]:** `SHIP`, `FLARE` and `RING`, their values pinned in the first three tests below.
-  - **`SHIP`:** `alt` and `descent` are the opening's. `r` is the deck's collision radius, `reach` E's reach from the ladder foot, `hatch` the seconds from touchdown to the hatch opening, `puffs` the touchdown dust ring.
+  - **`SHIP`:** `alt` and `descent` are the opening's. `r` is the deck's collision radius, `reach` E's reach from the ladder foot, `hatch` the seconds from touchdown to the hatch opening, `puffs` the number of touchdown dust puffs.
   - **`FLARE`:** `size` (m) and `ang` (rad) are its least size, so it shows at 400 m.
   - **Helpers:**
     - `shipLift(t) = t >= SHIP.descent ? 0 : SHIP.alt * (1 - t / SHIP.descent) ** 2`;
@@ -773,13 +781,14 @@ git commit -m "sim: the exit lift, the climb (area 5) and the dash (area 6)" -m 
     - `ringPoints(rng, at)`: `RING.n` points at angle `(k + rng.next()) * 2 * Math.PI / n` and radius `rng.range(...RING.r)`.
 - **`lander.js`:**
   - `createWreck(world, L = world.lander, ly = Math.atan2(world.spawn.dx, world.spawn.dz))`.
-  - `pieceMatrix` adds `W.up` (default 0) to pieces 1–3 only: the ascent stage (cabin, hatch, dish).
+  - **`export const PUFF`** (pre-flight F14), the one dust-ring table: `{ r: 2.2, v: [9, 14], up: [1, 2.5], life: 3, s: [.35, .7] }` (the values `FX.puff` has today, pinned in the first test below). `opening.js`'s `FX.puff` reads it, so the opening is unchanged, and `stepShip` reads it too.
+  - (`pieceMatrix`'s `W.up` moves to T9, with its test: pre-flight F15.)
 - **`hold.js`:** `planWaves(rng, doors, waves = HOLD.waves)`.
 - **`fight.js`:**
   - **`arrive(F, 6)`:** `F.ship = { t: 0, left: SHIP.clock, landed: false, calls: 0, at: site, W, ring: null }`, with `W = createWreck(world, site, Math.atan2(site.dx, site.dz))` and `W.lift = SHIP.alt`. Below 6, `F.ship = null`.
   - **`stepShip(F, dt)`**, after step 3 (living, area 6, `!F.won`):
     - `t += dt`, and `W.lift = shipLift(t)`.
-    - **Touchdown:** `landed`, push `{ type: 'flare' }`, and `SHIP.puffs` `'puff'` particles from `F.rng` in a ring r 2.2: v 9–14 outward, up 1–2.5, life 3, s .35–.7. These are `FX.puff`'s values, inlined because `fight.js` can't import `opening.js`.
+    - **Touchdown:** `landed`, push `{ type: 'flare' }`, and `SHIP.puffs` `'puff'` particles from `F.rng` on the `PUFF` ring (from `lander.js`, which `fight.js` may import; it can't import `opening.js`). No second copy of the table (pre-flight F14).
     - `W.hatch = clamp01((t - SHIP.descent - SHIP.hatch) / .8)`.
     - **The clock:** `left -= dt`; each `calls` mark crossed pushes `{ type: 'clock', n: ++calls }`.
     - **Missed:** at `left <= 0`, `F.state = 'dead'; F.deadT = 0;` and push `{ type: 'missed' }`, with no `'dead'` cue.
@@ -800,7 +809,7 @@ git commit -m "sim: the exit lift, the climb (area 5) and the dash (area 6)" -m 
     - `countdown: { at: 1 }`: `["H|Pilot says three minutes.", "H|Pilot says two minutes. He's tapping the glass.", "P|One minute. I'm not kidding.", "H|Pilot says he's serious this time."]`
     - `rush: { seq: 1 }`: `["P|Contacts! Lots of contacts, coming over the ridge!", "H|Run. Just run.", "P|I'm not waiting forever, buddy."]`
     - `missed: { crit: 1 }`: `["H|They'll come round again. Be at the ship this time."]`
-- **`renderer.js`:** `capture()` gains `hot`, the count of pixels with `r >= 140 && r - max(g, b) >= 60`.
+- **`renderer.js`:** `capture()` gains `hot`, the count of pixels with `r >= 100 && r - max(g, b) >= 40` (pre-flight F9: the dithered halo mostly quantizes to `c49a44`, `8e5524` and `70401c`; measured 6-8 px at every flare height from the rim, 0 before it).
 - **HUD [call]:**
   - Markup and CSS:
     - `<div id="clk"></div>` after `#way`;
@@ -817,11 +826,12 @@ git commit -m "sim: the exit lift, the climb (area 5) and the dash (area 6)" -m 
 
 - [ ] **Step 1: Write the failing tests**
 
-In `escape.test.mjs`, import `SHIP`, `FLARE`, `RING`, `shipLift`, `flareAt`, `HOLD`, `planWaves`, `OPEN` (opening.js), `PLAYER`, `makeRng` and `COST`, then add:
+In `escape.test.mjs`, import `SHIP`, `FLARE`, `RING`, `PUFF` (lander.js), `shipLift`, `flareAt`, `HOLD`, `planWaves`, `OPEN` (opening.js), `PLAYER`, `makeRng` and `COST`, then add:
 
 ```js
 test('the ship comes down on the opening\'s curve, lands, fires its flare 150 m up, opens its hatch', () => {
   assert.deepEqual(SHIP, { clock: 240, warn: 30, calls: [180, 120, 60, 30], r: 2, reach: 1.6, alt: 24, descent: 9, hatch: 1, puffs: 40 }); assert.deepEqual([SHIP.alt, SHIP.descent], [OPEN.alt, OPEN.descent]);
+  assert.deepEqual(PUFF, { r: 2.2, v: [9, 14], up: [1, 2.5], life: 3, s: [.35, .7] }); // pre-flight F14
   assert.deepEqual(FLARE, { up: 150, rise: 3, fall: 40, size: .6, ang: .01, trail: 10, gap: .5, col: [2.4, .3, .08] });
   const F = createFight(W, 6), S = F.ship, st = W.escape.site; F.aliens.length = 0; assert.deepEqual([S.landed, S.left, S.W.lift], [false, SHIP.clock, SHIP.alt]); assert.equal(shipLift(SHIP.descent / 2), SHIP.alt / 4);
   run(F, idle, SHIP.descent - .05); assert.ok(!S.landed && S.W.lift > 0 && flareAt(S) === null);
@@ -870,12 +880,14 @@ const twoFrames = async page => { const f = await page.evaluate(() => window.osp
 test('from the rim the ship lands out of sight, but its red flare climbs above the horizon (Plan 6, spec 6)', async ({ page }) => {
   const errors = watchErrors(page), cap = () => page.evaluate(() => window.ospTest.capture()); await start(page);
   await page.evaluate(() => { const o = window.ospTest; o.god(true); o.dash(); o.calm(); }); await expect.poll(() => area(page)).toBe('dash');
-  await page.evaluate(() => { const o = window.ospTest, s = o.ship().site, p = o.player(); o.turn(Math.atan2(p.x - s.x, p.z - s.z), .05); });
+  const away = await page.evaluate(() => { const o = window.ospTest, s = o.ship().site, p = o.player(); o.turn(Math.atan2(p.x - s.x, p.z - s.z), .05); return Math.hypot(p.x - s.x, p.z - s.z); });
+  expect(away).toBeGreaterThan(300); // pre-flight F1: at the rim, not the wreck (spec 11)
   await twoFrames(page); const a = await cap(); await page.evaluate(s => window.ospTest.ff(s), SHIP.descent + FLARE.rise + 1); await twoFrames(page); const b = await cap();
   expect(b.hot).toBeGreaterThan(a.hot); expect(b.inPalette).toBe(1); expect(errors).toEqual([]); });
 test('the dash shows SHIP LEAVES m:ss under the arrow, red under SHIP.warn s (Plan 6)', async ({ page }) => {
   const errors = watchErrors(page), clk = page.locator('#clk'); await start(page); await page.evaluate(() => { const o = window.ospTest; o.god(true); o.dash(); o.calm(); });
-  await expect(clk).toHaveText(/^SHIP LEAVES [34]:\d\d$/); await expect(clk).not.toHaveClass(/low/); await page.evaluate(s => window.ospTest.ff(s), SHIP.clock - SHIP.warn + 1);
+  const m = Math.ceil(SHIP.clock / 60); await expect(clk).toHaveText(new RegExp('^SHIP LEAVES [' + (m - 1) + m + ']:\\d\\d$')); // pre-flight F8: read from SHIP.clock, so T12's retune can't break it
+  await expect(clk).not.toHaveClass(/low/); await page.evaluate(s => window.ospTest.ff(s), SHIP.clock - SHIP.warn + 1);
   await expect(clk).toHaveClass(/low/); await expect(clk).toHaveText(/^SHIP LEAVES 0:\d\d$/); expect(errors).toEqual([]); });
 ```
 
@@ -898,10 +910,11 @@ git commit -m "dash: the rescue ship, its flare, SHIP LEAVES and the rush" -m "C
 
 **Files:**
 - Create: `src/game/liftoff.js`
-- Modify: `src/game/{escape,fight,radio,script}.js`, `src/audio/sfx.js`, `src/main.js`, `tests/{escape,lander,purity}.test.mjs`, `tests/smoke.spec.mjs`
+- Modify: `src/game/{escape,lander,fight,radio,script}.js`, `src/audio/sfx.js`, `src/main.js`, `tests/{escape,lander,purity}.test.mjs`, `tests/smoke.spec.mjs`
 
 **Interfaces:**
 - **`LIFT` [call]** (pinned in the first test below): the ascent's climb (m/s²), the seconds from boarding to the sting, and the fade (s) after the end gate.
+- **`lander.js`** (moved here from T8, pre-flight F15): `pieceMatrix` adds `W.up` (default 0) to pieces 1–3 only: the ascent stage (cabin, hatch, dish).
 - **`fight.js`:**
   - `export const atLadder = F => F.area === 6 && F.state === 'play' && F.ship?.landed && !F.won && dist(player, ladderAt(F.ship)) <= SHIP.reach`.
   - Step 2, before the ship's clock: `if (input.use && atLadder(F)) { F.won = true; F.wonAt = F.run; F.events.push({ type: 'board' }); }`.
@@ -934,7 +947,8 @@ git commit -m "dash: the rescue ship, its flare, SHIP LEAVES and the rush" -m "C
 - **`lander.test.mjs`** (import `pieceMatrix`):
 
 ```js
-test('the ascent stage rises by W.up: the cabin, hatch and dish only (Plan 6)', () => { const A = createWreck(W, { x: 0, y: 0, z: 0 }, 0), o = new Float32Array(16); A.up = 5;
+test('the ascent stage rises by W.up: the cabin, hatch and dish only (Plan 6)', () => { const A = createWreck(W, { x: 0, y: 0, z: 0 }, 0), o = new Array(16); A.up = 5; // pre-flight F2: a Float32Array would compare a float32 with a double
+ 
   PIECES.forEach((_, k) => assert.equal(pieceMatrix(A, k, o)[13], A.pieces[k].y + (k >= 1 && k <= 3 ? 5 : 0), `${k}`)); });
 ```
 
@@ -964,6 +978,8 @@ test('the lift-off: the ascent stage rises with you, the aliens turn and wave, t
 
 ```js
 const toLiftoff = async page => { await page.evaluate(() => { const o = window.ospTest; o.god(true); o.dash(); o.calm(); }); await expect.poll(() => area(page)).toBe('dash');
+  // pre-flight F1: you start at the rim, far from the site, so touchdown does not trigger the rush and the sting keys at LIFT.sting + the board line only
+  expect(await page.evaluate(() => { const o = window.ospTest, s = o.ship().site, p = o.player(); return Math.hypot(p.x - s.x, p.z - s.z); })).toBeGreaterThan(300);
   await page.evaluate(s => window.ospTest.ff(s), SHIP.descent + .5); await page.evaluate(() => window.ospTest.board()); await expect.poll(() => state(page)).toBe('liftoff'); };
 // R18 moved: the end gate runs from the sting. 1/30 s steps through the lift-off, cueing the switchboard intro `holds` times at the sting.
 const throughLift = (page, holds = 0) => page.evaluate(([n, sting]) => { const o = window.ospTest, sub = () => document.getElementById('sub').textContent, s = []; let cued = false;
@@ -1007,10 +1023,11 @@ git commit -m "end: boarding, the lift-off from the cabin and the stowaway sting
 **Interfaces:**
 - **`knockOut(F)`** (still only from `'call'`): push `{ type: 'ko' }`; `strip(F); F.hold = null; enterArea(F, 4);` (so the cell's checkpoint is the stripped kit); then `F.ko = { phase: 'out', t: 0 }; F.player.pitch = KO.pitch; F.eye = KO.eye;`.
 - **`stepFight`**, after the clocks: `if (F.ko && (F.ko.phase === 'out' || F.ko.phase === 'down')) { wake(F, dt); return; }`. The phases:
-  - **`'out'`:** `t += dt`. Crossing `KO.stamp` pushes `{ type: 'stamp', text: KO.text }`. At `KO.out` → `{ phase: 'down', t: 0 }`, and push `{ type: 'wake' }`.
-  - **`'down'`:** `stepPlayer` with no input, `p.pitch = KO.pitch * (1 - t / KO.down)`, `F.eye = KO.eye`. At `KO.down` → `{ phase: 'up', t: 0 }`.
+  - **`'out'`:** `t += dt`. Crossing `KO.stamp` pushes `{ type: 'stamp', text: KO.text }`. At `KO.out` → `{ phase: 'down', t: t - KO.out }`, and push `{ type: 'wake' }` (pre-flight F4: the phase change carries the overshoot, so the wake timing is exact to one step).
+  - **`'down'`:** `stepPlayer` with no input, `p.pitch = KO.pitch * (1 - t / KO.down)`, `F.eye = KO.eye`. At `KO.down` → `{ phase: 'up', t: t - KO.down }` (the overshoot carried, F4).
   - **`'up'`:** the normal step (you can move). After step 11, `t += dt` and `F.eye = KO.eye + (PLAYER.eye - KO.eye) * min(1, t / KO.getUp)`. At `KO.getUp`: `F.ko = null; F.eye = undefined;` and push `{ type: 'woke', text: AREA_TEXT[4] }`.
 - **`GOLF_TOTAL = 7`** **[call]**, here because runs are now two levels long.
+- **The golf lines** (pre-flight F19, moved here from T11 so ball 5 never says "That's all five" between commits): `script.js`'s `golf[4]` becomes `"H|Five. Flight has started a spreadsheet."`, and `golf` gains `"H|Six. They really were collecting them."` and `"H|That's all seven. Shepard always said his slice was out of this world."` (2 lines).
 - **`escape.js` helpers:**
   - `koLight(F)`: 1, except 0 in `'out'` and `min(1, t / KO.fade)` in `'down'`;
   - `koLock(F)`: `!!F.ko && (phase 'out' || 'down')`;
@@ -1023,8 +1040,8 @@ git commit -m "end: boarding, the lift-off from the cabin and the stowaway sting
 - **`score.js`:** bests are keyed `'osp.best2.' + seed`, so a one-level best never beats a two-level run.
 - **`main.js`:**
   - `'ko'` no longer calls `finish()`: it plays `thud`, cancels speech, runs `radioDo(R, silence(R))` and sets `hud.mode('none')`.
-  - `'stamp'` calls `hud.stamp(ev.text)`; `'woke'` calls `hud.mode('play')` and joins `FLASH`.
-  - Flashes are skipped while `F.ko`.
+  - `'stamp'` calls `hud.stamp(ev.text)` and plays `audio.sfx('stamp')`, the opening's stamp sound (spec: "in the opening's style"; pre-flight F18); `'woke'` calls `hud.mode('play')` and joins `FLASH`.
+  - Flashes and sfx are skipped while `F.ko` (pre-flight F13: `sfxFor` would otherwise play a door sound for the `'area'` level event of the knock-out; the thud is played by the `'ko'` handler itself).
   - Exposure is `koLight(run.F)` times the lift-off fade.
   - Mouse look is skipped while `run.O?.lock || koLock(run.F)`.
 
@@ -1042,7 +1059,7 @@ test('the knock-out: stripped into the shut cell; black, the stamp, the wake on 
   assert.deepEqual([F.area, F.lv.id, F.ko.phase, F.hp, F.ars.owned, F.ars.cells, F.flag.held, F.cell.shut, F.hold], [4, 'prison', 'out', KO.hp, [true, false, false], 0, true, true, null]);
   assert.deepEqual([F.entry.owned, F.entry.cells, koLight(F), koLock(F), F.eye], [[true, false, false], 0, 0, true, KO.eye]);
   const { ev, at, moved } = through(F, 1 / 30); assert.deepEqual(ev, ['stamp', 'wake', 'woke']); assert.equal(moved, 0, 'still on the floor');
-  assert.ok(Math.abs(at.stamp - KO.stamp) < .04 && Math.abs(at.wake - KO.out) < .04 && Math.abs(at.woke - KO.out - KO.down - KO.getUp) < .08, JSON.stringify(at));
+  assert.ok(Math.abs(at.stamp - KO.stamp) < .05 && Math.abs(at.wake - KO.out) < .05 && Math.abs(at.woke - KO.out - KO.down - KO.getUp) < .08, JSON.stringify(at)); // pre-flight F4: with the carried overshoot each is within one 1/30 step
   assert.deepEqual([F.ko, F.eye, koLight(F), koLock(F), wakeIn(F)], [null, undefined, 1, false, 0]); assert.ok(F.run - r0 < .04, 'the run clock stopped'); });
 test('a slow frame across the knock-out: each event once, in order (Review Focus 5)', () => { const F = calling(); knockOut(F); assert.deepEqual(through(F, .25).ev, ['stamp', 'wake', 'woke']); });
 ```
@@ -1051,7 +1068,7 @@ The other unit tests:
 - **`view.test.mjs`, the vignette test:** `F.ko = { phase: 'down', t: 0 }; fillFrame(V, F, fr, 0); assert.deepEqual([fr.tint[0], fr.tint[2]], [VIG.dead, VIG.deadReach]); F.ko = null;`.
 - **`checkpoints.test.mjs`:** `GOLF_TOTAL` 5 → 7.
 - **`score.test.mjs`:** `'osp.best.'` → `'osp.best2.'` throughout.
-- **`radio.test.mjs`:** add `assert.deepEqual(SCRIPT.wake, ['H|\u2026come in. Come in. You were out for two hours.', 'Y|They took my guns.', "H|Did they take the flag? \u2026They left the flag. They think it's a religious item."]);` and `assert.equal(keyOf([{ type: 'wake' }], { ko: { phase: 'down' } }), 'wake,wake,wake');`.
+- **`radio.test.mjs`:** add `assert.equal(SCRIPT.golf.length, 7); assert.equal(SCRIPT.golf[4], 'H|Five. Flight has started a spreadsheet.');` (pre-flight F19) and `assert.deepEqual(SCRIPT.wake, ['H|\u2026come in. Come in. You were out for two hours.', 'Y|They took my guns.', "H|Did they take the flag? \u2026They left the flag. They think it's a religious item."]);` and `assert.equal(keyOf([{ type: 'wake' }], { ko: { phase: 'down' } }), 'wake,wake,wake');`.
 
 `replay.test.mjs` (import `HOLD`, `callSpot`, `setScene`):
 
@@ -1078,24 +1095,26 @@ test('a run through the knock-out into the cell, the bang and the guard replays 
 ```
 
 `smoke.spec.mjs`:
-- The two `throughCall` tests expect `['play', '', 'out']`, and add `expect(await area(page)).toBe('prison');`.
+- The two `throughCall` tests expect `['play', '', 'out']`, and add `expect(await area(page)).toBe('prison');`. The first keeps T1's no-closing-tone check against the sample at the rescue line (pre-flight F6).
 - "the comms array…" is replaced by the first test below.
 - "two whole games": after `ff(91)`, add `await expect.poll(() => area(page), { timeout: 40_000 }).toBe('prison'); await page.evaluate(s => window.ospTest.ff(s), KO.out + KO.down + KO.getUp + 1); await toLiftoff(page);`, then wait for `#end` (`40_000`), with `test.setTimeout(240_000)`.
 - Add:
 
 ```js
+// Pre-flight F11: pause right after the call and drive time with ff, resuming only for the frames a check needs, so a slow runner cannot drift past a phase.
+const pausePress = async (page, on) => { await page.keyboard.press('Escape'); await expect.poll(() => paused(page)).toBe(on); };
 test('R9 moved: the knock-out: black, ANOTHER SMALL PROBLEM, the wake in the cell, THE CELLS; the clock froze through it', async ({ page }) => {
-  await noVoices(page); const errors = watchErrors(page); await start(page); await toComms(page); await onHold(page); await throughCall(page); const f0 = await fight(page);
-  await page.evaluate(s => window.ospTest.ff(s), KO.stamp + .1); await expect(page.locator('#stamp')).toHaveText(KO.text); await expect(page.locator('#stamp')).toBeVisible();
-  await twoFrames(page); expect((await page.evaluate(() => window.ospTest.capture())).black).toBeGreaterThan(.95);
-  await page.evaluate(s => window.ospTest.ff(s), KO.out - KO.stamp + .1); expect((await fight(page)).ko).toBe('down');
+  await noVoices(page); const errors = watchErrors(page); await start(page); await toComms(page); await onHold(page); await throughCall(page); await pausePress(page, true); const f0 = await fight(page);
+  await page.evaluate(s => window.ospTest.ff(s), KO.stamp + .1); await pausePress(page, false); await expect(page.locator('#stamp')).toHaveText(KO.text); await expect(page.locator('#stamp')).toBeVisible();
+  await twoFrames(page); expect((await page.evaluate(() => window.ospTest.capture())).mean).toBeLessThan(5); // pre-flight F3: the dither lifts pure black (black .81, mean 2.2 of 37), so test the mean
+  await pausePress(page, true); await page.evaluate(s => window.ospTest.ff(s), KO.out - KO.stamp + .1); expect((await fight(page)).ko).toBe('down');
   await page.evaluate(s => window.ospTest.ff(s), KO.down + KO.getUp + .2); const f = await fight(page); expect([f.ko, f.area]).toEqual([null, 'prison']);
-  expect(f.run - f0.run).toBeLessThan(.5); await expect(page.locator('#flash')).toContainText('THE CELLS'); expect(errors).toEqual([]); });
+  expect(f.run - f0.run).toBeLessThan(.5); await pausePress(page, false); await expect(page.locator('#flash')).toContainText('THE CELLS'); expect(errors).toEqual([]); });
 test('pausing in the black or the wake freezes the knock-out (Review Focus 1)', async ({ page }) => {
-  await noVoices(page); await start(page); await toComms(page); await onHold(page); await throughCall(page);
-  for (const s of [KO.stamp, KO.out - KO.stamp + .5]) { await page.evaluate(x => window.ospTest.ff(x), s); await page.keyboard.press('Escape'); await expect.poll(() => paused(page)).toBe(true);
-    const c = (await clock(page)).ko; await page.waitForTimeout(600); expect((await clock(page)).ko).toBe(c); await page.keyboard.press('Escape'); await expect.poll(() => paused(page)).toBe(false); }
-  expect((await fight(page)).area).toBe('prison'); });
+  await noVoices(page); await start(page); await toComms(page); await onHold(page); await throughCall(page); await pausePress(page, true); // pre-flight F11: paused first, then ff lands each phase exactly
+  for (const s of [KO.stamp, KO.out - KO.stamp + .5]) { await page.evaluate(x => window.ospTest.ff(x), s);
+    const c = (await clock(page)).ko; expect(c).not.toBe(null); await page.waitForTimeout(600); expect((await clock(page)).ko).toBe(c); }
+  expect((await fight(page)).area).toBe('prison'); await pausePress(page, false); });
 ```
 
 - [ ] **Step 2: Run them to see them fail:** `node --test tests/escape.test.mjs tests/view.test.mjs tests/replay.test.mjs tests/checkpoints.test.mjs tests/score.test.mjs tests/radio.test.mjs`. Expected: FAIL.
@@ -1123,12 +1142,12 @@ git commit -m "sim: the knock-out goes live: black, the stamp, the wake; GOLF_TO
 - **`SIGHTS` [call]** (m; pinned in the test below).
 - **`fight.js`:** `F.seen = {}` (lifetime). For the living in area 4 with `!F.ko`, the first time you are within `SIGHTS[k]` of the prison's `k` prop, set `F.seen[k]` and push `{ type: k === 'exit' ? 'hall' : k }`.
 - **`radio.js`:** `PLAIN` gains `cow`, `chair` and `hall`; `'golf'` cues `e.id === 5 ? radioCue(R, 'evidence') : radioCue(R, 'golf', e.n)`.
-- **`script.js`** (9 lines, 196 in all):
+- **`script.js`** (7 lines here; 196 in all with T10's two golf lines):
   - `cow: { seq: 1 }`: `["Y|Is that a cow?", "H|That would explain a lot of reports from Nebraska."]` (spec verbatim)
   - `chair: { seq: 1 }`: `["H|Do not sit in the chair.", "Y|I wasn't going to sit in the chair."]`
   - `evidence: { once: 1 }`: `["H|Evidence item one: a golf ball. They're building a case against Shepard."]`
   - `hall: { seq: 1 }`: `["S|ATTENTION. THE LIFT IS FOR STAFF ONLY.", "H|That's a lift. Up is good. Up is where we are."]`
-  - `golf[4]` becomes `"H|Five. Flight has started a spreadsheet."`, and `golf` gains `"H|Six. They really were collecting them."` and `"H|That's all seven. Shepard always said his slice was out of this world."`.
+  - (The `golf` edits are T10's: pre-flight F19.)
 - **`speech.js`:** `castVoices(all) => { H, Y, S, P }`; `P` is the list's first voice other than H, Y and S, else S. `VOICE.P` always applies.
 - **`music.js`:** `SONGS` gains prison (slow and tense: a semitone rub over a G drone, 25.3 s) and escape (driving, 16 s):
 
@@ -1152,14 +1171,14 @@ git commit -m "sim: the knock-out goes live: black, the stamp, the wake; GOLF_TO
 - [ ] **Step 1: Write the failing tests**
 
 **`radio.test.mjs`:**
-- The range becomes `>= 190 && <= 205`, and `SCRIPT.golf.length` becomes 7.
+- The range becomes `>= 190 && <= 205` (`SCRIPT.golf.length` 7 is T10's, F19).
 - Add `assert.deepEqual(SCRIPT.cow, ['Y|Is that a cow?', 'H|That would explain a lot of reports from Nebraska.']);`.
 - "fight events map to cues" gains `assert.equal(keyOf([{ type: 'golf', n: 4, id: 5 }]), 'evidence'); assert.equal(keyOf([{ type: 'cow' }]), 'cow,cow');`.
 
 **`speech.test.mjs`:** each `castVoices` expectation gains `P`:
 - `[]` → `P: null`, `[a]` → `P: a`, and the two-voice case → `P: us` (S's voice);
-- the five-voice case → `c.P.name === 'Hans'`;
-- the third test loops `['H', 'Y', 'S', 'P']` with a fourth voice `v('Bea', 'en-AU')`, expecting `['Bea', 'en-AU', ...VOICE.P]`.
+- the five-voice case → `c.P.name === 'Online'` (pre-flight F5: 'Hans' is de-DE, and the list is English-only when English voices exist, so the rule gives 'Online');
+- the third test loops `['H', 'Y', 'S', 'P']` with a fourth voice `v('Zoe', 'en-AU')` (named so it sorts last; 'Bea' would sort before Kate and shift Y, S and P), expecting H Amy, Y Kate, S Zed as before and `['Zoe', 'en-AU', ...VOICE.P]` for P.
 
 **`music.test.mjs`:** the keys become `['surface', 'crater', 'base', 'hold', 'prison', 'escape']`.
 
@@ -1175,7 +1194,7 @@ test('the prison\'s sights: near the cow, the chair and the exit lift each cue o
 
 The cow is probed `d` m into the room along its facing. The chair and the exit have `dx = dz = 0`, so the probe puts you on them.
 
-**`smoke.spec.mjs`:** "the four songs pre-render…" becomes six, with the extended key list. Add:
+**`smoke.spec.mjs`:** "the four songs pre-render…" becomes six, with the extended key list. The seam test ("every song loops without a click…") polls `.toBe(6)` instead of `.toBe(4)` and its key list gains `'prison'` and `'escape'` (pre-flight F12). Add:
 
 ```js
 test('the prison song plays in the cells, the escape song on the climb (music)', async ({ page }) => {
@@ -1217,7 +1236,7 @@ git commit -m "radio and music: prison flavour lines, the Pilot's voice, prison 
     : F.area <= 1 ? (F.flag.held ? 'route' : 'flag') : F.area === 5 ? 'climb' : 'dash'
   ```
 
-  - **`'ko'`:** `IDLE`.
+  - **`'ko'`:** `IDLE`, returned before the progress check: stall-exempt like `'hold'`, since `KO.call` + out + down + getUp is 38.8 s of the 45 s `BOT.stall` (pre-flight F16).
   - **`'cell'`:**
     - The goal is the bars' middle, with `use = canBang(F)`.
     - After the bang it parks and fights the guard.
@@ -1230,18 +1249,19 @@ git commit -m "radio and music: prison flavour lines, the Pilot's voice, prison 
 - [ ] **Step 1: Write the failing tests**
 
 - **`hold.test.mjs`:** `createBot(…, true)` → `'houston'`.
-- **`bot.test.mjs`:** `run(world, secs, finale = false)` becomes `run(world, secs, to = 'comms', k = 0, until = () => false)`, which calls `skipTo(F, k)` when `k >= 4` and stops at `until(F)`. Import `skipTo` and `SHIP`, and add:
+- **`bot.test.mjs`:** `run(world, secs, finale = false)` becomes `run(world, secs, to = 'comms', k = 0, until = () => false)`, which calls `skipTo(F, k)` when `k >= 4` and stops at `until(F)`, and returns `{ F, bot, t, start, missed }`: `start = { area, x, z }` is read right after `skipTo` (pre-flight F1: each test asserts it starts at its area's start, so a no-op `skipTo` cannot pass vacuously), and `missed` counts `'missed'` events (read from `F.events` before they are cleared; F10). Import `skipTo` and `SHIP`, and add:
 
 ```js
 test('the soak bot breaks out: bangs, beats the guard, takes the lift within 300 s (Plan 6)', () => {
-  const { F, bot, t } = run(W, 400, 'board', 4, f => f.area >= 5); assert.ok(F.area === 5 && t < 300, `${bot.stage} ${t}`); });
+  const { F, bot, t, start } = run(W, 400, 'board', 4, f => f.area >= 5); assert.deepEqual([start.area, start.x, start.z], [4, W.prisonMap.start.x, W.prisonMap.start.z]); assert.ok(F.area === 5 && t < 300, `${bot.stage} ${t}`); });
 test('from the climb the soak bot boards the ship with the clock to spare (Plan 6)', () => {
-  const { F, bot, t } = run(W, 600, 'board', 5); assert.equal(bot.done, 'board', `${bot.stage} ${t}`); assert.ok(F.won && F.ship.left > .3 * SHIP.clock, `${F.ship.left}`); });
+  const { F, bot, t, start, missed } = run(W, 600, 'board', 5); assert.deepEqual([start.area, start.x, start.z], [5, W.crater.use.x, W.crater.use.z], 'starts at the hangar door, not the wreck');
+  assert.equal(bot.done, 'board', `${bot.stage} ${t}`); assert.equal(missed, 0); assert.ok(F.won && F.ship.left > .3 * SHIP.clock, `${F.ship.left}`); });
 ```
 
 - **`bot.soak.mjs`:**
   - Uses `createBot(world, makeRng(seed + '/bot'), 'board')` with `LIMIT` 1500; success is `bot.done === 'board'`.
-  - Records `dash = SHIP.clock - F.ship.left` per run, and prints min, median and max of the board times and of the dash.
+  - Records `dash = SHIP.clock - F.ship.left` per run, counts `'missed'` events per run and **fails on any** (a missed ship restarts with a fresh clock and would otherwise pass with only its last attempt measured; spec 6: the worst run keeps 30% spare; pre-flight F10), and prints min, median and max of the board times and of the dash.
   - **Fails** if the worst `dash > .7 * SHIP.clock`, printing `SHIP.clock should be ${Math.ceil(worst / .7 / 10) * 10} s (spec 6: the worst run keeps 30% spare)`.
   - Its header says it plays the whole game.
 
@@ -1275,15 +1295,17 @@ git commit -m "bot: the soak bot plays both levels to boarding and checks the sh
 
 Run: `npm test && npm run test:seeds && npm run test:bot && npm run test:smoke && npm run build && ls -l dist/index.html`
 
-Expected: all unit tests (goldens and the level 1 hash test included), the seed soak (both maps, the escape plans), the bot soak (60/60 boarded) and the smoke suite in Chromium and Firefox pass. Report the size against about 95 KB (97,280 B), with the reason in the commit if over. `git diff 11bcf76 -- src/gen/surface.js src/gen/crater.js src/gen/passable.js src/gen/rng.js src/gen/noise.js` is empty. Fix any failure in the owning task's code as its own commit; never loosen a test.
+Expected: all unit tests (goldens and the level 1 hash test included), the seed soak (both maps, the escape plans), the bot soak (60/60 boarded, no missed ship) and the smoke suite in Chromium and Firefox pass. Report the size against about 95 KB (97,280 B), with the reason in the commit if over. `git diff 11bcf76 -- src/gen/surface.js src/gen/crater.js src/gen/passable.js src/gen/rng.js src/gen/noise.js` is empty. Fix any failure in the owning task's code as its own commit; never loosen a test.
 
 - [ ] **Step 2: Record Plan 6 in `docs/superpowers/decisions.md`**
 
 Add:
 - **"State after Plan 6":** merge commit, size, test counts, new goldens and the final `SHIP.clock`.
-- **A "Plan 6 (escape) calls" table:** this plan's `[call]`s, by table.
+- **A "Plan 6 (escape) calls" table:** this plan's `[call]`s, by table, with two more rows (pre-flight F24, F27):
+  - **[call] A missed ship (F24):** it restarts area 6 at the rim like a death, and the ship's departure is not shown (it is out of sight from most of the dash). Spec 6 says "the vehicle lifts off without you"; a visible lift-off on a miss (raising `F.ship.W.up` over the dead time) is later polish.
+  - **[call] Spec 3 vs 4.1 (F27):** spec 3's table says area 4 starts with "bars already open", but spec 4.1's builder check (guard alive: the beat replays, bars shut) takes precedence, and the plan follows it.
 
-Mark R8, R9, R16 and R18 + R26 in the Plan 4 table "moved by Plan 6 (see the plan's Rules that move)". Under `## Hands-on checklist`, above `### Plan 5`, add:
+Mark R8, R9, R16 and R18 + R26 in the Plan 4 table "moved by Plan 6 (see the plan's Rules that move)", and Plan 5 F6 in the Plan 5 table (pre-flight F22). Under `## Hands-on checklist`, above `### Plan 5`, add:
 
 ```markdown
 ### Plan 6
