@@ -1,10 +1,12 @@
-// The alien base: a room graph on an 8 x 8 coarse grid of 12-tile cells, laid out as 96 x 96 tiles of 1 m, each
+// The alien base: a room graph on an 8 x 8 coarse grid of 18-tile cells, laid out as 144 x 144 tiles of 1 m, each
 // with a floor and a ceiling height. Themes follow the critical path from the lift to the comms room. A layout that
 // fails to construct or is rejected re-rolls with a fresh rng, up to BASE.attempts (32) attempts (ruling R2).
 import { makeRng } from './rng.js';
 import { reachMap } from './passable.js';
 
-export const BASE = { n: 96, cell: 12, grid: 8, wall: 99, step: .35, minHead: 2.6, corridor: 3, lintel: 2.7, cover: 1.1, attempts: 32,
+// cell: 18 m (was 12) and jitter: rooms sit within 1 tile of their cell's centre, so corridors run 6 m or more between
+// rooms and the player has somewhere to fall back to (hands-on, 2026-11-03: the 12 m grid gave 3 m corridors).
+export const BASE = { n: 144, cell: 18, grid: 8, jitter: 1, wall: 99, step: .35, minHead: 2.6, corridor: 3, lintel: 2.7, cover: 1.1, attempts: 32,
   crit: [8, 12], side: [3, 5], loops: [1, 2],
   ceil: { lift: 3.5, side: 3.5, plain: [4, 5], hangar: 8, lab: 4.5, reactor: 9, greenhouse: 6, comms: 9, corridor: 3 },
   size: { lift: 6, hangar: 10, lab: 9, reactor: 10, greenhouse: 10, side: [5, 7], plain: [6, 9] } };
@@ -84,15 +86,19 @@ function build(seed, attempt, rng) {
   for (const t of ['lab', 'reactor', 'greenhouse']) theme[Math.round(THEME_AT[t] * (L - 1))] = t;
   for (let s = 0; s < S; s++) theme.push('side');
 
-  // 5. Rooms to tiles. Every single-cell room covers its cell's central band [+4, +8) and keeps a wall tile at each
-  //    cell edge; the comms room covers its block from +2 to +22, so its outer bands +0 and +23 always stay wall.
+  // 5. Rooms to tiles. Every single-cell room covers its cell's central band [+C/2-2, +C/2+2) (the corridor band), keeps
+  //    a wall tile at each cell edge and sits within BASE.jitter tiles of centred; the comms room (20 x 20) is centred in
+  //    its 2 x 2 block, from +C-10 to +C+10, so the block's outer bands always stay wall.
   const floor = new Float32Array(n * n).fill(BASE.wall), ceil = new Float32Array(n * n), kind = new Uint8Array(n * n), room = new Int16Array(n * n).fill(-1);
-  const place = (c, wd) => { const lo = Math.max(c + 1, c + 8 - wd), hi = Math.min(c + 4, c + 11 - wd); return lo + rng.int(hi - lo + 1); };
+  const H = C >> 1, place = (c, wd) => {
+    const mid = c + ((C - wd) >> 1), lo = Math.max(c + 1, c + H + 2 - wd, mid - BASE.jitter), hi = Math.min(c + H - 2, c + C - 1 - wd, mid + BASE.jitter);
+    return lo + rng.int(hi - lo + 1);
+  };
   const rooms = [];
   for (let id = 0; id < L + S; id++) {
     const th = theme[id], cs = cells[id];
     let x0, z0, x1, z1;
-    if (th === 'comms') { x0 = bx * C + 2; z0 = by * C + 2; x1 = x0 + 20; z1 = z0 + 20; }
+    if (th === 'comms') { x0 = bx * C + C - 10; z0 = by * C + C - 10; x1 = x0 + 20; z1 = z0 + 20; }
     else {
       const sz = BASE.size[th], wd = typeof sz === 'number' ? sz : span(rng, sz), ht = typeof sz === 'number' ? sz : span(rng, sz);
       x0 = place(cs[0][0] * C, wd); z0 = place(cs[0][1] * C, ht); x1 = x0 + wd; z1 = z0 + ht;
@@ -107,7 +113,10 @@ function build(seed, attempt, rng) {
   const doors = rooms.map(() => []), into = rooms.map(() => null), tile = (i, j) => ({ x: i - half, z: j - half }), W = BASE.corridor;
   links.forEach((l, k) => {
     const [ca, cb] = lc[k], A = rooms[l.a], Bm = rooms[l.b], xl = ca[1] === cb[1];
-    const lo = (xl ? ca[0] < cb[0] : ca[1] < cb[1]) ? A : Bm, hi = lo === A ? Bm : A, r0 = (xl ? ca[1] : ca[0]) * C + 4 + rng.int(2);
+    const lo = (xl ? ca[0] < cb[0] : ca[1] < cb[1]) ? A : Bm, hi = lo === A ? Bm : A, cm = Bm.theme === 'comms' ? Bm : null;
+    let r0 = (xl ? ca[1] : ca[0]) * C + (C >> 1) - 2 + rng.int(2);
+    // The comms room (20 wide) is narrower than its block's two corridor bands: its one corridor shifts inside it.
+    if (cm) r0 = Math.min(Math.max(r0, xl ? cm.z0 : cm.x0), (xl ? cm.z1 : cm.x1) - W);
     if (xl) { l.x0 = lo.x1; l.x1 = hi.x0; l.z0 = r0; l.z1 = r0 + W; } else { l.z0 = lo.z1; l.z1 = hi.z0; l.x0 = r0; l.x1 = r0 + W; }
     for (let j = l.z0; j < l.z1; j++) for (let i = l.x0; i < l.x1; i++) {
       const t = T(i, j), end = xl ? i === l.x0 || i === l.x1 - 1 : j === l.z0 || j === l.z1 - 1;

@@ -6,7 +6,7 @@ import { budgetAt } from './encounters.js';
 // Lamp colours are the look test's. kind: 0 steady, 1 red flicker (spawn doors), 2 pulsing (reactor core).
 export const LIGHT = { amber: { col: [1.3, .8, .32], r: 8 }, teal: { col: [.35, 1.3, .85], r: 8 }, red: { col: [2.2, .25, .08], r: 5, kind: 1 }, core: { col: [.5, 2.6, 1.6], r: 12, kind: 2 } };
 // LAMP_DROP: room lamps hang this far above the floor, the look test's height (R16).
-export const LIGHT_CAP = 10, LAMP_DROP = 2.65, CORRIDOR_LAMP = 6, BASE_SCALE = .7;
+export const LIGHT_CAP = 10, LAMP_DROP = 2.65, CORRIDOR_LAMP = 6, BASE_SCALE = .5;
 // Heights above a floor tile where the cap is sampled: a standing eye and a jumping one (pre-flight F28).
 const SAMPLE = [1.7, 2.4], TALL = 4.5, TRIES = 40;
 const AMBER_ROOM = { lift: 1, hangar: 1, comms: 1 }, TEAL_ROOM = { lab: 1, reactor: 1, greenhouse: 1 };

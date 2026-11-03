@@ -20,7 +20,7 @@ This file is the single place to find every decision made while building the gam
 - The game is complete: title and attract bot, opening, surface, crater, base, comms-room final stand, end screen, pause and settings, sound effects, music and radio.
 - Release `dist/index.html` is 66,858 B, 51% of the 131,072 B cap.
 - Tests: 330 unit, 126 smoke (chromium and firefox), the 1000-seed soak and the 60-seed bot soak all pass.
-- Golden checksums:
+- Golden checksums (at ed62a19; re-pinned by H4 below):
   - APOLLO-4471 `ca0c9fe6`
   - EAGLE-0001 `dd7f8ffc`
   - SOAK-0042 `5671ed28`
@@ -133,6 +133,19 @@ Parked at the end of Plan 4:
 - Boot cost: `buildSfx` takes about 155 ms, and the 9 s engine sound is 55% of all SFX samples.
 - The attract-silence smoke test only checks the radio.
 
+## Hands-on rulings (after the user's first play-test, 2026-11-03)
+
+The user reported: "it's extremely difficult when you go into the base because there's so many aliens. Either reduce the amount of aliens or increase the length of corridors so the player has room to run." A headless probe over 40 seeds backed that up: base corridors had a median length of 3 m (basically doorways), about 55 aliens, and an idle player at the lift took 100 damage in about 4.6 s. The immortal bot took about 1100 damage in the base, against about 545 on the surface and in the crater combined. Both changes were made.
+
+| Ruling | Decision |
+|---|---|
+| H1 | Longer corridors: base cells go from 12 m to 18 m (map 96 → 144 tiles), and rooms sit within 1 tile of their cell's centre (`BASE.jitter`). Corridors now run 6–15 m (median 10). The comms room stays 20 × 20, centred in its block, and its one corridor shifts inside it. `src/gen/base.js` |
+| H2 | Fewer aliens: `BASE_SCALE` 0.7 → 0.5. That cuts the base from a median of 55 aliens to 38. Brutes still need a room budget of 6 or more, so the first even room may have none. `src/gen/baseplan.js` |
+| H3 | Result: the bot's base damage drops from about 1100 to about 590, roughly the same as the surface and crater combined. The hangar crowd no longer wakes while you stand at the lift (median 0 alerted after 10 s, was 6). |
+| H4 | The goldens were re-pinned: APOLLO-4471 `60273c6a`, EAGLE-0001 `39762eb2`, SOAK-0042 `ee4eda57`. The R2 slow-seed list moved to APOLLO-2428, EAGLE-4739, CRATER-7635 and MERCURY-5618; 60,000 seeds all generate within 10 of 32 attempts. |
+
+If it is still too hard (or now too easy), the two knobs are `BASE_SCALE` (alien budget) and `BASE.cell` (corridor length). 18 is the most a 20 m comms room allows: past that, its shifted corridor no longer stays inside the neighbouring room's band. Shorter cells also need the soak's 6–15 m corridor bound changed.
+
 ## Deferred minor findings
 
 Every "minor (deferred)" line, with its triage, is in the two ledgers. The Plan 4 final review triaged them all as "can wait" or "hands-on", apart from the ones the fix wave fixed.
@@ -180,8 +193,8 @@ Use this on real hardware (Radeon 890M, Chrome and Firefox). Tuning goes in the 
 - Crater readability with the beacons.
 - Walking down the crater wall is free, and running dives cost 10–30 hp.
 - Base darkness and readability.
-- fps at the lift (248–455 draws).
-- Hangar difficulty: an idle player dies in about 5 s.
+- fps at the lift (248–455 draws before H1's bigger layout; re-check).
+- Hangar difficulty: an idle player died in about 5 s. First play-test said the base was far too hard; see H1–H3. Re-check.
 - Floaters in 10 m rooms.
 - Lamps snap off as you leave them.
 - Reactor brightness against plasma.

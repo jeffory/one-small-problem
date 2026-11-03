@@ -28,7 +28,8 @@ function checkBase(seed, B, golfSurface) {
     if (B.spawnDoors.length < 3 || B.spawnDoors.length > 4) bad('spawn doors ' + B.spawnDoors.length);
     for (const l of B.links) { // 3 across; the length (2 to 8) runs along whichever axis separates the two rooms (pre-flight F5)
       const A = B.rooms[l.a], C = B.rooms[l.b], xl = A.x1 <= C.x0 || C.x1 <= A.x0, across = xl ? l.z1 - l.z0 : l.x1 - l.x0, len = xl ? l.x1 - l.x0 : l.z1 - l.z0;
-      if (across !== BASE.corridor || len < 2 || len > 8) bad(`corridor ${l.a}-${l.b} ${across} across, ${len} long`);
+      // 18 m cells with rooms within a tile of centred: corridors run 6 to 15 m (hands-on 2026-11-03: room to fall back).
+      if (across !== BASE.corridor || len < 6 || len > 15) bad(`corridor ${l.a}-${l.b} ${across} across, ${len} long`);
     }
     for (let i = 0; i < n; i++) if ([i, (n - 1) * n + i, i * n, i * n + n - 1].some((k) => B.kind[k] !== TILE.wall)) { bad('edge not sealed'); break; }
     if (B.attempt > 0) brerolls++;
@@ -40,7 +41,7 @@ function checkBase(seed, B, golfSurface) {
       if (e.room !== k || e.area !== 2) bad('encounter room ' + k);
       if (Math.abs(e.p - (.5 + .5 * k / (L - 1))) > 1e-9) bad('base p ' + k);
       if (cost !== Math.floor(budgetAt(e.p) * BASE_SCALE)) bad('base budget ' + k);
-      if (e.aliens.some((a) => a.type === 'br') !== (k % 2 === 0 || e.p >= .8)) bad('brute rule ' + k);
+      if (e.aliens.some((a) => a.type === 'br') !== (cost >= 6 && (k % 2 === 0 || e.p >= .8))) bad('brute rule ' + k);
       for (const a of e.aliens) {
         if (!stand(a, k)) bad('alien off reachable floor, room ' + k);
         if (a.type === 'fl' && B.ceil[tile(a)] - B.floor[tile(a)] < 4.5) bad('floater under a low ceiling, room ' + k);

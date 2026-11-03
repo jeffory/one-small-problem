@@ -32,17 +32,17 @@ test('re-roll: reseeds per attempt and throws when nothing is accepted (Review F
   assert.throws(() => generateBase('NOPE-0001', () => false), /no base layout for seed NOPE-0001/); });
 test('re-rolls run to 32 attempts, so no seed is left without a base (ruling R2)', () => {
   assert.equal(BASE.attempts, 32); const r = generateBase('APOLLO-4471', b => b.attempt >= 8); assert.ok(r.attempt >= 8 && r.attempt < BASE.attempts);
-  for (const s of ['APOLLO-2428', 'EAGLE-7587', 'ORION-6034', 'CRATER-7635', 'MERCURY-5618', 'TITAN-0038']) { const b = generateBase(s); assert.equal(b.seed, s); assert.ok(b.attempt >= 8, `${s} attempt ${b.attempt}`); } });
+  for (const s of ['APOLLO-2428', 'EAGLE-4739', 'CRATER-7635', 'MERCURY-5618']) { const b = generateBase(s); assert.equal(b.seed, s); assert.ok(b.attempt >= 8, `${s} attempt ${b.attempt}`); } });
 test('base generation is quick', () => { const t = performance.now(); for (let i = 0; i < 50; i++) generateBase('SPEED-' + i); assert.ok(performance.now() - t < 1000); });
 import { generateWorld } from '../src/gen/world.js'; import { checksumWorld } from '../src/gen/checksum.js';
 import { LIGHT, LIGHT_CAP, LAMP_DROP, BASE_SCALE } from '../src/gen/baseplan.js'; import { budgetAt, COST } from '../src/gen/encounters.js';
 const WW = generateWorld('APOLLO-4471'), M = WW.baseMap, P = M.plan, cost = e => e.aliens.reduce((s, a) => s + COST[a.type], 0);
 const tm = o => Math.round(o.z + M.half) * M.n + Math.round(o.x + M.half), rm = reachMap(M.floor, M.n, [Math.round(M.start.x + M.half), Math.round(M.start.z + M.half)], BASE.step, 0);
 const room = t => M.rooms.find(r => r.theme === t).id;
-test('one encounter per room between the lift and the comms room, p rising from .5 toward 1, scaled budgets, brutes in even rooms and late', () => {
+test('one encounter per room between the lift and the comms room, p rising from .5 toward 1, scaled budgets, brutes (budget 6 or more) in even rooms and late', () => {
   const L = M.crit.length; assert.equal(P.encounters.length, L - 2);
   P.encounters.forEach((e, i) => { const k = i + 1; assert.deepEqual([e.room, e.area, e.first], [k, 2, false]); assert.ok(Math.abs(e.p - (.5 + .5 * k / (L - 1))) < 1e-9);
-    assert.equal(cost(e), Math.floor(budgetAt(e.p) * BASE_SCALE)); assert.equal(e.aliens.some(a => a.type === 'br'), k % 2 === 0 || e.p >= .8, `room ${k}`); }); });
+    assert.equal(cost(e), Math.floor(budgetAt(e.p) * BASE_SCALE)); assert.equal(e.aliens.some(a => a.type === 'br'), cost(e) >= 6 && (k % 2 === 0 || e.p >= .8), `room ${k}`); }); });
 test('aliens stand on reachable floor of their own room; floaters only under tall ceilings, well below them (Review Focus 3)', () => {
   for (const e of P.encounters) for (const a of e.aliens) { const t = tm(a); assert.equal(M.room[t], e.room); assert.equal(M.kind[t], K.floor); assert.equal(rm[t], 1);
     if (a.type === 'fl') { assert.ok(M.ceil[t] - M.floor[t] >= 4.5); assert.ok(a.y - M.floor[t] >= 1.8 && a.y - M.floor[t] <= 2.4); } else assert.equal(a.y, M.floor[t]); } });
