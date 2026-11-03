@@ -1,6 +1,6 @@
 import test from 'node:test'; import assert from 'node:assert/strict'; import { generateWorld } from '../src/gen/world.js'; import { BASE } from '../src/gen/base.js';
 import { AREAS, LEVEL, AREA_TEXT, GRAVITY, makeLevel, areaStart, stintEnd, advanceArea, wayTarget, wayfind } from '../src/game/areas.js'; import { lineOfSight, updateField, UNK } from '../src/game/nav.js'; import { give } from '../src/game/weapons.js';
-import { createFight, stepFight, hurtPlayer, skipTo, openBars, canBang, atExit, PICKUP, DEATH_TIME } from '../src/game/fight.js'; import { hurtAlien, createAlien } from '../src/game/aliens.js'; import { MAX_CELLS } from '../src/game/weapons.js'; import { dawdling } from '../src/game/radio.js'; import { KO, BREAK, EXIT, exitOf } from '../src/game/escape.js';
+import { createFight, stepFight, hurtPlayer, skipTo, openBars, canBang, atExit, PICKUP, DEATH_TIME } from '../src/game/fight.js'; import { hurtAlien, createAlien } from '../src/game/aliens.js'; import { MAX_CELLS } from '../src/game/weapons.js'; import { dawdling } from '../src/game/radio.js'; import { KO, BREAK, EXIT, SIGHTS, exitOf } from '../src/game/escape.js';
 const W = generateWorld('APOLLO-4471'), P = W.prisonMap, idle = { fwd: 0, strafe: 0, run: false, jump: false, fire: false, use: false, weapon: -1, wheel: 0 };
 const run = (F, inp, secs, dt = 1 / 60) => { for (let t = 0; t < secs; t += dt) stepFight(F, inp, dt); };
 const put = (F, x, z) => Object.assign(F.player, { x, z, y: F.lv.ground(x, z), vx: 0, vy: 0, vz: 0, kx: 0, kz: 0 });
@@ -153,3 +153,8 @@ test('the knock-out: stripped into the shut cell; black, the stamp, the wake on 
   assert.ok(Math.abs(at.stamp - KO.stamp) < .05 && Math.abs(at.wake - KO.out) < .05 && Math.abs(at.woke - KO.out - KO.down - KO.getUp) < .08, JSON.stringify(at)); // pre-flight F4: with the carried overshoot each is within one 1/30 step
   assert.deepEqual([F.ko, F.eye, koLight(F), koLock(F), wakeIn(F)], [null, undefined, 1, false, 0]); assert.ok(F.run - r0 < .04, 'the run clock stopped'); });
 test('a slow frame across the knock-out: each event once, in order (Review Focus 5)', () => { const F = calling(); knockOut(F); assert.deepEqual(through(F, .25).ev, ['stamp', 'wake', 'woke']); });
+test('the prison\'s sights: near the cow, the chair and the exit lift each cue once a run', () => {
+  assert.deepEqual(SIGHTS, { cow: 5, chair: 4, exit: 12 }); const F = cellF(), ev = []; openBars(F); F.aliens.length = 0; F.god = true;
+  for (const k of ['cow', 'chair', 'exit', 'cow']) { const q = P.props.find(o => o.kind === k), d = SIGHTS[k] - .5; put(F, q.x + q.dx * d, q.z + q.dz * d); stepFight(F, idle, 1 / 60);
+    ev.push(...F.events.filter(e => ['cow', 'chair', 'hall'].includes(e.type)).map(e => e.type)); F.events.length = 0; }
+  assert.deepEqual(ev, ['cow', 'chair', 'hall']); });

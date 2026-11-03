@@ -1,7 +1,7 @@
 import test from 'node:test'; import assert from 'node:assert/strict'; import { FakeOffline } from './fakeaudio.mjs';
 import { SONGS, INST, songNotes, songLength, renderSong, renderSongs, PEAK, TAIL } from '../src/audio/music.js';
 test('four songs as compact patterns: every pattern 16 rows of a-z . -, every order 8 bars of existing patterns, every instrument known (music)', () => {
-  assert.deepEqual(Object.keys(SONGS), ['surface', 'crater', 'base', 'hold']);
+  assert.deepEqual(Object.keys(SONGS), ['surface', 'crater', 'base', 'hold', 'prison', 'escape']);
   for (const [k, s] of Object.entries(SONGS)) for (const [inst, base, vol, order, pats] of s.tracks) { assert.ok(INST[inst], `${k} ${inst}`); assert.equal(order.length, 8);
     for (const c of order) assert.ok(+c < pats.length); for (const p of pats) assert.match(p, /^[a-z.\-]{16}$/); assert.ok(vol > 0 && vol <= 1 && base >= 0); } });
 test('the decoder: a note starts on its row, holds through -, stops at . or the bar line, at the pitch above the track base (music)', () => {

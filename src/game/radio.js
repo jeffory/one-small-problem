@@ -14,7 +14,7 @@ import { SCRIPT, CUES } from './script.js';
 export const RADIO = { key: .25, gap: .5, min: 1.6, cps: 14, slack: 1.5, pad: 2, stale: 5, chat: 4, low: 30, dawdle: 50, multi: [3, 4] };
 const EPS = 1e-9, NONE = Object.freeze([]), PROGRESS = new Set(['kill', 'pickup', 'flag', 'golf', 'area', 'restart', 'hold']);
 const PLAIN = { flag: 'grab', dead: 'dead', restart: 'restart', boom: 'boom', hold: 'hold', holdmsg: 'holding', bang: 'bang', guard: 'guard', freed: 'freed', pa: 'pa',
-  flare: 'flare', rush: 'rush', missed: 'missed', board: 'board', wake: 'wake' };
+  flare: 'flare', rush: 'rush', missed: 'missed', board: 'board', wake: 'wake', cow: 'cow', chair: 'chair', hall: 'hall' };
 const AREA_CUES = new Set(['crater', 'base', 'comms', 'climb', 'dash']);
 
 // R.q: the lines waiting, {id, key, who (a WHO letter), text, crit, at (R.clock when cued), voiced}; R.cur: the line on the air.
@@ -65,7 +65,7 @@ export function radioEvents(R, events, F) {
       if (e.cause === 'fall') radioCue(R, 'fall');
       else if (F.hp < RADIO.low && F.state === 'play') radioCue(R, 'low');
     } else if (t === 'pickup') radioCue(R, e.kind);
-    else if (t === 'golf') radioCue(R, 'golf', e.n);
+    else if (t === 'golf') e.id === 5 ? radioCue(R, 'evidence') : radioCue(R, 'golf', e.n);
     else if (t === 'area') { if (AREA_CUES.has(e.id)) radioCue(R, e.id); }
     else if (t === 'nudge') radioCue(R, 'nudge', e.n);
     else if (t === 'clock') radioCue(R, 'countdown', e.n);

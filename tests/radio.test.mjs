@@ -5,9 +5,10 @@ const run = (R, secs, voiced = false, dawdle = false, dt = 1 / 60, out = []) => 
 const said = A => A.filter(a => a.do === 'key').map(a => a.line.who + '|' + a.line.text);
 const keyOf = (ev, f = {}) => { const R = createRadio(always); radioEvents(R, ev, { kills: 2, hp: 100, state: 'play', ...f }); return R.q.map(l => l.key).join(); };
 test('the script: 150 to 205 short lines "X|text" with known speakers, every cue scripted, and the spec\'s lines verbatim (radio)', () => {
-  const all = Object.values(SCRIPT).flat(); assert.ok(all.length >= 150 && all.length <= 205, `${all.length}`); for (const l of all) assert.match(l, /^[HYSP]\|.{2,90}$/);
+  const all = Object.values(SCRIPT).flat(); assert.ok(all.length >= 190 && all.length <= 205, `${all.length}`); for (const l of all) assert.match(l, /^[HYSP]\|.{2,90}$/);
   assert.deepEqual(Object.keys(SCRIPT).sort(), Object.keys(CUES).sort()); assert.deepEqual(Object.keys(WHO).sort(), ['H', 'P', 'S', 'Y']); for (const k in WHO) assert.equal(VOICE[k].length, 2);
   assert.deepEqual(SCRIPT.bang, ['S|PRISONER. QUIET.']); assert.equal(SCRIPT.nudge[0], 'H|Try banging on the door. Works in every movie.');
+  assert.deepEqual(SCRIPT.cow, ['Y|Is that a cow?', 'H|That would explain a lot of reports from Nebraska.']);
   assert.equal(SCRIPT.golf.length, 7); assert.equal(SCRIPT.golf[4], 'H|Five. Flight has started a spreadsheet.'); // pre-flight F19
   assert.deepEqual(SCRIPT.golf.slice(5), ['H|Six. They really were collecting them.', "H|That's all seven. Shepard always said his slice was out of this world."]);
   assert.deepEqual(SCRIPT.wake, ['H|\u2026come in. Come in. You were out for two hours.', 'Y|They took my guns.', "H|Did they take the flag? \u2026They left the flag. They think it's a religious item."]); assert.deepEqual(SCRIPT.touchdown, ['Y|Contact light. Engine stop.', "H|We copy, you're down. Beautiful work."]);
@@ -41,6 +42,7 @@ test('fight events map to cues (radio)', () => {
   assert.equal(keyOf([{ type: 'kill', kind: 'sk', n: 1 }]), 'first'); /* pre-flight F25: the event's n, not F.kills */ assert.equal(keyOf([{ type: 'kill', kind: 'br' }]), 'brute'); assert.equal(keyOf([{ type: 'kill', kind: 'fl' }]), 'floater');
   assert.equal(keyOf([{ type: 'kill', kind: 'sk' }]), 'kill'); assert.equal(keyOf([1, 2, 3].map(() => ({ type: 'kill', kind: 'sk' }))), 'multi');
   assert.equal(keyOf([{ type: 'hurt' }], { hp: 20 }), 'low'); assert.equal(keyOf([{ type: 'hurt' }], { hp: 80 }), ''); assert.equal(keyOf([{ type: 'hurt', cause: 'fall' }], { hp: 20 }), 'fall');
+  assert.equal(keyOf([{ type: 'golf', n: 4, id: 5 }]), 'evidence'); assert.equal(keyOf([{ type: 'cow' }]), 'cow,cow');
   assert.equal(keyOf([{ type: 'bang' }]), 'bang'); assert.equal(keyOf([{ type: 'nudge', n: 1 }]), 'nudge');
   for (const id of ['crater', 'base', 'comms']) assert.equal(keyOf([{ type: 'area', id }]), id); assert.equal(keyOf([{ type: 'area', id: 'surface' }]), '');
   for (const [type, key] of [['dead', 'dead'], ['restart', 'restart'], ['flag', 'grab'], ['boom', 'boom'], ['holdmsg', 'holding']]) assert.equal(keyOf([{ type }]), key);

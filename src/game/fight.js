@@ -19,7 +19,7 @@ import { ALIENS, createAlien, stepAlien, hurtAlien, move, level, muzzleAt } from
 import { AREAS, AREA_TEXT, CRATER_AREAS, LEVEL, makeLevel, areaStart, advanceArea, stintEnd, setBars } from './areas.js';
 import { K } from '../gen/base.js';
 import { HOLD, planWaves, dishOf } from './hold.js';
-import { KO, koLock, BREAK, EXIT, exitOf, SHIP, RING, shipLift, ladderAt, ringPoints } from './escape.js';
+import { KO, koLock, BREAK, EXIT, SIGHTS, exitOf, SHIP, RING, shipLift, ladderAt, ringPoints } from './escape.js';
 import { PUFF, createWreck } from './lander.js';
 
 // Alien drops (pistol, scatter, flCells) are 20% up on Plan 2's 20, 16 and 15 after the first play-test (H5). Tape drops (Plan 5) come from the sim's
@@ -48,7 +48,7 @@ export function createFight(world, k = 0) {
     encs: [], aliens: [], bolts: [], pickups: [], canisters: [], balls: [], parts: [], decals: [], booms: [],
     flag: { x: fs.x, y: sampleGround(world, fs.x, fs.z), z: fs.z, held: false }, entry: { owned: [false, false, false], cells: 0, flagHeld: false },
     state: 'play', deadT: 0, time: 0, run: 0, kills: 0, shots: 0, shotT: 9, hurtT: 0, field: createField(), fieldT: 0, events: [], god: false,
-    found: [], golf: 0, hold: null, ko: null, won: false, wonAt: null, cell: null, ship: null };
+    found: [], golf: 0, seen: {}, hold: null, ko: null, won: false, wonAt: null, cell: null, ship: null };
   clearDecals(F);
   const C = F._ctx = { ground: lv.ground, ceil: lv.ceil, px: 0, py: 0, pz: 0, field: F.field, rng: F.rng, others: F.aliens,
     los: a => lineOfSight(F.lv.ground, muzzleAt(a, C), [C.px, C.py + PLAYER.eye, C.pz], F.lv.ceil),
@@ -137,6 +137,11 @@ export function strip(F) {
   A.owned = [true, false, false]; A.cells = 0; A.cur = 0; A.cool = 0; F.flag.held = true; F.hp = KO.hp;
 }
 
+// The prison's sights: the first time you come near its cow, chair or exit lift, a remark (once a run, F.seen).
+function stepSights(F) {
+  for (const k in SIGHTS) { const q = F.world.prisonMap.props.find(o => o.kind === k);
+    if (q && !F.seen[k] && Math.hypot(F.player.x - q.x, F.player.z - q.z) <= SIGHTS[k]) { F.seen[k] = true; F.events.push({ type: k === 'exit' ? 'hall' : k }); } }
+}
 // Straight to the start of area k (the test hooks): past the knock-out you arrive stripped, with no knock-out or hold running.
 export function skipTo(F, k) { if (F.area < 4 && k >= 4) strip(F); F.ko = null; F.eye = undefined; F.hold = null; enterArea(F, k); }
 
@@ -264,7 +269,7 @@ export function stepFight(F, input, dt) {
   stepPlayer(p, input, dt, lv.ground, lv.bound, F.gravity, lv.ceil, CRATER_AREAS.includes(F.area) ? FALL.safe : Infinity);
   const k = advanceArea(F.world, F.area, p.x, p.z); if (k > F.area) enterArea(F, k);
   if (p.land > FALL.safe) hurtPlayer(F, FALL.dmg * (p.land - FALL.safe), 0, 0, 0, 'fall');
-  if (F.area === 4 && F.state === 'play' && !F.ko) stepCell(F, dt);
+  if (F.area === 4 && F.state === 'play' && !F.ko) { stepCell(F, dt); stepSights(F); }
   if (F.ship && F.state === 'play' && !F.won) stepShip(F, dt);
   // 4. distance field
   if ((F.fieldT -= dt) <= 0) { F.fieldT = FIELD_DT; updateField(F.field, lv.grid, lv.n, lv.half, p.x, p.z, lv.maxStep); }

@@ -11,7 +11,8 @@ export const CUES = {
   first: { once: 1 }, brute: { cool: 20, p: .8 }, floater: { cool: 30, p: .7 }, multi: { cool: 20 }, kill: { cool: 15, p: .2 }, boom: { cool: 20, p: .5 },
   golf: { at: 1 }, dawdle: {}, crater: {}, base: {}, comms: {}, climb: {}, dash: { seq: 1 }, dead: {}, restart: { p: .5 },
   bang: { crit: 1 }, nudge: { at: 1 }, guard: { crit: 1 }, freed: { seq: 1 }, pa: { cool: 30 },
-  flare: { seq: 1 }, countdown: { at: 1 }, rush: { seq: 1 }, missed: { crit: 1 }, board: { seq: 1 }, sting: { seq: 1 }, wake: { seq: 1 } };
+  flare: { seq: 1 }, countdown: { at: 1 }, rush: { seq: 1 }, missed: { crit: 1 }, board: { seq: 1 }, sting: { seq: 1 }, wake: { seq: 1 },
+  cow: { seq: 1 }, chair: { seq: 1 }, evidence: { once: 1 }, hall: { seq: 1 } };
 export const SCRIPT = {
   touchdown: ["Y|Contact light. Engine stop.", "H|We copy, you're down. Beautiful work."],
   cabin: ["H|We show the hatch open. That's usually the cue to go outside."], // carry-over (Task 7 review): still in the cabin OPEN.stay s after touchdown
@@ -54,6 +55,10 @@ export const SCRIPT = {
     "H|Three golf balls. Flight would like to know where you think you are.", "H|Four. The aliens appear to have been collecting them.",
     "H|Five. Flight has started a spreadsheet.", "H|Six. They really were collecting them.",
     "H|That's all seven. Shepard always said his slice was out of this world."],
+  cow: ["Y|Is that a cow?", "H|That would explain a lot of reports from Nebraska."],
+  chair: ["H|Do not sit in the chair.", "Y|I wasn't going to sit in the chair."],
+  evidence: ["H|Evidence item one: a golf ball. They're building a case against Shepard."],
+  hall: ["S|ATTENTION. THE LIFT IS FOR STAFF ONLY.", "H|That's a lift. Up is good. Up is where we are."],
   dawdle: ["H|Just checking in. We see you standing still.", "H|Flight would like to remind you that oxygen is a finite resource.",
     "H|Are you sightseeing? You can sightsee on the way.", "H|Hey. The base is that way.", "H|We're burning daylight. Technically two weeks of it, but still.",
     "H|Everything okay up there? You've gone very quiet.", "H|The press is asking what you're doing. So are we.", "H|Reminder: the mission clock is running.",

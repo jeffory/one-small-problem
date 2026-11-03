@@ -7,6 +7,8 @@ export const BREAK = { reach: 2, face: .5, guard: 3, open: 4.5, idle: 20, pa: 40
 
 // The exit lift at the end of the prison. reach: how near (m) E takes you up to the climb.
 export const EXIT = { reach: 2.5 };
+// How near (m) the prison's cow, chair and exit lift first draw a radio remark.
+export const SIGHTS = { cow: 5, chair: 4, exit: 12 };
 export const exitOf = B => B.props.find(q => q.kind === 'exit');
 
 // The knock-out. call: the most seconds from Houston picking up to the knock-out, the fallback when no radio ends the cut-off line

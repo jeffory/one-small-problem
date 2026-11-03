@@ -72,7 +72,7 @@ function boot() {
   // The music map: the title the surface song, the opening none until its title drop, play the area's song (the hold's on hold,
   // none in Houston's call), the lift-off the dash's until the sting, then none, the end screen the hold music. Asked every frame;
   // the engine ignores a repeat.
-  const MUSIC = ['surface', 'crater', 'base', 'base', 'base', 'crater', 'surface'];
+  const MUSIC = ['surface', 'crater', 'base', 'base', 'prison', 'escape', 'escape'];
   const music = () => audio.song(state === 'title' || state === 'opening' && run.titled ? 'surface' : state === 'play' ? run.F.ko ? null : run.F.hold ? 'hold' : MUSIC[run.F.area]
     : state === 'liftoff' ? run.L.sting ? null : MUSIC[6] : state === 'end' ? 'hold' : null);
   let S = loadSettings(store), paused = false, lockLostAt = -1e9, appliedRes = -1;
