@@ -7,6 +7,9 @@ const BENIGN = /byte stream was erroneous according to the character encoding/i;
 export function watchErrors(page) { const e = []; page.on('pageerror', x => e.push(String(x))); page.on('console', m => m.type() === 'error' && !BENIGN.test(m.text()) && e.push(m.text())); return e; }
 export const ready = page => page.waitForFunction(() => window.ospTest?.ready === true, null, { timeout: 30_000 });
 export const start = async (page, url = URLS[1][1] + '#APOLLO-4471') => { await page.goto(url); await ready(page); await page.evaluate(() => window.ospTest.play()); };
+// Slow-runner headroom: explicit waits triple on CI (software WebGL on 2 vCPUs); local timings are unchanged.
+export const T = ms => process.env.CI ? ms * 3 : ms;
+export const capt = page => page.evaluate(() => window.ospTest.capture());
 export const state = page => page.evaluate(() => window.ospTest.state());
 for (const [name, url] of URLS) test(`boots from ${name}`, async ({ page }) => {
   const errors = watchErrors(page); await page.goto(url); await ready(page); await page.waitForTimeout(1000); expect(errors).toEqual([]);
@@ -170,22 +173,23 @@ test('Esc pauses and releases the mouse; nothing moves while paused; Esc again r
   await page.keyboard.press('Escape'); await expect.poll(() => paused(page)).toBe(false); await expect(page.locator('#pause')).toBeHidden();
   await expect.poll(() => page.evaluate(() => window.ospTest.fight().time)).toBeGreaterThan(t); expect(errors).toEqual([]); });
 test('settings apply at once and survive a reload (settings)', async ({ page }) => {
+  test.slow(); // each palette/resolution change rebuilds GPU state, seconds on a software-GL runner
   const errors = watchErrors(page); await start(page); await page.keyboard.press('Escape'); await expect(page.locator('#pause')).toBeVisible();
-  await page.selectOption('#res', '0'); await page.waitForTimeout(200); expect((await page.evaluate(() => window.ospTest.capture())).h).toBe(180);
-  await page.uncheck('#pal'); await page.waitForTimeout(200); expect((await page.evaluate(() => window.ospTest.capture())).colours).toBeGreaterThan(51);
+  await page.selectOption('#res', '0'); await expect.poll(async () => (await capt(page)).h, { timeout: T(15_000) }).toBe(180);
+  await page.uncheck('#pal'); await expect.poll(async () => (await capt(page)).colours, { timeout: T(15_000) }).toBeGreaterThan(51);
   await page.check('#pal'); await page.check('#inv'); await page.fill('#vol', '0.3'); await page.reload(); await ready(page);
   expect((await page.evaluate(() => window.ospTest.capture())).h).toBe(180);
   expect(await page.evaluate(() => window.ospTest.settings())).toEqual({ res: 0, pal: true, vol: .3, sens: 1, invert: true }); expect(errors).toEqual([]); });
 test('a localStorage that throws leaves the settings and the end screen working (Review Focus 4)', async ({ page }) => {
   await page.addInitScript(() => Object.defineProperty(window, 'localStorage', { get() { throw new DOMException('denied', 'SecurityError'); } }));
-  const errors = watchErrors(page); await start(page); await page.keyboard.press('Escape'); await page.selectOption('#res', '2'); await page.waitForTimeout(200);
-  expect((await page.evaluate(() => window.ospTest.capture())).h).toBe(360); await page.keyboard.press('Escape'); await page.evaluate(() => window.ospTest.finish());
+  const errors = watchErrors(page); await start(page); await page.keyboard.press('Escape'); await page.selectOption('#res', '2');
+  await expect.poll(async () => (await capt(page)).h, { timeout: T(15_000) }).toBe(360); await page.keyboard.press('Escape'); await page.evaluate(() => window.ospTest.finish());
   await expect(page.locator('#stats')).toContainText('KILLS 0'); await expect(page.locator('#stats')).not.toContainText('BEST'); expect(errors).toEqual([]); });
 // R3: a storage whose methods throw (the object is there, every call fails) is survived the same way
 test('a Storage whose getItem and setItem throw leaves settings in memory and the end screen working (R3)', async ({ page }) => {
   await page.addInitScript(() => { Storage.prototype.getItem = () => { throw new Error('denied'); }; Storage.prototype.setItem = () => { throw new Error('full'); }; });
-  const errors = watchErrors(page); await start(page); await page.keyboard.press('Escape'); await page.selectOption('#res', '0'); await page.waitForTimeout(200);
-  expect((await page.evaluate(() => window.ospTest.capture())).h).toBe(180); expect((await page.evaluate(() => window.ospTest.settings())).res).toBe(0);
+  const errors = watchErrors(page); await start(page); await page.keyboard.press('Escape'); await page.selectOption('#res', '0');
+  await expect.poll(async () => (await capt(page)).h, { timeout: T(15_000) }).toBe(180); expect((await page.evaluate(() => window.ospTest.settings())).res).toBe(0);
   await page.keyboard.press('Escape'); await page.evaluate(() => window.ospTest.finish());
   await expect(page.locator('#end')).toBeVisible(); await expect(page.locator('#stats')).toContainText('KILLS 0'); expect(errors).toEqual([]); });
 // R3: New Game and Back run inside the fatal path
@@ -220,6 +224,7 @@ test('a pointer lock that arrives on the end screen is released at once, so Back
   await expect.poll(() => page.evaluate(() => window.LOCKS)).toBe(1); await expect.poll(() => page.evaluate(() => document.pointerLockElement)).toBe(null);
   await page.click('#back'); await expect(page.locator('#title')).toBeVisible(); expect(await state(page)).toBe('title'); expect(errors).toEqual([]); });
 test('under the pause menu a raw lock refused late never falls back, and a lock that arrives is released, so Resume takes the click (R6)', async ({ page }) => {
+  test.slow(); // several late lock round-trips; on a 2 vCPU runner Chromium takes seconds per click
   // the raw request (unadjustedMovement) stays pending until the test refuses it, as headless Chromium does late under load
   await page.addInitScript(() => { const rq = Element.prototype.requestPointerLock;
     Element.prototype.requestPointerLock = function (o) { return o?.unadjustedMovement ? new Promise((_, no) => { window.refuseRaw = () => no(new DOMException('raw', 'NotSupportedError')); }) : rq.call(this, o); }; });
@@ -245,7 +250,7 @@ test('pausing on hold or in Houston\'s call stops the hold timer and the knock-o
   await page.evaluate(() => { window.ospTest.god(true); window.ospTest.ff(91); }); await expect.poll(() => fight(page).then(f => f.ko)).toBe('call');
   await page.keyboard.press('Escape'); await expect.poll(() => paused(page)).toBe(true); const e = (await clock(page)).ko; await page.waitForTimeout(600);
   expect((await clock(page)).ko).toBe(e); await expect(page.locator('#end')).toBeHidden(); await page.keyboard.press('Escape');
-  await expect.poll(() => area(page), { timeout: 40_000 }).toBe('prison'); await expect(page.locator('#end')).toBeHidden(); }); // Plan 6: the call resumes into the knock-out
+  await expect.poll(() => area(page), { timeout: T(40_000) }).toBe('prison'); await expect(page.locator('#end')).toBeHidden(); }); // Plan 6: the call resumes into the knock-out
 test('a new run starts at the settled wreck (opening)', async ({ page }) => { const errors = watchErrors(page); await start(page);
   expect(await page.evaluate(() => [window.ospTest.state(), window.ospTest.opening()])).toEqual(['play', null]); // ospTest.play() skips the opening
   expect(await page.evaluate(() => window.ospTest.wreck())).toEqual({ n: 11, still: 11 }); const s = await page.evaluate(() => window.ospTest.capture());
@@ -333,12 +338,12 @@ test('the dawdle clock stops on hold and after Houston picks up (R16)', async ({
 // chose. Each #new click locks the mouse, and #back takes the click only because finish() lets it go (pre-flight F1). Plan 6: Houston's
 // call knocks you out into the prison; the hooks skip from the cell to the dash, and the end screen comes after boarding's lift-off.
 test('two whole games in a row: title, opening, play, the final stand, Houston, the knock-out, the escape, the lift-off, the end screen, back to the title (show)', async ({ page }) => {
-  test.setTimeout(240_000); await noVoices(page); // pre-flight F5: two games with real-time endings outrun the default 30 s; F4: pin the unvoiced path
+  test.setTimeout(T(240_000)); await noVoices(page); // pre-flight F5: two games with real-time endings outrun the default 30 s; F4: pin the unvoiced path
   const errors = watchErrors(page); await page.goto(URLS[1][1] + '#APOLLO-4471'); await ready(page);
   for (let g = 0; g < 2; g++) { await page.click('#new'); await expect.poll(() => state(page)).toBe('opening'); await throughOpening(page);
     await toComms(page); await onHold(page); await page.evaluate(() => { window.ospTest.god(true); window.ospTest.ff(91); });
-    await expect.poll(() => area(page), { timeout: 40_000 }).toBe('prison'); await page.evaluate(s => window.ospTest.ff(s), KO.out + KO.down + KO.getUp + 1); await toLiftoff(page);
-    await expect(page.locator('#end')).toBeVisible({ timeout: 40_000 }); await expect(page.locator('#stats')).toContainText('GOLF BALLS');
+    await expect.poll(() => area(page), { timeout: T(40_000) }).toBe('prison'); await page.evaluate(s => window.ospTest.ff(s), KO.out + KO.down + KO.getUp + 1); await toLiftoff(page);
+    await expect(page.locator('#end')).toBeVisible({ timeout: T(40_000) }); await expect(page.locator('#stats')).toContainText('GOLF BALLS');
     await page.click('#back'); await expect(page.locator('#title')).toBeVisible(); expect(await state(page)).toBe('title'); }
   expect(await page.evaluate(() => location.hash)).toBe(''); expect(errors).toEqual([]); });
 // R18 moved: on hold to just before Houston (cueing the switchboard intro `holds` times), then through the call to the knock-out.
@@ -461,8 +466,8 @@ const throughLift = (page, holds = 0) => page.evaluate(([n, sting]) => { const o
     o.ff(1 / 30); }
   return { s, T: s.at(-1).t + 1 / 30, state: o.state(), sub: sub() }; }, [holds, LIFT.sting]);
 test('R9 moved: boarding, the lift-off, then the end screen with the time at boarding (Plan 6)', async ({ page }) => {
-  await noVoices(page); const errors = watchErrors(page); await start(page); await toLiftoff(page); const f = await fight(page); expect(f.won).toBe(true);
-  await expect(page.locator('#end')).toBeVisible({ timeout: 30_000 }); await expect(page.locator('#stats')).toContainText('TIME ' + fmtTime(f.wonAt)); expect(errors).toEqual([]); });
+  test.slow(); await noVoices(page); const errors = watchErrors(page); await start(page); await toLiftoff(page); const f = await fight(page); expect(f.won).toBe(true);
+  await expect(page.locator('#end')).toBeVisible({ timeout: T(30_000) }); await expect(page.locator('#stats')).toContainText('TIME ' + fmtTime(f.wonAt)); expect(errors).toEqual([]); });
 test('R18 moved: the end screen comes ENDING.min s after the sting once the radio is idle, then the fade', async ({ page }) => {
   await noVoices(page); const errors = watchErrors(page); await start(page); await toLiftoff(page); const r = await throughLift(page), idle = r.s.find(x => x.idle)?.t ?? r.T;
   expect(r.s.some(x => x.sub.includes('one more small problem'))).toBe(true); expect(r.T).toBeGreaterThanOrEqual(ENDING.min + LIFT.fade - 1e-6);
@@ -473,10 +478,11 @@ test('R18 moved: at ENDING.max after the sting the fade starts whatever is on th
 // Review fix (Task 9): like the hold's and the knock-out's, the lift-off's clock and its fade stop while paused. The fade is entered and
 // paused in one evaluate (a synthetic Esc), so no frame can finish it first.
 test('pausing in the lift-off stops its clock and the fade to the end screen until you resume (pause, Plan 6)', async ({ page }) => {
+  test.slow();
   await noVoices(page); const errors = watchErrors(page); await start(page); await toLiftoff(page); await page.keyboard.press('Escape'); await expect.poll(() => paused(page)).toBe(true);
   const l = (await clock(page)).liftoff; await page.waitForTimeout(600); expect((await clock(page)).liftoff).toBe(l); await page.keyboard.press('Escape'); await expect.poll(() => paused(page)).toBe(false);
   const f = await page.evaluate(() => { const o = window.ospTest; for (let i = 0; i < 3000 && o.clock().fade === null && o.state() === 'liftoff'; i++) o.ff(1 / 30);
     o.ff(1 / 30); dispatchEvent(new KeyboardEvent('keydown', { code: 'Escape' })); return { fade: o.clock().fade, paused: o.paused(), state: o.state() }; });
   expect([f.paused, f.state]).toEqual([true, 'liftoff']); expect(f.fade).toBeGreaterThan(0); await page.waitForTimeout(600);
   expect((await clock(page)).fade).toBe(f.fade); await expect(page.locator('#end')).toBeHidden(); await page.keyboard.press('Escape');
-  await expect(page.locator('#end')).toBeVisible({ timeout: 10_000 }); expect(errors).toEqual([]); });
+  await expect(page.locator('#end')).toBeVisible({ timeout: T(10_000) }); expect(errors).toEqual([]); });

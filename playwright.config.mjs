@@ -11,6 +11,7 @@ export default defineConfig({
   testDir: 'tests',
   testMatch: '*.spec.mjs',
   webServer: { command: 'node tools/serve.mjs 4173', url: 'http://localhost:4173/index.html', reuseExistingServer: true },
+  timeout: process.env.CI ? 60_000 : 30_000, // software-GL runners (2 vCPU) render a frame in 100s of ms; local stays at 30 s
   retries: process.env.CI ? 1 : 0,
   projects,
 });
