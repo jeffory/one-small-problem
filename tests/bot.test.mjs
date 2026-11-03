@@ -1,14 +1,18 @@
 import test from 'node:test'; import assert from 'node:assert/strict'; import { generateWorld } from '../src/gen/world.js'; import { makeRng } from '../src/gen/rng.js'; import { K } from '../src/gen/base.js';
-import { createFight, stepFight } from '../src/game/fight.js'; import { give } from '../src/game/weapons.js'; import { worldSpheres } from '../src/game/rigs.js'; import { PLAYER } from '../src/game/player.js';
+import { createFight, stepFight, skipTo } from '../src/game/fight.js'; import { SHIP } from '../src/game/escape.js'; import { give } from '../src/game/weapons.js'; import { worldSpheres } from '../src/game/rigs.js'; import { PLAYER } from '../src/game/player.js';
 import { cameraBasis } from '../src/gfx/math.js'; import { BOT, createBot, botStep, baseField } from '../src/game/bot.js';
 const W = generateWorld('APOLLO-4471'), wrap = a => Math.atan2(Math.sin(a), Math.cos(a));
-// main.js's loop: uneven frames from 1/144 to 1/18 s, cut into sub-steps of at most .05 s
-function run(world, secs, finale = false) { const F = createFight(world), bot = createBot(world, makeRng(world.seed + '/bot'), finale), r = makeRng('bot-dt'); F.god = true; let t = 0, turn = 0;
-  while (!bot.done && t < secs) { const dt = Math.min(.25, r.range(1 / 144, 1 / 18)), n = Math.max(1, Math.ceil(dt / .05));
+// main.js's loop: uneven frames from 1/144 to 1/18 s, cut into sub-steps of at most .05 s. A bot playing to to, from the wreck or,
+// for k >= 4, from area k's start (skipTo), until done, secs or until(F); start: where it began (pre-flight F1: each test checks
+// it, so a skipTo that did nothing cannot pass); missed: the rescue ships that left without it (F10).
+function run(world, secs, to = 'comms', k = 0, until = () => false) { const F = createFight(world), bot = createBot(world, makeRng(world.seed + '/bot'), to), r = makeRng('bot-dt'); F.god = true;
+  if (k >= 4) skipTo(F, k);
+  const start = { area: F.area, x: F.player.x, z: F.player.z }; let t = 0, turn = 0, missed = 0;
+  while (!bot.done && t < secs && !until(F)) { const dt = Math.min(.25, r.range(1 / 144, 1 / 18)), n = Math.max(1, Math.ceil(dt / .05));
     for (let k = 0; k < n; k++) { const y0 = F.player.yaw, inp = botStep(bot, F, dt / n); turn = Math.max(turn, Math.abs(wrap(F.player.yaw - y0)) / (dt / n));
       stepFight(F, k ? { ...inp, use: false, weapon: -1, wheel: 0 } : inp, dt / n); }
-    F.events.length = 0; t += dt; }
-  return { F, bot, t, turn }; }
+    missed += F.events.filter(e => e.type === 'missed').length; F.events.length = 0; t += dt; }
+  return { F, bot, t, turn, start, missed }; }
 test('the immortal bot plays from the wreck to the comms room within 600 s at uneven frame rates, turning no faster than BOT.turn (attract)', () => {
   const { F, bot, t, turn } = run(W, 900); assert.equal(bot.done, 'comms'); assert.equal(F.area, 3); assert.ok(t < 600, `${t} s`); assert.ok(F.kills > 0); assert.ok(turn <= BOT.turn + 1e-6, `${turn}`); });
 test('the same seed and frame times replay the same run (attract)', () => { const a = run(W, 60), b = run(W, 60);
@@ -32,3 +36,17 @@ test('an attract run that is still making progress is given up after BOT.max s (
   const F = createFight(W), bot = createBot(W, makeRng('max')); F.god = true;
   F.time = BOT.max - .01; botStep(bot, F, 1 / 60); assert.equal(bot.done, null);
   F.time = BOT.max + .01; assert.deepEqual(botStep(bot, F, 1 / 60), { fwd: 0, strafe: 0, run: false, jump: false, fire: false, use: false, weapon: -1, wheel: 0 }); assert.equal(bot.done, 'stall'); });
+test('the soak bot breaks out: bangs, beats the guard, takes the lift within 300 s (Plan 6)', () => {
+  const { F, bot, t, start } = run(W, 400, 'board', 4, f => f.area >= 5); assert.deepEqual([start.area, start.x, start.z], [4, W.prisonMap.start.x, W.prisonMap.start.z]); assert.ok(F.area === 5 && t < 300, `${bot.stage} ${t}`); });
+test('from the climb the soak bot boards the ship with the clock to spare (Plan 6)', () => {
+  const { F, bot, t, start, missed } = run(W, 600, 'board', 5); assert.deepEqual([start.area, start.x, start.z], [5, W.crater.use.x, W.crater.use.z], 'starts at the hangar door, not the wreck');
+  assert.equal(bot.done, 'board', `${bot.stage} ${t}`); assert.equal(missed, 0); assert.ok(F.won && F.ship.left > .3 * SHIP.clock, `${F.ship.left}`); });
+// pre-flight F16: the knock-out (KO.call + out + down + getUp, 38.8 s of the 45 s BOT.stall) is idled through and never counts as a
+// stall; a soak run is given up only after BOT.full s
+test('the soak bot idles through the knock-out without stalling and gives up only after BOT.full s (Plan 6, F16)', () => {
+  const F = createFight(W, 3), bot = createBot(W, makeRng('ko'), 'board'), idle = { fwd: 0, strafe: 0, run: false, jump: false, fire: false, use: false, weapon: -1, wheel: 0 };
+  F.ko = { phase: 'call', t: 0 };
+  for (let t = 0; t < BOT.stall + 10; t += 1 / 30) assert.deepEqual(botStep(bot, F, 1 / 30), idle);
+  assert.deepEqual([bot.stage, bot.done], ['ko', null]);
+  F.ko = null; F.time = BOT.max + .01; botStep(bot, F, 1 / 60); assert.equal(bot.done, null);
+  F.time = BOT.full + .01; assert.deepEqual(botStep(bot, F, 1 / 60), idle); assert.equal(bot.done, 'stall'); });

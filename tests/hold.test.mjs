@@ -44,7 +44,7 @@ test('an idle player at the array does not survive the hold: the final stand is 
 // it metres off), so the longest stretch more than 1 m away is bounded. APOLLO-4471 at fixed 1/30 s steps is the brief's run;
 // BOT-0028 and BOT-0007 at uneven frame times cut as main.js does were pinned 3 m off behind the dish pedestal (26.2 s and 11.8 s)
 // by a straight walk home.
-const finale = (seed, uneven) => { const W = generateWorld(seed), F = createFight(W), bot = createBot(W, makeRng('finale'), true), r = makeRng('dt' + seed), c = callSpot(W.baseMap);
+const finale = (seed, uneven) => { const W = generateWorld(seed), F = createFight(W), bot = createBot(W, makeRng('finale'), 'houston'), r = makeRng('dt' + seed), c = callSpot(W.baseMap);
   F.god = true; let t = 0, off = 0, longest = 0;
   while (!bot.done && t < 900) { const dt = uneven ? Math.min(.25, r.range(1 / 144, 1 / 18)) : 1 / 30, n = Math.max(1, Math.ceil(dt / .05));
     for (let k = 0; k < n; k++) { const inp = botStep(bot, F, dt / n); stepFight(F, k ? { ...inp, use: false, weapon: -1, wheel: 0 } : inp, dt / n);

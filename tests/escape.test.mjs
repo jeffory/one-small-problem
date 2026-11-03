@@ -86,7 +86,7 @@ test('the arrow climbs the switchback to the rim, then points at the rescue site
 import { SHIP, FLARE, RING, shipLift, flareAt } from '../src/game/escape.js'; import { PUFF } from '../src/game/lander.js'; import { HOLD, planWaves } from '../src/game/hold.js'; import { OPEN } from '../src/game/opening.js';
 import { PLAYER } from '../src/game/player.js'; import { makeRng } from '../src/gen/rng.js'; import { COST } from '../src/gen/encounters.js';
 test('the ship comes down on the opening\'s curve, lands, fires its flare 150 m up, opens its hatch', () => {
-  assert.deepEqual(SHIP, { clock: 240, warn: 30, calls: [180, 120, 60, 30], r: 2, reach: 1.6, alt: 24, descent: 9, hatch: 1, puffs: 40 }); assert.deepEqual([SHIP.alt, SHIP.descent], [OPEN.alt, OPEN.descent]);
+  assert.deepEqual(SHIP, { clock: 430, warn: 30, calls: [180, 120, 60, 30], r: 2, reach: 1.6, alt: 24, descent: 9, hatch: 1, puffs: 40 }); assert.deepEqual([SHIP.alt, SHIP.descent], [OPEN.alt, OPEN.descent]);
   assert.deepEqual(PUFF, { r: 2.2, v: [9, 14], up: [1, 2.5], life: 3, s: [.35, .7] }); // pre-flight F14
   assert.deepEqual(FLARE, { up: 150, rise: 3, fall: 40, size: .6, ang: .01, trail: 10, gap: .5, col: [2.4, .3, .08] });
   const F = createFight(W, 6), S = F.ship, st = W.escape.site; F.aliens.length = 0; assert.deepEqual([S.landed, S.left, S.W.lift], [false, SHIP.clock, SHIP.alt]); assert.equal(shipLift(SHIP.descent / 2), SHIP.alt / 4);

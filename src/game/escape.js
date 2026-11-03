@@ -24,10 +24,11 @@ export const koLock = F => !!F.ko && (F.ko.phase === 'out' || F.ko.phase === 'do
 export const wakeIn = F => { const p = F.ko?.phase; return p === 'down' || p === 'up' ? Math.min(1, ((p === 'up' ? KO.down : 0) + F.ko.t) / (KO.down + KO.getUp)) : 0; };
 
 // The rescue ship in the dash (area 6), the same lander as yours, coming down at the rescue site (world.escape.site) as you arrive.
-// clock: seconds from arriving to it leaving without you; warn: the clock shows red under this; calls: the marks (s left) the radio
-// calls; r: the deck's collision radius (m); reach: how near the ladder's foot (m) E boards; alt, descent: the opening's (m up, s
-// down: it comes down the same curve); hatch: touchdown to the hatch opening (s); puffs: the touchdown's dust puffs.
-export const SHIP = { clock: 240, warn: 30, calls: [180, 120, 60, 30], r: 2, reach: 1.6, alt: 24, descent: 9, hatch: 1, puffs: 40 };
+// clock: seconds from arriving to it leaving without you, tuned by the bot soak (spec 6: its worst dash, 300.1 s, keeps 30% spare;
+// the starting value was 240 s); warn: the clock shows red under this; calls: the marks (s left) the radio calls; r: the deck's
+// collision radius (m); reach: how near the ladder's foot (m) E boards; alt, descent: the opening's (m up, s down: it comes down
+// the same curve); hatch: touchdown to the hatch opening (s); puffs: the touchdown's dust puffs.
+export const SHIP = { clock: 430, warn: 30, calls: [180, 120, 60, 30], r: 2, reach: 1.6, alt: 24, descent: 9, hatch: 1, puffs: 40 };
 // The red signal flare fired at touchdown, the goal you see from the rim (the ship itself is under the bent horizon): it climbs
 // up m over rise s, then drifts down over fall s. size (m, a sprite half-size) and ang (rad) are its least size and least angular
 // size, so it shows at 400 m; trail: its smoke puffs, gap s of flight apart; col: its HDR colour.
