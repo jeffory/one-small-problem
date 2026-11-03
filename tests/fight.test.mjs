@@ -114,3 +114,14 @@ test('fight events carry what sound and radio need: fire.w, hit, zap at the muzz
   const b = F.aliens.find(x => x.state !== 'dead'); shootAt(F, b); run(F, idle, .2); const k = F.events.filter(x => x.type === 'kill').at(-1);
   assert.equal(k.kind, b.type); assert.equal(k.n, F.kills); // pre-flight F25
   F.hp = 50; F.pickups.push({ kind: 'tape', x: p.x, y: p.y, z: p.z, n: 25, area: 0 }); stepFight(F, idle, 1 / 60); assert.equal(F.events.filter(x => x.type === 'pickup').at(-1).kind, 'tape'); });
+// R25: KILLS counts the aliens you kill (your bolts, your melee, canister blasts), not those an alien's bolt finishes; the kill
+// event says so (team 1), and the radio's kill reactions skip it
+import { createRadio, radioEvents } from '../src/game/radio.js';
+test('an alien finished by another alien\'s bolt is not your kill: KILLS and the radio skip it; your bolts and a canister blast still count (R25)', () => {
+  const F = createFight(W), [a, b] = F.aliens, kills = () => F.events.filter(e => e.type === 'kill');
+  F.bolts.push({ x: a.x, y: a.y + 6, z: a.z, vx: 0, vy: -30, vz: 0, dmg: 999, r: .2, life: 1, col: [1, 1, 1], team: 1, src: b.id }); run(F, idle, .2);
+  assert.equal(a.state, 'dead'); assert.equal(F.kills, 0); assert.equal(kills().length, 1); assert.equal(kills()[0].team, 1);
+  const R = createRadio({ next: () => 0, int: () => 0, range: x => x }); radioEvents(R, kills(), F); assert.deepEqual(R.q, [], 'no kill reaction');
+  shootAt(F, b); run(F, idle, .2); assert.equal(b.state, 'dead'); assert.equal(F.kills, 1); assert.equal(kills()[1].team, undefined); assert.equal(kills()[1].n, 1);
+  const c = F.canisters[0], d = F.aliens.at(-1), n = kills().length; Object.assign(d, { x: c.x + 2, z: c.z, y: sampleGround(W, c.x + 2, c.z), hp: 1 }); shootAt(F, c, 20); run(F, idle, 1.5);
+  const blast = kills().slice(n); assert.equal(d.state, 'dead'); assert.ok(blast.length >= 1 && blast.every(e => !e.team), 'the blast kills count'); assert.equal(F.kills, 1 + blast.length); });

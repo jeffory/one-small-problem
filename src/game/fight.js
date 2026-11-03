@@ -294,14 +294,15 @@ function flyBolts(F, dt) {
       decal(F, 'scorch', h.x, h.y, h.z, b.r >= .3 ? .7 : .35, h.n);
       burst(F, 'spark', h.x, h.y, h.z, 4, 2.5, 1, 3.5, .25, .5);
       burst(F, 'dust', h.x, h.y, h.z, 2, .8, .4, 1.2, .7, 1.2);
-    } else if (t.a) { if (!b.team) F.events.push({ type: 'hit' }); hurtAlien(t.a, b.team ? b.dmg / 2 : b.dmg, 0, 0); burst(F, 'goo', h.x, h.y, h.z, 6, 1.2, .5, 2, 8, 8); }
+    } else if (t.a) { if (!b.team) F.events.push({ type: 'hit' }); if (hurtAlien(t.a, b.team ? b.dmg / 2 : b.dmg, 0, 0) && b.team) t.a._foe = 1; burst(F, 'goo', h.x, h.y, h.z, 6, 1.2, .5, 2, 8, 8); }
     else if (t.c) t.c.hp -= b.dmg;
     else { const k = 1.5 / (Math.hypot(b.vx, b.vy, b.vz) || 1); hurtPlayer(F, b.dmg, b.vx * k, b.vy * k, b.vz * k); }
   }
 }
 
-// New deaths score (until Houston picks up, R9: no kill farming in the invulnerable ending), splash goo and drop; corpses sink
-// over their last SINK seconds and go after CORPSE. Ids never change.
+// New deaths score (until Houston picks up, R9: no kill farming in the invulnerable ending; and not one an alien's bolt finished,
+// _foe, whose kill event carries team 1, R25), splash goo and drop; corpses sink over their last SINK seconds and go after CORPSE.
+// Ids never change.
 function deaths(F) {
   const G = F.lv.ground, L = F.aliens; let w = 0;
   for (const a of L) {
@@ -317,10 +318,10 @@ function deaths(F) {
 }
 
 function killed(F, a) {
-  a._died = F.time; if (!F.won) F.kills++;
+  a._died = F.time; if (!F.won && !a._foe) F.kills++;
   const c = worldSpheres(a)[0], gy = F.lv.ground(a.x, a.z);
   burst(F, 'goo', c[0], c[1], c[2], 24, 1.5, 1, 3, 8, 8);
-  F.events.push({ type: 'kill', x: a.x, y: gy, z: a.z, kind: a.type, n: F.kills });
+  F.events.push({ type: 'kill', x: a.x, y: gy, z: a.z, kind: a.type, n: F.kills, team: a._foe });
   const kind = a.type === 'fl' ? 'cells' : a.type === 'br' ? 'scatter' : a.enc.first || F.rng.next() < PICKUP.pistolDrop ? 'pistol' : null;
   if (kind) F.pickups.push({ kind, x: a.x, y: gy, z: a.z, n: kind === 'cells' ? PICKUP.flCells : PICKUP[kind], area: a.area });
 }

@@ -43,11 +43,11 @@ export function radioCue(R, key, n) {
 }
 
 // The fight's events as cues, one per event. The progress events restart the dawdle clock. Once Houston has picked up only
-// Houston cues, so nothing steps on the punchline (R18).
+// Houston cues, so nothing steps on the punchline (R18); an alien killed by another's bolt (team 1) isn't yours to react to (R25).
 export function radioEvents(R, events, F) {
   for (const e of events) {
     const t = e.type;
-    if (F.won && t !== 'houston') continue;
+    if (F.won && t !== 'houston' || e.team) continue;
     if (PROGRESS.has(t)) R._idle = 0;
     if (t === 'kill') {
       const K = R._kills, [many, within] = RADIO.multi;
