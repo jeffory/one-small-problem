@@ -8,8 +8,8 @@ This file is the single place to find every decision made while building the gam
 |---|---|
 | Design and the user's own decisions (tagged `[user]`), plus Claude's calls (`[call]`) | `docs/superpowers/specs/2026-11-02-one-small-problem-design.md` |
 | Each plan's design calls, marked `[call]` in the text | `docs/superpowers/plans/*.md` |
-| Pre-flight amendments, tagged `(pre-flight Fn)` in the plan text | Plans 3, 4 and 5 |
-| Every execution ruling, deferred minor finding and parked item for Plans 3, 4 and 5 | `docs/superpowers/ledgers/*.md` |
+| Pre-flight amendments, tagged `(pre-flight Fn)` in the plan text | Plans 3, 4, 5 and 6 |
+| Every execution ruling, deferred minor finding and parked item for Plans 3, 4, 5 and 6 | `docs/superpowers/ledgers/*.md` |
 | The user's pending hands-on checklist | below, and in project memory (`hands-on-checklist`) |
 
 ## State at the end of the overnight run (2026-11-03)
@@ -36,9 +36,9 @@ This file is the single place to find every decision made while building the gam
 
 ## State after Plan 6 (the escape, 2026-11-04)
 
-- Merge commit: filled in by the controller at merge (branch `plan-6-escape`).
-- Release `dist/index.html`: 76,623 B (58.5% of the 131,072 B cap; the Plan 6 ceiling of about 95 KB, 97,280 B, is met)
-- Tests: 399 unit, the 1000-seed soak (both maps, the prison and escape plans), the 60-seed bot soak (60/60 boarded, no missed ship) and the smoke suite in Chromium and Firefox 152 tests pass.
+- Merged to `main` locally by fast-forward from branch `plan-6-escape` (base 11bcf76; head ae0536f plus this docs commit), and pushed with the user's go-ahead ("keep pushing up as they land").
+- Release `dist/index.html`: 76,638 B (58.5% of the 131,072 B cap; the Plan 6 ceiling of about 95 KB, 97,280 B, is met)
+- Tests: 403 unit, the 1000-seed soak (both maps, the prison and escape plans), the 60-seed bot soak (60/60 boarded, no missed ship) and the smoke suite in Chromium and Firefox 152 tests pass.
 - New goldens (re-pinned in the final review's fix wave, for the dash's half budgets and the clear lift dais): APOLLO-4471 `f39142f2`, EAGLE-0001 `18bac48f`, SOAK-0042 `0920e393` (before the wave `cab7471e`, `2b8d1c18`, `0f2620e9`). The level 1 parts still hash as before (`60273c6a`, `39762eb2`, `ee4eda57`, pinned in `tests/golden.test.mjs`); `src/gen/surface.js`, `crater.js`, `passable.js`, `rng.js` and `noise.js` are unchanged since 11bcf76.
 - Final `SHIP.clock`: 300 s (spec 6: the bot's worst dash is 200.5 s, so 33% spare; the soak rounds up to the next 30 s and counts a missed ship's dash). The starting value was 240 s; it was 430 s (worst dash 300.1 s) until the final review halved the dash's aliens.
 
@@ -208,6 +208,42 @@ Every `[call]` in `docs/superpowers/plans/2026-11-04-plan-6-escape.md`, by task.
 | `BOT.full = 1500` (T12) | The stall limit (s) of a `'board'` bot run. |
 | A missed ship (pre-flight F24) | It restarts area 6 at the rim like a death, and the ship's departure is not shown (it is out of sight from most of the dash). Spec 6 says "the vehicle lifts off without you"; a visible lift-off on a miss (raising `F.ship.W.up` over the dead time) is later polish. |
 | Spec 3 vs 4.1 (pre-flight F27) | Spec 3's table says area 4 starts with "bars already open", but spec 4.1's builder check (guard alive: the beat replays, bars shut) takes precedence, and the plan follows it. |
+
+## Plan 6 (the escape) rulings
+
+The full text, with the cost of each ruling if wrong, is in `ledgers/2026-11-04-plan-6-escape-ledger.md`. The plan's own design calls are in the calls table above.
+
+**Pre-flight** (27 findings, all accepted; the ones that shaped the build):
+
+| Ruling | Decision |
+|---|---|
+| F1 | `enterArea` rebuilds on a new stint as well as a new level, so the test hooks land you at an area's start. Walking 0→1, 2→3 and 5→6 is unchanged. |
+| F3, F4, F9 | Tests that could not pass as written. The knock-out's black is checked as a mean under 5, because the dither lifts pure black. Each phase's overshoot is carried so the wake is exact. The flare uses a looser "hot pixel" rule. |
+| F7 | The route planner gains shared `walk` and `switchback` helpers. Level 1's plan comes out unchanged. |
+| F10, F16 | The bot soak fails on any missed ship. The bot's knock-out stage is stall-exempt. |
+| F24 | A missed ship restarts the dash at the rim without showing the ship leave. |
+| F27 | The builder check's "guard alive: the beat replays" beats the spec table's "bars already open". |
+
+**During execution:**
+
+| Ruling | Decision |
+|---|---|
+| T4/T5/T7 | `stintEnd` is bounded and throws for an unknown area. Arriving anywhere but the prison clears the cell. |
+| T8 | **The rush was too crowded.** An idle player near the ship faced up to 47 aliens (median 22). The fix: dash encounters stop 60 m short of the site (`ESCAPE.shipGap`), and the rush keeps at most 8 live (`RING.cap`). The escape part's goldens were re-pinned. The dash's top difficulty is now about p .93. |
+| T9 | **Boarding stops fight events reaching the radio.** A reaction cued at boarding no longer delays the sting (fix round 1). The flare goes out once you're aboard. |
+| T10 | Sounds are muted only through the black and the cell floor, not all of Houston's call, which would have silenced the comms room. |
+| T12 | **The soak bot plays both levels.** Two pathing bugs were fixed: a crate on the lift, and a switchback leg above the bot. |
+
+**Final review** (with fixes):
+
+| Ruling | Decision |
+|---|---|
+| FR1 | Boarding clears the whole radio queue and cuts the line on the air, so the sting lands at its click. |
+| FR2 | **The dash's alien budget is halved** (`ESCAPE.dashScale` .5), the same remedy as H2 for the base. Median aliens went from 62 to 20, and the bot's damage on the dash from 1018 to 598; the base after H2 is about 470. The dash keeps its 6-7 brutes, which is for the hands-on check. |
+| FR3 | **No crate on or next to the exit lift's dais.** One had been on it in 36% of prisons. The bot's workaround is gone. |
+| FR4 | The soak's clock recommendation counts missed ships and rounds up to the next 30 s. `SHIP.clock` is 300 s. |
+
+The goldens were re-pinned three times on this branch: in T6 (the prison and escape parts were appended), in T8 (the 60 m gap) and in the final wave (the dash scale and the clear dais). Level 1's hashes never changed.
 
 ## Deferred minor findings
 
