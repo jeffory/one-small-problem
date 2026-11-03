@@ -1,8 +1,8 @@
-// Pure model builders (no GL): design-A aliens, held weapons, flag/pole and prop meshes as finishMesh output.
+// Pure model builders (no GL): design-A aliens, held weapons, flag/pole, prop meshes and the cell's bars as finishMesh output.
 import { createMesh, vtx, quadIdx, box, blob, lathe, finishMesh } from '../gfx/mesh.js';
 import { MAT } from '../gfx/materials.js';
 import { vn3 } from '../gen/noise.js';
-import { buildFlag } from './props.js';
+import { buildFlag, buildBars } from './props.js';
 export const TAPE_R = .144; // duct-tape roll radius (m), also its rest height in fightView
 
 // Held weapon placement in camera space, [right, up, forward]. Model-local -z points forward.
@@ -76,5 +76,6 @@ export function buildModels() {
     lathe(m, [0, .8, 0], [0, .9, 0], [[0, .12], [.5, .14], [1, .1]], 10, MAT.gunMetal);
   });
   const golf = make(m => blob(m, [0, 0, 0], [.06, .06, .06], 10, 7, MAT.golf, null)); // about three times real size, so it can be found
-  return { skBody, skLeg, flBody, brBody, brClaw, brGun, pistol, scatter, pole, flag, tape, cell, canister, golf, discScorch: disc(MAT.scorch), discGoo: disc(MAT.goo) };
+  const bars = make(m => buildBars(m, 0, 0, 0, 3, 1, 0, 2.7)); // the cell's energy bars: 3 m across x, 2.7 m tall, drawn while shut
+  return { skBody, skLeg, flBody, brBody, brClaw, brGun, pistol, scatter, pole, flag, tape, cell, canister, golf, bars, discScorch: disc(MAT.scorch), discGoo: disc(MAT.goo) };
 }

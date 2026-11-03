@@ -111,6 +111,11 @@ test('a lost GPU context in the base still shows the reload message', async ({ p
   const n = await page.evaluate(() => window.ospTest.frames()); await expect.poll(() => page.evaluate(() => window.ospTest.frames())).toBeGreaterThan(n + 1);
   await page.evaluate(() => document.getElementById('c').getContext('webgl2').getExtension('WEBGL_lose_context').loseContext());
   await expect(page.locator('#msg')).toContainText('Graphics context lost'); await page.waitForTimeout(500); expect(errors).toEqual([]); });
+const area = page => page.evaluate(() => window.ospTest.area());
+test('the prison renders palette-true and lit, with air; you hold the pole at 70 hp behind shut bars (Plan 6)', async ({ page }) => {
+  const errors = watchErrors(page); await start(page); await page.evaluate(() => window.ospTest.prison()); await expect.poll(() => area(page)).toBe('prison');
+  const f = await fight(page); expect([f.cell.shut, f.hp, f.cur]).toEqual([true, KO.hp, 0]); expect(await page.evaluate(() => window.ospTest.audio().air)).toBe(true);
+  const s = await page.evaluate(() => window.ospTest.capture()); expect(s.inPalette).toBe(1); expect(s.colours).toBeGreaterThan(6); expect(s.black).toBeLessThan(.9); expect(errors).toEqual([]); });
 test('the page opens on the title: ONE SMALL PROBLEM, one New Game option, a live run behind it, the hash untouched (title)', async ({ page }) => {
   const errors = watchErrors(page); await page.goto(URLS[1][1]); await ready(page);
   await expect(page.locator('#title')).toBeVisible(); await expect(page.locator('#logo')).toHaveText('ONE SMALL PROBLEM');

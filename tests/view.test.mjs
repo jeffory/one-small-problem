@@ -1,6 +1,6 @@
 import test from 'node:test'; import assert from 'node:assert/strict'; import { fakeGL } from './fakegl.mjs';
 import { sampleGround } from '../src/gen/surface.js'; import { generateWorld } from '../src/gen/world.js'; import { buildSurfaceScene } from '../src/game/surfaceScene.js';
-import { createFight, stepFight, hurtPlayer } from '../src/game/fight.js'; import { createAlien } from '../src/game/aliens.js'; import { give } from '../src/game/weapons.js';
+import { createFight, stepFight, hurtPlayer, openBars } from '../src/game/fight.js'; import { createAlien } from '../src/game/aliens.js'; import { give } from '../src/game/weapons.js';
 import { createFightView, fillFrame } from '../src/game/fightView.js'; import { cameraBasis, xf, dot } from '../src/gfx/math.js';
 import { TAPE_GLINT, VIG } from '../src/game/fightView.js'; import { TAPE_R } from '../src/game/models.js'; import { tilt, setWreck } from '../src/game/fightView.js'; import { readFileSync } from 'node:fs'; import { settleWreck } from '../src/game/lander.js';
 const W = generateWorld('APOLLO-4471'), gl = fakeGL(), scene = buildSurfaceScene(gl, W), V = createFightView(gl, scene);
@@ -126,3 +126,5 @@ test('tape lies still on its edge on the ground and glints for .15 s in every 2.
   let on = 0; for (let t = 0; t < TAPE_GLINT.period; t += .05) { fillFrame(V, F, fr, t); const D = fr.sprites.data;
     for (let i = fr.sprites.nOpaque; i < fr.sprites.nOpaque + fr.sprites.nGlow; i++) if (Math.hypot(D[i * 8] - q.x, D[i * 8 + 1] - (q.y + 2 * TAPE_R - .03), D[i * 8 + 2] - q.z) < 1e-3) { on++; break; } }
   const want = TAPE_GLINT.on / .05; assert.ok(on >= Math.floor(want) && on <= Math.ceil(want) + 1, `${on}`); }); // derived from the table (pre-flight F1)
+test('the cell bars are drawn while shut, gone once open (Plan 6)', () => { const F = createFight(W, 4), fr = frame(), has = () => fr.meshes.some(m => m.gpu === V.gpu.bars);
+  fillFrame(V, F, fr, 0); assert.ok(has()); openBars(F); fillFrame(V, F, fr, 0); assert.ok(!has()); });

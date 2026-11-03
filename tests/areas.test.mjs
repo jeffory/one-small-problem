@@ -4,8 +4,8 @@ import { AREAS, LEVEL, GRAVITY, makeLevel, areaStart, advanceArea, WAY, wayfind,
 const W = generateWorld('APOLLO-4471'), M = W.baseMap, idle = { fwd: 0, strafe: 0, run: false, jump: false, fire: false, use: false, weapon: -1, wheel: 0 };
 const run = (F, inp, secs, dt = 1 / 60) => { for (let t = 0; t < secs; t += dt) stepFight(F, inp, dt); };
 const put = (F, x, z) => Object.assign(F.player, { x, z, y: F.lv.ground(x, z), vx: 0, vy: 0, vz: 0, kx: 0, kz: 0 });
-test('every area starts on its level, at its start, under its level gravity', () => { assert.deepEqual(AREAS, ['surface', 'crater', 'base', 'comms']); assert.deepEqual(GRAVITY, { surface: 3.0, base: 9.0 });
-  for (let k = 0; k < 4; k++) { const F = createFight(W, k), s = areaStart(W, k); assert.deepEqual([F.area, F.lv.id, F.gravity], [k, LEVEL[k], GRAVITY[LEVEL[k]]]);
+test('every area starts on its level, at its start, under its level gravity', () => { assert.deepEqual(AREAS.slice(0, 4), ['surface', 'crater', 'base', 'comms']); assert.deepEqual([GRAVITY.surface, GRAVITY.base], [3.0, 9.0]);
+  for (let k = 0; k < AREAS.length; k++) { const F = createFight(W, k), s = areaStart(W, k); assert.deepEqual([F.area, F.lv.id, F.gravity], [k, LEVEL[k], GRAVITY[LEVEL[k]]]);
     assert.ok(Math.hypot(F.player.x - s.x, F.player.z - s.z) < 1e-9); assert.equal(F.player.y, F.lv.ground(s.x, s.z)); assert.ok(F.aliens.every(a => a.area >= k)); } });
 test('the base level: solid walls, real ceilings, a sealed edge; the surface has no ceiling', () => { const L = makeLevel(W, 'base'), r = M.rooms[1];
   assert.equal(L.ceil(r.x0 + 1 - M.half, r.z0 + 1 - M.half), r.ceil); assert.ok(L.ground(r.x0 - 1 - M.half, r.z0 - 1 - M.half) >= BASE.wall);
@@ -29,7 +29,7 @@ test('populate tags everything with its area and keeps the level plan ids from a
   const A = createFight(W), C = createFight(W, 1), key = L => L.map(a => [a.id, a.area, a.type, a.x, a.z]), can = L => L.map(c => [c.id, c.area, c.x, c.z]);
   assert.ok(A.aliens.some(a => a.area === 0) && C.aliens.length > 0); assert.deepEqual(key(C.aliens), key(A.aliens.filter(a => a.area >= 1)));
   assert.deepEqual(can(C.canisters), can(A.canisters.filter(c => c.area >= 1))); assert.ok(C.pickups.length > 0 && C.pickups.every(q => q.area === 1));
-  assert.equal(C.encs.length, W.plan.encounters.length); assert.ok(C.aliens.every(a => C.encs.includes(a.enc) && a.enc.area === a.area));
+  assert.equal(C.encs.length, C.lv.plan.encounters.length); assert.ok(C.aliens.every(a => C.encs.includes(a.enc) && a.enc.area === a.area));
   const F = createFight(W, 2); put(F, F.flag.x + 1, F.flag.z); stepFight(F, { ...idle, use: true }, 1 / 60); assert.equal(F.flag.held, false); });
 test('a hit reported inside a wall (an alien muzzle buried in it) leaves no decal or particle in the wall', () => { const F = createFight(W, 2); F.aliens.length = 0;
   F.bolts.push({ x: .1 - M.half, y: 1.5, z: M.start.z, vx: 1, vy: 0, vz: 0, dmg: 1, r: .1, life: 2, col: [1, 1, 1], team: 1, src: 99 }); // the sealed edge

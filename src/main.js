@@ -8,7 +8,7 @@ import { generateWorld } from './gen/world.js';
 import { checksumWorld } from './gen/checksum.js';
 import { createGL } from './gfx/gl.js';
 import { createRenderer } from './gfx/renderer.js';
-import { createFight, stepFight, hurtPlayer, enterArea, knockOut, DOOR_REACH } from './game/fight.js';
+import { createFight, stepFight, hurtPlayer, enterArea, knockOut, skipTo, DOOR_REACH } from './game/fight.js';
 import { createFightView, fillFrame, setScene, setWreck } from './game/fightView.js';
 import { AREAS, areaStart, wayfind } from './game/areas.js';
 import { WEAPONS } from './game/weapons.js';
@@ -35,7 +35,7 @@ import { RES, loadSettings, saveSettings } from './ui/settings.js';
 const SCENE = ['sky', 'mode', 'sun', 'earth', 'curv', 'fog', 'fogDensity', 'occTex'], FLASH = new Set(['pickup', 'flag', 'golf', 'area']);
 // Footsteps on the ground play every STRIDE metres walked, at STEP_VOL.
 const STRIDE = 1.6, STEP_VOL = .4;
-const BACK = ['the wreck', 'the crater rim', 'the lift', 'the comms room door'];
+const BACK = ['the wreck', 'the crater rim', 'the lift', 'the comms room door', 'the cell'];
 const IDLE = { fwd: 0, strafe: 0, run: false, jump: false, fire: false, use: false, weapon: -1, wheel: 0 };
 const HELP = 'Click to look \u00b7 WASD move \u00b7 Shift run \u00b7 Space jump \u00b7 E use \u00b7 1-3 weapons \u00b7 mouse fire \u00b7 Esc pause';
 const hud = createHud(), canvas = document.getElementById('c');
@@ -66,7 +66,7 @@ function boot() {
   const speech = createSpeech();
   // The music map: the title the surface song, the opening none until its title drop, play the area's song (the hold's on hold,
   // none in Houston's call), the end screen the hold music. Asked every frame; the engine ignores a repeat.
-  const MUSIC = ['surface', 'crater', 'base', 'base'];
+  const MUSIC = ['surface', 'crater', 'base', 'base', 'base'];
   const music = () => audio.song(state === 'title' || state === 'opening' && run.titled ? 'surface' : state === 'play' ? run.F.ko ? null : run.F.hold ? 'hold' : MUSIC[run.F.area] : state === 'end' ? 'hold' : null);
   let S = loadSettings(store), paused = false, lockLostAt = -1e9, appliedRes = -1;
   // Menu clicks run inside the fatal path too: an exception stops the loop and shows the message, as in tick.
@@ -121,7 +121,7 @@ function boot() {
 
   // --- runs ---
   // The view draws the scene's meshes and lamps, and on the surface the run's wreck; the frame takes the scene's look.
-  function useScene(scene) { setScene(V, scene); setWreck(V, scene.id === 'surface' ? run.wreck : null); for (const k of SCENE) frame[k] = scene[k]; audio.air(run.F.lv.id === 'base'); }
+  function useScene(scene) { setScene(V, scene); setWreck(V, scene.id === 'surface' ? run.wreck : null); for (const k of SCENE) frame[k] = scene[k]; audio.air(run.F.lv.id !== 'surface'); }
   // A fresh Moon on the surface, at the wreck (the lander as the opening leaves it); intact, the lander stands whole for the
   // opening, which brings its own (newGame). Attract runs are immortal and played by the bot (never the opening, spec 4.1).
   function startRun(kind, seed, { intact = false } = {}) {
@@ -149,9 +149,9 @@ function boot() {
       else { hud.sub(''); audio.duck(R.q.some(l => l.crit)); audio.bed(false); }
     }
   }
-  // A new level gets its own scene; the old one's GPU meshes are freed.
+  // A new level gets its own scene (the base and the prison are built from their maps); the old one's GPU meshes are freed.
   function swap() {
-    const next = run.F.lv.id === 'base' ? buildBaseScene(gl, run.world.baseMap) : buildSurfaceScene(gl, run.world);
+    const lv = run.F.lv, next = lv.id === 'surface' ? buildSurfaceScene(gl, run.world) : buildBaseScene(gl, lv.map);
     useScene(next); run.scene.dispose(); run.scene = next; warpK = 0;
   }
 
@@ -246,11 +246,11 @@ function boot() {
   // --- test and debug hooks, acting on the current run ---
   // The player at (x, z) on the level's ground, standing still, facing yaw.
   const place = (x, z, yaw) => Object.assign(run.F.player, { x, y: run.F.lv.ground(x, z), z, vx: 0, vy: 0, vz: 0, kx: 0, kz: 0, yaw, pitch: 0, onGround: true });
-  // Encounter k of the current level: on the surface 18 m from its centre on the side toward the lander; in the base at its
-  // room's `in`. Either way facing the centre.
+  // Encounter k of the current level: on the surface 18 m from its centre on the side toward the lander; indoors (the base or
+  // the prison, a level with a map) at its room's `in` on that map. Either way facing the centre (pre-flight F26).
   function warp(k) {
     const { F, world } = run, e = F.encs[k];
-    if (F.lv.id === 'base') { const o = world.baseMap.rooms[e.room].in; place(o.x, o.z, Math.atan2(o.x - e.x, o.z - e.z)); return; }
+    if (F.lv.map) { const o = F.lv.map.rooms[e.room].in; place(o.x, o.z, Math.atan2(o.x - e.x, o.z - e.z)); return; }
     const L = world.lander; let dx = L.x - e.x, dz = L.z - e.z; const l = Math.hypot(dx, dz) || 1; dx /= l; dz /= l;
     place(e.x + dx * 18, e.z + dz * 18, Math.atan2(dx, dz));
   }
@@ -286,11 +286,13 @@ function boot() {
     wreck: () => ({ n: run.wreck.pieces.length, still: run.wreck.pieces.filter(p => p.still).length }),
     fight: () => { const F = run.F, p = F.player, s = areaStart(run.world, F.area);
       return { hp: F.hp, cells: F.ars.cells, cur: F.ars.cur, state: F.state, kills: F.kills, bolts: F.bolts.length, shots: F.shots, area: AREAS[F.area], golf: F.golf, time: F.time, atStart: Math.hypot(p.x - s.x, p.z - s.z) < 1,
-        hold: F.hold?.t ?? null, won: F.won, wonAt: F.wonAt, run: F.run, ko: F.ko?.phase ?? null }; },
+        hold: F.hold?.t ?? null, won: F.won, wonAt: F.wonAt, run: F.run, ko: F.ko?.phase ?? null, cell: F.cell && { ...F.cell } }; },
     area: () => AREAS[run.F.area],
     grab: () => { const F = run.F, p = F.player; p.x = F.flag.x + 1; p.z = F.flag.z; p.y = F.lv.ground(p.x, p.z); stepFight(F, { ...IDLE, use: true }, .001); },
     give: () => { const A = run.F.ars; for (let i = 0; i < WEAPONS.length; i++) A.owned[i] = true; A.cells = 150; if (A.cur < 0) A.cur = 0; },
     door, enter, warp, comms, hurt: n => hurtPlayer(run.F, n, 0, 0, 0), god: on => { run.F.god = on; },
+    // Straight into the prison's cell (area 4), stripped as the knock-out leaves you.
+    prison: () => skipTo(run.F, 4),
     // The radio of a play run: the subtitle of the line on the air (null between lines), the cues of the lines waiting and the
     // dawdle clock (s); cue(key) cues its lines.
     radio: () => run.R && { line: run.R.cur && WHO[run.R.cur.who] + ': ' + run.R.cur.text, queued: run.R.q.map(l => l.key), dawdle: run.R._idle },

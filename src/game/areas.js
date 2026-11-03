@@ -1,14 +1,17 @@
-// The four areas on two levels. A level is what the fight steps on: its ground and ceiling, bound, gravity, nav grid and plan.
+// The areas on their levels. A level is what the fight steps on: its ground and ceiling, bound, gravity, nav grid and plan.
+// A stint is a run of consecutive areas on one level (0-1, 2-3, 4): it is entered fresh, at its first area's start.
 // Pure: no DOM, GPU or clock.
 import { sampleGround, N, HALF, MAP_MARGIN, MAX_STEP } from '../gen/surface.js';
 import { BASE } from '../gen/base.js';
 
-export const AREAS = ['surface', 'crater', 'base', 'comms'];
-export const LEVEL = ['surface', 'surface', 'base', 'base'];
-export const AREA_TEXT = ['', 'THE CRATER', 'THE BASE', 'THE COMMS ROOM'];
+export const AREAS = ['surface', 'crater', 'base', 'comms', 'prison'];
+export const LEVEL = ['surface', 'surface', 'base', 'base', 'prison'];
+export const AREA_TEXT = ['', 'THE CRATER', 'THE BASE', 'THE COMMS ROOM', 'THE CELLS'];
 // Gravity per level (the scenes read it too); WAKE: how near an encounter's centre (m) its aliens wake before it is alerted.
-export const GRAVITY = { surface: 3.0, base: 9.0 };
-export const WAKE = { surface: 60, base: 30 };
+export const GRAVITY = { surface: 3.0, base: 9.0, prison: 9 };
+export const WAKE = { surface: 60, base: 30, prison: 30 };
+// The last area of k's stint.
+export const stintEnd = k => { while (LEVEL[k + 1] === LEVEL[k]) k++; return k; };
 
 // The base tile index nearest (x, z), or -1 outside the grid.
 const tile = (M, x, z) => {
@@ -16,15 +19,23 @@ const tile = (M, x, z) => {
   return i >= 0 && j >= 0 && i < M.n && j < M.n ? j * M.n + i : -1;
 };
 
+// Off the surface a level is its map (the base's or the prison's) with a grid of its own: a copy of the map's floor, which ground
+// reads, so the bars (setBars) can shut and open a doorway without touching the map. bars: the barred doorway's tiles, or null.
 export function makeLevel(world, id) {
   if (id === 'surface') return { id, ground: (x, z) => sampleGround(world, x, z), ceil: null, bound: HALF - MAP_MARGIN, gravity: GRAVITY.surface,
     grid: world.occ, n: N, half: HALF, maxStep: MAX_STEP, wake: WAKE.surface, plan: world.plan };
-  const M = world.baseMap, fl = M.floor, ce = M.ceil;
-  return { id, ground: (x, z) => { const t = tile(M, x, z); return t < 0 ? BASE.wall : fl[t]; }, ceil: (x, z) => { const t = tile(M, x, z); return t < 0 ? 0 : ce[t]; },
-    bound: M.half - 1, gravity: GRAVITY.base, grid: fl, n: M.n, half: M.half, maxStep: BASE.step, wake: WAKE.base, plan: M.plan };
+  const M = id === 'base' ? world.baseMap : world.prisonMap, grid = M.floor.slice(), ce = M.ceil;
+  return { id, ground: (x, z) => { const t = tile(M, x, z); return t < 0 ? BASE.wall : grid[t]; }, ceil: (x, z) => { const t = tile(M, x, z); return t < 0 ? 0 : ce[t]; },
+    bound: M.half - 1, gravity: GRAVITY[id], grid, n: M.n, half: M.half, maxStep: BASE.step, wake: WAKE[id], plan: M.plan, map: M, bars: M.bars?.tiles ?? null };
 }
 
-export const areaStart = (world, k) => [world.spawn, world.crater.top, world.baseMap.start, world.baseMap.commsDoor][k];
+// Shut, the bar tiles are wall to walking, sight and the nav field; open, they are the map's floor again.
+export function setBars(lv, shut) {
+  if (lv.bars) for (const t of lv.bars) lv.grid[t] = shut ? BASE.wall : lv.map.floor[t];
+}
+
+const START = [w => w.spawn, w => w.crater.top, w => w.baseMap.start, w => w.baseMap.commsDoor, w => w.prisonMap.start];
+export const areaStart = (world, k) => START[k](world);
 
 // Areas only advance: over the base crater's rim into the crater, and onto a comms room tile in the base.
 export function advanceArea(world, k, x, z) {

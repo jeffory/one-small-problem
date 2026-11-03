@@ -1,8 +1,9 @@
 // The fight: one pure simulation tying the player, weapons, bolts, aliens, pickups and canisters together, run on a level
-// (the surface or the base; see areas.js). Deterministic: every random draw comes from F.rng = makeRng(world.seed + '/sim');
+// (the surface, the base or the prison; see areas.js). Deterministic: every random draw comes from F.rng = makeRng(world.seed + '/sim');
 // there is no wall clock, DOM or GPU here. F.time is the sim's clock; F.run is the run's (the end screen's time), which stops while
 // F.ko and once F.won. F.ko is the knock-out, null until Houston picks up: {phase, t}, 'call' from Houston to the knock-out (t its
-// seconds), then 'out'. While F.ko or F.won (boarded, which sets F.wonAt) nothing hurts you and no kill counts.
+// seconds), then 'out'. While F.ko or F.won (boarded, which sets F.wonAt) nothing hurts you and no kill counts. F.cell is the
+// prison cell while you are in area 4 ({shut}: its bars are closed), else null.
 import { makeRng } from '../gen/rng.js';
 import { sampleGround, flagSpot } from '../gen/surface.js';
 import { cameraBasis } from '../gfx/math.js';
@@ -12,7 +13,7 @@ import { stepBolts, groundNormal } from './bolts.js';
 import { lineOfSight, createField, updateField } from './nav.js';
 import { worldSpheres } from './rigs.js';
 import { ALIENS, createAlien, stepAlien, hurtAlien, move, level, muzzleAt } from './aliens.js';
-import { AREAS, AREA_TEXT, LEVEL, makeLevel, areaStart, advanceArea } from './areas.js';
+import { AREAS, AREA_TEXT, LEVEL, makeLevel, areaStart, advanceArea, stintEnd, setBars } from './areas.js';
 import { K } from '../gen/base.js';
 import { HOLD, planWaves, dishOf } from './hold.js';
 import { KO } from './escape.js';
@@ -41,7 +42,7 @@ export function createFight(world, k = 0) {
     encs: [], aliens: [], bolts: [], pickups: [], canisters: [], balls: [], parts: [], decals: [], booms: [],
     flag: { x: fs.x, y: sampleGround(world, fs.x, fs.z), z: fs.z, held: false }, entry: { owned: [false, false, false], cells: 0, flagHeld: false },
     state: 'play', deadT: 0, time: 0, run: 0, kills: 0, shots: 0, shotT: 9, hurtT: 0, field: createField(), fieldT: 0, events: [], god: false,
-    found: [], golf: 0, hold: null, ko: null, won: false, wonAt: null };
+    found: [], golf: 0, hold: null, ko: null, won: false, wonAt: null, cell: null };
   clearDecals(F);
   const C = F._ctx = { ground: lv.ground, ceil: lv.ceil, px: 0, py: 0, pz: 0, field: F.field, rng: F.rng, others: F.aliens,
     los: a => lineOfSight(F.lv.ground, muzzleAt(a, C), [C.px, C.py + PLAYER.eye, C.pz], F.lv.ceil),
@@ -53,30 +54,51 @@ export function createFight(world, k = 0) {
       hurtPlayer(F, dmg, dx * k, 1.5, dz * k);
     } };
   populate(F, k);
+  arrive(F, k);
   return F;
 }
 
 // From the level plan: one fresh enc per encounter (encs and aliens are rebuilt), then the aliens, pickups, canisters and golf
-// balls (those not yet found) of areas >= from, appended (pre-flight F19: callers empty what they replace). Each carries its
-// area. Ids are the level plan's: an alien's is 1 + its index in the plan's aliens (encounter by encounter), a canister's -1 -
-// its index in the plan's canisters, a ball's its golf id.
+// balls (those not yet found) of from's stint from area from on (from <= area <= stintEnd(from)), appended (pre-flight F19:
+// callers empty what they replace). Each carries its area. Ids are the level plan's: an alien's is 1 + its index in the plan's
+// aliens (encounter by encounter), a canister's -1 - its index in the plan's canisters, a ball's its golf id.
 function populate(F, from) {
-  const plan = F.lv.plan; let id = 1;
+  const plan = F.lv.plan, to = stintEnd(from), mine = q => q.area >= from && q.area <= to; let id = 1;
   F.encs.length = F.aliens.length = 0;
   for (const e of plan.encounters) {
     const enc = { x: e.x, z: e.z, p: e.p, first: e.first, area: e.area, room: e.room ?? -1, alerted: false, waved: false };
     F.encs.push(enc);
-    for (const s of e.aliens) { const i = id++; if (e.area < from) continue; const a = createAlien(s, i, enc); a.area = e.area; F.aliens.push(a); }
+    for (const s of e.aliens) { const i = id++; if (!mine(e)) continue; const a = createAlien(s, i, enc); a.area = e.area; F.aliens.push(a); }
   }
-  for (const p of plan.pickups) if (p.area >= from) F.pickups.push({ kind: p.kind, x: p.x, y: p.y, z: p.z, n: PICKUP[p.kind], area: p.area });
-  plan.canisters.forEach((c, i) => { if (c.area >= from) F.canisters.push({ x: c.x, y: c.y, z: c.z, hp: CANISTER.hp, fuse: 0, id: -1 - i, area: c.area }); });
-  for (const g of plan.golf) if (g.area >= from && !F.found.includes(g.id)) F.balls.push({ id: g.id, x: g.x, y: g.y, z: g.z, area: g.area });
+  for (const p of plan.pickups) if (mine(p)) F.pickups.push({ kind: p.kind, x: p.x, y: p.y, z: p.z, n: PICKUP[p.kind], area: p.area });
+  plan.canisters.forEach((c, i) => { if (mine(c)) F.canisters.push({ x: c.x, y: c.y, z: c.z, hp: CANISTER.hp, fuse: 0, id: -1 - i, area: c.area }); });
+  for (const g of plan.golf) if (mine(g) && !F.found.includes(g.id)) F.balls.push({ id: g.id, x: g.x, y: g.y, z: g.z, area: g.area });
 }
 
-// Into area k (> F.area): your inventory now is what a death in k restarts you with. On the same level nothing else changes; a
-// new level is entered fresh at k's start, leaving everything of the old one behind (nothing in flight follows you in).
+// On arriving in area k, by any way in (a new fight, entering it, a restart): the cell's bars shut behind you in the prison
+// (area 4); out of it there is no cell.
+function arrive(F, k) {
+  if (k === 4) { F.cell = { shut: true }; setBars(F.lv, true); }
+  else if (k === 5) F.cell = null;
+}
+
+// The cell's bars drop: the doorway is floor again.
+export function openBars(F) { F.cell.shut = false; setBars(F.lv, false); F.events.push({ type: 'bars' }); }
+
+// The knock-out's loss: the plasma weapons and every cell gone, the flag pole held, KO.hp health.
+export function strip(F) {
+  const A = F.ars;
+  A.owned = [true, false, false]; A.cells = 0; A.cur = 0; A.cool = 0; F.flag.held = true; F.hp = KO.hp;
+}
+
+// Straight to the start of area k (the test hooks): past the knock-out you arrive stripped, with no knock-out or hold running.
+export function skipTo(F, k) { if (F.area < 4 && k >= 4) strip(F); F.ko = null; F.hold = null; enterArea(F, k); }
+
+// Into area k (> F.area): your inventory now is what a death in k restarts you with. Within a stint nothing else changes; a new
+// stint (pre-flight F1), on a new level or not, is entered fresh at k's start, leaving everything behind (nothing in flight
+// follows you in).
 export function enterArea(F, k) {
-  const fresh = LEVEL[k] !== F.lv.id;
+  const fresh = LEVEL[k] !== F.lv.id || stintEnd(k) !== stintEnd(F.area);
   F.area = k;
   if (fresh) {
     const lv = F.lv = makeLevel(F.world, LEVEL[k]), C = F._ctx;
@@ -89,6 +111,7 @@ export function enterArea(F, k) {
   }
   F.entry = { owned: F.ars.owned.slice(), cells: F.ars.cells, flagHeld: F.flag.held };
   F.events.push({ type: 'area', area: k, id: AREAS[k], level: fresh, text: AREA_TEXT[k] });
+  arrive(F, k);
 }
 
 // cause (optional) rides on the 'hurt' event: 'fall' for a hard landing (R18), for Plan 4's radio. From Houston picking up to the
@@ -127,6 +150,7 @@ export function restartArea(F) {
   F.state = 'play'; F.deadT = 0; F.hurtT = 0; F.shotT = 9;
   populate(F, k);
   F.events.push({ type: 'restart', area: k });
+  arrive(F, k);
 }
 
 // Keeps (in order, in place) the items of L that pass ok.

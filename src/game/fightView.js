@@ -108,6 +108,7 @@ export function fillFrame(V, F, frame, t) {
   }
   for (const c of F.canisters) if (near(c.x, c.z)) M.push(ent(G.canister, setT(mat(), c.x, c.y, c.z), I3, c.fuse > 0 ? .8 : 0));
   for (const b of F.balls) if (near(b.x, b.z)) M.push(ent(G.golf, setT(mat(), b.x, b.y + .06, b.z), I3));
+  if (F.cell?.shut) { const b = F.lv.map.bars; M.push(ent(G.bars, trs(mat(), b.x, 0, b.z, Math.atan2(b.dx, b.dz), 1))); } // across the cell's doorway
   for (const d of F.decals) {
     if (!near(d.x, d.z)) continue;
     const m = chainTo(mat(), tilt(d.x + d.nx * .03, d.y + d.ny * .03, d.z + d.nz * .03, d.nx, d.ny, d.nz, TA), setRy(TB, d.yaw), setSc(TC, d.r));
