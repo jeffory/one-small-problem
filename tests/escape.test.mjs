@@ -138,3 +138,18 @@ test('once you are aboard the flare is out, so the rising cabin never meets it (
   const F = landed(), l = ladderAt(F.ship); run(F, idle, FLARE.rise); assert.ok(flareAt(F.ship)); put(F, l.x, l.z); stepFight(F, { ...idle, use: true }, 1 / 60);
   assert.ok(F.won); const L = createLiftoff(F); for (let t = 0; t < LIFT.sting; t += 1 / 30) stepLiftoff(L, 1 / 30);
   for (let k = 0; k <= FLARE.trail; k++) assert.equal(flareAt(F.ship, k * FLARE.gap), null, `${k}`); });
+import { knockOut } from '../src/game/fight.js'; import { koLight, koLock, wakeIn } from '../src/game/escape.js';
+// Plan 6: Houston's call ends in the knock-out: stripped into the shut cell, KO.out s of black (the stamp at KO.stamp), KO.down s on
+// the floor with the look locked, KO.getUp s getting up, then THE CELLS
+const calling = () => { const F = createFight(W, 3); F.aliens.length = 0; F.ko = { phase: 'call', t: 0 }; return F; };
+const through = (F, dt) => { const ev = [], at = {}, p = F.player, x = p.x, z = p.z; let t = 0, moved = 0;
+  while (F.ko && t < 20) { stepFight(F, { ...idle, fwd: 1 }, dt); t += dt; for (const e of F.events) if (['stamp', 'wake', 'woke'].includes(e.type)) { ev.push(e.type); at[e.type] = t; }
+    F.events.length = 0; if (F.ko && F.ko.phase !== 'up') moved = Math.max(moved, Math.hypot(p.x - x, p.z - z)); } return { ev, at, moved }; };
+test('the knock-out: stripped into the shut cell; black, the stamp, the wake on the floor, look locked, up, THE CELLS', () => {
+  const F = calling(); give(F.ars, 1, 80); F.hp = 33; assert.ok(knockOut(F)); const r0 = F.run;
+  assert.deepEqual([F.area, F.lv.id, F.ko.phase, F.hp, F.ars.owned, F.ars.cells, F.flag.held, F.cell.shut, F.hold], [4, 'prison', 'out', KO.hp, [true, false, false], 0, true, true, null]);
+  assert.deepEqual([F.entry.owned, F.entry.cells, koLight(F), koLock(F), F.eye], [[true, false, false], 0, 0, true, KO.eye]);
+  const { ev, at, moved } = through(F, 1 / 30); assert.deepEqual(ev, ['stamp', 'wake', 'woke']); assert.equal(moved, 0, 'still on the floor');
+  assert.ok(Math.abs(at.stamp - KO.stamp) < .05 && Math.abs(at.wake - KO.out) < .05 && Math.abs(at.woke - KO.out - KO.down - KO.getUp) < .08, JSON.stringify(at)); // pre-flight F4: with the carried overshoot each is within one 1/30 step
+  assert.deepEqual([F.ko, F.eye, koLight(F), koLock(F), wakeIn(F)], [null, undefined, 1, false, 0]); assert.ok(F.run - r0 < .04, 'the run clock stopped'); });
+test('a slow frame across the knock-out: each event once, in order (Review Focus 5)', () => { const F = calling(); knockOut(F); assert.deepEqual(through(F, .25).ev, ['stamp', 'wake', 'woke']); });

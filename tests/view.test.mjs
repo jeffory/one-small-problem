@@ -35,6 +35,7 @@ test('the vignette: a hit flares it by hurtT, low health pulses a rim at 1 Hz, d
   F.god = true; F.hurtT = 0; fillFrame(V, F, fr, .25); assert.equal(fr.tint[0], 0); F.god = false;
   F.won = true; F.hurtT = 0; fillFrame(V, F, fr, .25); assert.equal(fr.tint[0], 0); F.won = false; // a won fight below 30 hp shows no rim (pre-flight F6)
   F.ko = { phase: 'call', t: 0 }; F.hurtT = 0; fillFrame(V, F, fr, .25); assert.equal(fr.tint[0], 0); F.ko = null; // nor does Houston's call (Plan 6)
+  F.ko = { phase: 'down', t: 0 }; fillFrame(V, F, fr, 0); assert.deepEqual([fr.tint[0], fr.tint[2]], [VIG.dead, VIG.deadReach]); F.ko = null; // the wake: closed in (Plan 6)
   hurtPlayer(F, 99, 0, 0, 0); fillFrame(V, F, fr, 0); assert.deepEqual([...fr.tint], [VIG.dead, 0, VIG.deadReach]);
   const O = createOpening(W, createFight(W)); stepOpening(O, idle, 1 / 60); fillFrame(V, O.view, fr, .25); assert.equal(fr.tint[0], 0); });
 test('the held pole rests low, right of and below the crosshair, and its swing sweeps across the centre (R18)', () => { const F = createFight(W), fr = frame(), p = F.player;

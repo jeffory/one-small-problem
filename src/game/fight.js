@@ -2,7 +2,9 @@
 // (the surface, the base or the prison; see areas.js). Deterministic: every random draw comes from F.rng = makeRng(world.seed + '/sim');
 // there is no wall clock, DOM or GPU here. F.time is the sim's clock; F.run is the run's (the end screen's time), which stops while
 // F.ko and once F.won. F.ko is the knock-out, null until Houston picks up: {phase, t}, 'call' from Houston to the knock-out (t its
-// seconds), then 'out'. While F.ko or F.won (boarded, which sets F.wonAt) nothing hurts you and no kill counts. F.cell is the
+// seconds), then in the prison's cell 'out' (black), 'down' (on the floor) and 'up' (getting up), each t from its start, and null
+// again once you stand (F.eye, the eye's height over the feet, is set only through the wake). While F.ko or F.won (boarded, which
+// sets F.wonAt) nothing hurts you and no kill counts. F.cell is the
 // prison cell while you are in area 4 ({shut}: its bars are closed), else null. F.ship is the rescue ship while you are in area 6
 // (see arrive), else null.
 import { makeRng } from '../gen/rng.js';
@@ -17,7 +19,7 @@ import { ALIENS, createAlien, stepAlien, hurtAlien, move, level, muzzleAt } from
 import { AREAS, AREA_TEXT, CRATER_AREAS, LEVEL, makeLevel, areaStart, advanceArea, stintEnd, setBars } from './areas.js';
 import { K } from '../gen/base.js';
 import { HOLD, planWaves, dishOf } from './hold.js';
-import { KO, BREAK, EXIT, exitOf, SHIP, RING, shipLift, ladderAt, ringPoints } from './escape.js';
+import { KO, koLock, BREAK, EXIT, exitOf, SHIP, RING, shipLift, ladderAt, ringPoints } from './escape.js';
 import { PUFF, createWreck } from './lander.js';
 
 // Alien drops (pistol, scatter, flCells) are 20% up on Plan 2's 20, 16 and 15 after the first play-test (H5). Tape drops (Plan 5) come from the sim's
@@ -25,8 +27,9 @@ import { PUFF, createWreck } from './lander.js';
 export const PICKUP = { tape: 25, cells: 25, pistol: 24, scatter: 19, flCells: 18, pistolDrop: .3, tapeDrop: { sk: .1, fl: .2, br: 1 }, tapeOff: .7 };
 export const CANISTER = { hp: 15, radius: .45, blast: 5, dmg: 70, knock: 9, fuse: .2 };
 export const DEATH_TIME = 2.5;
-// GOLF_TOTAL: golf balls in a world (3 on the surface, 2 in the base); DOOR_REACH: how near (m) the hangar door's use point E works.
-export const GOLF_TOTAL = 5, DOOR_REACH = 2.5;
+// GOLF_TOTAL: golf balls in a run (3 on the surface, 2 in the base, 1 in the prison's evidence locker, 1 on the dash); DOOR_REACH:
+// how near (m) the hangar door's use point E works.
+export const GOLF_TOTAL = 7, DOOR_REACH = 2.5;
 // MAX_PARTS: the most particles at once (the oldest go past it); the opening hands its glitter over within it.
 export const MAX_PARTS = 300;
 // CORPSE: seconds a corpse lasts, the last SINK of them sinking 1 m; DECALS: each kind's ring (M5: goo can't evict scorch);
@@ -135,7 +138,7 @@ export function strip(F) {
 }
 
 // Straight to the start of area k (the test hooks): past the knock-out you arrive stripped, with no knock-out or hold running.
-export function skipTo(F, k) { if (F.area < 4 && k >= 4) strip(F); F.ko = null; F.hold = null; enterArea(F, k); }
+export function skipTo(F, k) { if (F.area < 4 && k >= 4) strip(F); F.ko = null; F.eye = undefined; F.hold = null; enterArea(F, k); }
 
 // Into area k (> F.area): your inventory now is what a death in k restarts you with. Within a stint nothing else changes; a new
 // stint (pre-flight F1), on a new level or not, is entered fresh at k's start, leaving everything behind (nothing in flight
@@ -228,6 +231,7 @@ export function aimPoint(F) {
 export function stepFight(F, input, dt) {
   // 1. the clocks (the run's stops while knocked out or once boarded, R9) and death; the body still falls and slides to rest (M4)
   F.time += dt; F.shotT += dt; if (!F.ko && !F.won) F.run += dt;
+  if (koLock(F)) { stepKnockOut(F, dt); return; } // the knock-out's black and the floor: nothing else moves
   if (F.state === 'dead') {
     F.deadT += dt;
     stepPlayer(F.player, STILL, dt, F.lv.ground, F.lv.bound, F.gravity, F.lv.ceil, CRATER_AREAS.includes(F.area) ? FALL.safe : Infinity);
@@ -287,16 +291,44 @@ export function stepFight(F, input, dt) {
   F.hurtT = Math.max(0, F.hurtT - 2 * dt);
   // 11. death check (hurtPlayer already enters death; this catches hp set directly)
   if (F.state === 'play' && F.hp <= 0) { if (F.god) F.hp = 1; else die(F); }
-  // 12. Houston's call: the knock-out KO.call s after Houston, unless the radio's cut-off line brought it sooner
-  if (F.ko?.phase === 'call' && (F.ko.t += dt) >= KO.call) knockOut(F);
+  // 12. Houston's call: the knock-out KO.call s after Houston, unless the radio's cut-off line brought it sooner; or getting up
+  // from it
+  if (F.ko?.phase === 'call') { if ((F.ko.t += dt) >= KO.call) knockOut(F); }
+  else if (F.ko?.phase === 'up') getUp(F, dt);
 }
 
 // Houston's call ends in the knock-out: the shell calls this as the cut-off line's talk ends, and stepFight at KO.call s after
-// Houston without it. Only from 'call', so it happens once; true if it did. For now the shell ends the run there.
+// Houston without it. Only from 'call', so it happens once; true if it did. You wake in the prison's shut cell (area 4), stripped,
+// which is the cell's checkpoint; kills, golf balls and the run's time carry over. First KO.out s of black, on the floor.
 export function knockOut(F) {
   if (F.ko?.phase !== 'call') return false;
-  F.ko = { phase: 'out', t: 0 }; F.events.push({ type: 'ko' });
+  F.events.push({ type: 'ko' });
+  strip(F); F.hold = null; enterArea(F, 4);
+  F.ko = { phase: 'out', t: 0 }; F.player.pitch = KO.pitch; F.eye = KO.eye;
   return true;
+}
+
+// dt seconds of the knock-out in the black or on the floor (stepFight does nothing else then). Each phase's overshoot carries into
+// the next (pre-flight F4), so the wake's timing is exact to a step. 'out': black, the stamp at KO.stamp, the wake (and its radio)
+// at KO.out. 'down': you lie still, eye KO.eye over the floor, looking up at KO.pitch and coming level over KO.down s.
+function stepKnockOut(F, dt) {
+  const K = F.ko, t0 = K.t, t = K.t += dt;
+  if (K.phase === 'out') {
+    if (t0 < KO.stamp && t >= KO.stamp) F.events.push({ type: 'stamp', text: KO.text });
+    if (t >= KO.out) { F.ko = { phase: 'down', t: t - KO.out }; F.events.push({ type: 'wake' }); }
+    return;
+  }
+  stepPlayer(F.player, STILL, dt, F.lv.ground, F.lv.bound, F.gravity, F.lv.ceil, Infinity);
+  F.player.pitch = KO.pitch * Math.max(0, 1 - t / KO.down); F.eye = KO.eye;
+  if (t >= KO.down) F.ko = { phase: 'up', t: t - KO.down };
+}
+
+// dt seconds of getting up (after a normal step: you can move): the eye rises from the floor over KO.getUp s, then you stand in THE
+// CELLS, the knock-out over.
+function getUp(F, dt) {
+  const t = F.ko.t += dt;
+  F.eye = KO.eye + (PLAYER.eye - KO.eye) * Math.min(1, t / KO.getUp);
+  if (t >= KO.getUp) { F.ko = null; F.eye = undefined; F.events.push({ type: 'woke', text: AREA_TEXT[4] }); }
 }
 
 // On hold at the array d (the dish): the waves are planned now, from the sim rng, so a retry after a death gets new ones. The

@@ -1,9 +1,9 @@
 // Boot and the game's state machine. The page opens on the title with an attract run behind it; New Game plays the URL's seed
 // (or rolls one and writes it there), starting with the opening; the end screen reports the run and leads back to the title,
 // which clears the seed.
-// States: 'title' -> 'opening' -> 'play' -> 'liftoff' -> 'end' -> 'title'. Houston's call is play with F.ko set; for now its
-// knock-out ends the run (play -> end). Boarding the rescue ship ends play: the lift-off, seen from its cabin, then the sting and
-// the fade to the end screen.
+// States: 'title' -> 'opening' -> 'play' -> 'liftoff' -> 'end' -> 'title'. Houston's call is play with F.ko set; its knock-out
+// takes you, still in play, through the black and the wake into the prison (level 2). Boarding the rescue ship ends play: the
+// lift-off, seen from its cabin, then the sting and the fade to the end screen.
 import { makeRng, normalizeSeed, seedName } from './gen/rng.js';
 import { generateWorld } from './gen/world.js';
 import { checksumWorld } from './gen/checksum.js';
@@ -12,7 +12,7 @@ import { createRenderer } from './gfx/renderer.js';
 import { createFight, stepFight, hurtPlayer, enterArea, knockOut, skipTo, canBang, atExit, atLadder, openBars, DOOR_REACH } from './game/fight.js';
 import { createFightView, fillFrame, setScene, setWreck } from './game/fightView.js';
 import { AREAS, areaStart, wayfind } from './game/areas.js';
-import { exitOf, ladderAt, LIFT } from './game/escape.js';
+import { exitOf, ladderAt, LIFT, koLight, koLock } from './game/escape.js';
 import { WEAPONS } from './game/weapons.js';
 import { buildSurfaceScene } from './game/surfaceScene.js';
 import { buildBaseScene } from './game/baseScene.js';
@@ -33,9 +33,10 @@ import { createMenus } from './ui/menus.js';
 import { shareLink, recordBest, fmtTime } from './ui/score.js';
 import { RES, loadSettings, saveSettings } from './ui/settings.js';
 
-// The scene fields a frame carries (the view supplies the meshes and lights); the events whose text flashes up; where a death
-// in each area sends you back to; no input at all; the help line, shown as a run starts and hidden after HELP_TIME s of it (R2).
-const SCENE = ['sky', 'mode', 'sun', 'earth', 'curv', 'fog', 'fogDensity', 'occTex'], FLASH = new Set(['pickup', 'flag', 'golf', 'area']);
+// The scene fields a frame carries (the view supplies the meshes and lights); the events whose text flashes up (the knock-out's
+// THE CELLS as you stand); where a death in each area sends you back to; no input at all; the help line, shown as a run starts
+// and hidden after HELP_TIME s of it (R2).
+const SCENE = ['sky', 'mode', 'sun', 'earth', 'curv', 'fog', 'fogDensity', 'occTex'], FLASH = new Set(['pickup', 'flag', 'golf', 'area', 'woke']);
 // Footsteps on the ground play every STRIDE metres walked, at STEP_VOL.
 const STRIDE = 1.6, STEP_VOL = .4;
 const BACK = ['the wreck', 'the crater rim', 'the lift', 'the comms room door', 'the cell', 'the hangar door', 'the crater rim'];
@@ -184,9 +185,10 @@ function boot() {
     state = 'title'; music();
     menus.title(true, normalizeSeed(location.hash)); hud.mode('none'); hud.seed('');
   }
-  // The end screen, from play or the lift-off: the run's clock, F.run (deaths count; the opening, pauses and Houston's call don't,
-  // R9), or once boarded the time then (F.wonAt), lifetime kills (not counted in the call either), golf balls and the seed's best
-  // time. The mouse is let go, so #back, #copy and #link take clicks (pre-flight F1). A lift-off's fade stays down behind it.
+  // The end screen, from the lift-off (or ospTest.finish in play): the run's clock, F.run (deaths count; the opening, pauses,
+  // Houston's call and the knock-out don't, R9), or once boarded the time then (F.wonAt), lifetime kills (not counted in the call
+  // or the knock-out either), golf balls and the seed's best time. The mouse is let go, so #back, #copy and #link take clicks
+  // (pre-flight F1). A lift-off's fade stays down behind it.
   function finish() {
     if (state !== 'play' && state !== 'liftoff') return;
     const { F, seed } = run, time = F.wonAt ?? F.run;
@@ -206,9 +208,11 @@ function boot() {
   // stalled) a fresh attract Moon replaces it; the hash is never touched. Houston picking up starts Houston's call and cuts a
   // reaction or on-hold message on the air, its voice with it, so the punchline comes at once (R18, R26). The knock-out (after
   // the cut-off line, which a frame's start turns into it here, or at KO.call in the fight) thuds and kills the radio, before it
-  // can step again, and for now ends the run. Boarding starts the lift-off (from the next advance): its director steps in
-  // sub-steps, its click and sting cued as the opening's are, the radio stepping as in play; once the sting has been on ENDING.min s
-  // with the radio idle (or ENDING.max s whatever is on the air) the fade runs LIFT.fade s, then the end screen.
+  // can step again, and takes the HUD down; in its black and on the cell floor no other sound plays and nothing flashes (pre-flight
+  // F13: not the level change's door; Houston's call before it sounds and flashes as usual), the stamp slams on in the opening's
+  // style, and the HUD comes back as you stand (THE CELLS flashes). Boarding starts the lift-off (from the next advance): its
+  // director steps in sub-steps, its click and sting cued as the opening's are, the radio stepping as in play; once the sting has
+  // been on ENDING.min s with the radio idle (or ENDING.max s whatever is on the air) the fade runs LIFT.fade s, then the end screen.
   function advance(dt, inp) {
     if (run.koDue) { run.koDue = false; knockOut(run.F); }
     const F = run.F, B = run.bot, O = run.O, n = Math.max(1, Math.ceil(dt / .05)), h = dt / n, playing = state === 'play';
@@ -236,14 +240,19 @@ function boot() {
     for (const ev of F.events) if (ev.type === 'area' && ev.level) swap();
     if (playing) {
       const p = F.player, U = run.world.crater.use, W = run.walk ??= { x: p.x, z: p.z, d: 0 };
-      for (const ev of F.events) { const s = sfxFor(ev, p); if (s) audio.sfx(s[0], s[1]); }
+      const out = koLock(F); // the knock-out's black and the floor
+      if (!out) for (const ev of F.events) { const s = sfxFor(ev, p); if (s) audio.sfx(s[0], s[1]); }
       const stride = Math.hypot(p.x - W.x, p.z - W.z); W.x = p.x; W.z = p.z;
-      if (p.onGround && stride < 3) for (W.d += stride; W.d >= STRIDE; W.d -= STRIDE) audio.sfx('step', STEP_VOL);
+      if (p.onGround && stride < 3 && !out) for (W.d += stride; W.d >= STRIDE; W.d -= STRIDE) audio.sfx('step', STEP_VOL);
       hud.status({ hp: Math.ceil(F.hp), cells: F.ars.cells, weapon: WEAPONS[F.ars.cur]?.name ?? '' });
       hud.way(wayfind(F));
       hud.clock(F.ship && F.state === 'play' && !F.ko ? F.ship.left : null);
       if (F.time >= HELP_TIME) hud.help('');
-      for (const ev of F.events) if (FLASH.has(ev.type) && ev.text) hud.flash(ev.text);
+      for (const ev of F.events) {
+        if (ev.type === 'stamp') { hud.stamp(ev.text); audio.sfx('stamp'); }
+        else if (ev.type === 'woke') hud.mode('play');
+        if (FLASH.has(ev.type) && ev.text && !out) hud.flash(ev.text);
+      }
       const d = F.area === 3 && dishOf(run.world.baseMap);
       hud.prompt(F.ko ? '' : F.state === 'dead' ? F.ship?.left <= 0 ? 'The ship left without you. Back to the crater rim...' : 'You died. Back to ' + BACK[F.area] + '...'
         : F.lv.id === 'surface' && !F.flag.held && Math.hypot(p.x - F.flag.x, p.z - F.flag.z) < 2.2 ? '[E] grab the flag'
@@ -255,7 +264,7 @@ function boot() {
         : F.hold ? 'ON HOLD ' + fmtTime(F.hold.t) : '');
     }
     const R = run.R;
-    if (state === 'play' && F.events.some(e => e.type === 'ko')) { audio.sfx('thud'); speech.cancel(); radioDo(R, silence(R)); finish(); }
+    if (state === 'play' && F.events.some(e => e.type === 'ko')) { audio.sfx('thud'); speech.cancel(); radioDo(R, silence(R)); hud.mode('none'); }
     if (state === 'play' && F.events.some(e => e.type === 'board')) { // a reaction on the air is cut, as at Houston: nothing but story airs in the lift-off
       state = 'liftoff'; run.L = createLiftoff(F); run.fade = null; hud.mode('none'); hud.prompt('');
       const cut = cutReaction(R); if (cut.length) { speech.cancel(); radioDo(R, cut); }
@@ -348,11 +357,11 @@ function boot() {
       // Real time, so slow frames don't slow the game; a long stall skips at most 0.25 s.
       const el = Math.max(0, (now - last) / 1000); last = now;
       const inp = input.read();
-      // The mouse doesn't look while the opening holds the view (the knock-down).
-      if (!paused) { if (pausable() && !run.O?.lock) look(run.F.player, inp.lookX, inp.lookY, S.sens, S.invert); advance(Math.min(.25, el), inp); }
+      // The mouse doesn't look while the opening holds the view (the knock-down) or the knock-out does (the black and the floor).
+      if (!paused) { if (pausable() && !run.O?.lock && !koLock(run.F)) look(run.F.player, inp.lookX, inp.lookY, S.sens, S.invert); advance(Math.min(.25, el), inp); }
       frame.t = (now - t0) / 1000; frame.palMode = palMode;
-      // the lift-off's fade to the end screen, which stays down behind it
-      frame.exposure = run.fade === null ? 1 : Math.max(0, 1 - run.fade / LIFT.fade);
+      // the knock-out's black and its light coming back, and the lift-off's fade to the end screen, which stays down behind it
+      frame.exposure = koLight(run.F) * (run.fade === null ? 1 : Math.max(0, 1 - run.fade / LIFT.fade));
       // the opening and the lift-off draw their own fight-shaped views (the cabin's eye, actors, glows, glitter and the flash)
       fillFrame(V, run.O ? run.O.view : run.L ? run.L.view : run.F, frame, frame.t);
       renderer.render(frame);

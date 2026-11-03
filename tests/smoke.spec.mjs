@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test'; import { pathToFileURL } from 'node:url'; import { resolve } from 'node:path';
 import { generateWorld } from '../src/gen/world.js'; import { checksumWorld } from '../src/gen/checksum.js';
-import { HELP_TIME } from '../src/ui/hud.js'; import { fmtTime } from '../src/ui/score.js'; import { OPEN } from '../src/game/opening.js'; import { HOLD, ENDING } from '../src/game/hold.js'; import { KO, BREAK, SHIP, FLARE, LIFT } from '../src/game/escape.js'; import { CUES } from '../src/game/script.js';
+import { HELP_TIME } from '../src/ui/hud.js'; import { fmtTime } from '../src/ui/score.js'; import { OPEN } from '../src/game/opening.js'; import { HOLD, ENDING } from '../src/game/hold.js'; import { KO, BREAK, SHIP, FLARE, LIFT } from '../src/game/escape.js'; import { CUES } from '../src/game/script.js'; import { GOLF_TOTAL } from '../src/game/fight.js';
 export const URLS = [['file', pathToFileURL(resolve('dist/index.html')).href], ['http', 'http://localhost:4173/index.html']];
 // Benign Firefox parser note about the packed binary payload when the server's utf-8 header overrides the page's iso-8859-15 meta; real decoding failures are caught by the ready check.
 const BENIGN = /byte stream was erroneous according to the character encoding/i;
@@ -131,7 +131,7 @@ test('New Game plays the URL seed (seeds)', async ({ page }) => {
   await expect.poll(() => state(page)).not.toBe('title'); expect(await page.evaluate(() => [window.ospTest.seed, location.hash])).toEqual(['APOLLO-4471', '#APOLLO-4471']); });
 for (const [name, url] of URLS) test(`the end screen shows time, kills, golf balls and ${name === 'file' ? 'the seed code with a copy button' : 'a share link'} (${name})`, async ({ page }) => {
   const errors = watchErrors(page); await start(page, url + '#APOLLO-4471'); await page.evaluate(() => window.ospTest.finish()); await expect(page.locator('#end')).toBeVisible();
-  const s = page.locator('#stats'); await expect(s).toContainText(/TIME \d+:\d\d/); await expect(s).toContainText('KILLS 0'); await expect(s).toContainText('GOLF BALLS 0/5');
+  const s = page.locator('#stats'); await expect(s).toContainText(/TIME \d+:\d\d/); await expect(s).toContainText('KILLS 0'); await expect(s).toContainText('GOLF BALLS 0/' + GOLF_TOTAL);
   if (name === 'file') { await expect(page.locator('#code')).toHaveText('APOLLO-4471'); await expect(page.locator('#copy')).toBeVisible(); await expect(page.locator('#link')).toBeHidden(); }
   else { await expect(page.locator('#link')).toHaveAttribute('href', 'http://localhost:4173/index.html#APOLLO-4471'); await expect(page.locator('#code')).toBeHidden(); }
   expect(errors).toEqual([]); });
@@ -235,13 +235,6 @@ export const toComms = async page => { await page.evaluate(() => { const o = win
   await expect.poll(() => page.evaluate(() => window.ospTest.area()), { timeout: 10_000 }).toBe('comms'); await expect(page.locator('#prompt')).toContainText('call Houston'); };
 export const onHold = async page => { await page.keyboard.press('KeyE'); await expect.poll(() => fight(page).then(f => f.hold)).not.toBe(null); };
 const clock = page => page.evaluate(() => window.ospTest.clock());
-test('the comms array puts you on hold; Houston picks up after the final stand; then the end screen (final stand)', async ({ page }) => {
-  const errors = watchErrors(page); await start(page); await toComms(page); await onHold(page); await expect(page.locator('#prompt')).toContainText('ON HOLD');
-  await page.evaluate(() => { window.ospTest.god(true); window.ospTest.ff(91); }); await expect.poll(() => fight(page).then(f => f.ko)).not.toBe(null);
-  await expect(page.locator('#end')).toBeVisible({ timeout: 40_000 }); expect(await state(page)).toBe('end');
-  // R9 moved: the time shown is the run clock, which stops at Houston, not at the knock-out (Houston's call outlasts 5 s); kills stop there too
-  const f = await fight(page); expect(f.time - f.run).toBeGreaterThan(5); await expect(page.locator('#stats')).toContainText('TIME ' + fmtTime(f.run));
-  await expect(page.locator('#stats')).toContainText('KILLS ' + f.kills); expect(errors).toEqual([]); });
 test('dying during the final stand restarts you at the comms door, off hold (final stand)', async ({ page }) => {
   const errors = watchErrors(page); await start(page); await toComms(page); await onHold(page); await page.evaluate(() => window.ospTest.hurt(999));
   await expect(page.locator('#prompt')).toContainText('the comms room door'); await expect.poll(() => fight(page).then(f => f.state), { timeout: 10_000 }).toBe('play');
@@ -252,7 +245,7 @@ test('pausing on hold or in Houston\'s call stops the hold timer and the knock-o
   await page.evaluate(() => { window.ospTest.god(true); window.ospTest.ff(91); }); await expect.poll(() => fight(page).then(f => f.ko)).toBe('call');
   await page.keyboard.press('Escape'); await expect.poll(() => paused(page)).toBe(true); const e = (await clock(page)).ko; await page.waitForTimeout(600);
   expect((await clock(page)).ko).toBe(e); await expect(page.locator('#end')).toBeHidden(); await page.keyboard.press('Escape');
-  await expect(page.locator('#end')).toBeVisible({ timeout: 40_000 }); });
+  await expect.poll(() => area(page), { timeout: 40_000 }).toBe('prison'); await expect(page.locator('#end')).toBeHidden(); }); // Plan 6: the call resumes into the knock-out
 test('a new run starts at the settled wreck (opening)', async ({ page }) => { const errors = watchErrors(page); await start(page);
   expect(await page.evaluate(() => [window.ospTest.state(), window.ospTest.opening()])).toEqual(['play', null]); // ospTest.play() skips the opening
   expect(await page.evaluate(() => window.ospTest.wreck())).toEqual({ n: 11, still: 11 }); const s = await page.evaluate(() => window.ospTest.capture());
@@ -334,12 +327,14 @@ test('the dawdle clock stops on hold and after Houston picks up (R16)', async ({
   expect(await dawdle()).toBe(0); await page.evaluate(() => window.ospTest.ff(31)); await expect.poll(() => fight(page).then(f => f.ko)).toBe('call'); expect(await dawdle()).toBe(0);
   expect(errors).toEqual([]); });
 // The whole game twice: the first on the URL's seed; the second after Back to title cleared it, so New Game rolls a Moon nobody
-// chose. Each #new click locks the mouse, and #back takes the click only because finish() lets it go (pre-flight F1).
-test('two whole games in a row: title, opening, play, the final stand, Houston, the end screen, back to the title (show)', async ({ page }) => {
-  test.setTimeout(120_000); await noVoices(page); // pre-flight F5: two games with real-time endings outrun the default 30 s; F4: pin the unvoiced path
+// chose. Each #new click locks the mouse, and #back takes the click only because finish() lets it go (pre-flight F1). Plan 6: Houston's
+// call knocks you out into the prison; the hooks skip from the cell to the dash, and the end screen comes after boarding's lift-off.
+test('two whole games in a row: title, opening, play, the final stand, Houston, the knock-out, the escape, the lift-off, the end screen, back to the title (show)', async ({ page }) => {
+  test.setTimeout(240_000); await noVoices(page); // pre-flight F5: two games with real-time endings outrun the default 30 s; F4: pin the unvoiced path
   const errors = watchErrors(page); await page.goto(URLS[1][1] + '#APOLLO-4471'); await ready(page);
   for (let g = 0; g < 2; g++) { await page.click('#new'); await expect.poll(() => state(page)).toBe('opening'); await throughOpening(page);
     await toComms(page); await onHold(page); await page.evaluate(() => { window.ospTest.god(true); window.ospTest.ff(91); });
+    await expect.poll(() => area(page), { timeout: 40_000 }).toBe('prison'); await page.evaluate(s => window.ospTest.ff(s), KO.out + KO.down + KO.getUp + 1); await toLiftoff(page);
     await expect(page.locator('#end')).toBeVisible({ timeout: 40_000 }); await expect(page.locator('#stats')).toContainText('GOLF BALLS');
     await page.click('#back'); await expect(page.locator('#title')).toBeVisible(); expect(await state(page)).toBe('title'); }
   expect(await page.evaluate(() => location.hash)).toBe(''); expect(errors).toEqual([]); });
@@ -347,16 +342,35 @@ test('two whole games in a row: title, opening, play, the final stand, Houston, 
 const throughCall = (page, holds = 0) => page.evaluate(([n, H]) => { const o = window.ospTest, sub = () => document.getElementById('sub').textContent, s = []; o.god(true);
   for (let i = 0; i < 3000 && o.clock().hold < H - .1; i++) o.ff(1 / 30);
   for (let i = 0; i < n; i++) o.cue('hold');
-  for (let i = 0; i < 3000 && o.fight().ko !== 'out' && o.state() === 'play'; i++) { const r = o.radio(); s.push({ t: o.clock().ko, line: r.line, sub: sub(), downs: o.audio().downs }); o.ff(1 / 30); }
-  return { s, state: o.state(), sub: sub(), downs: o.audio().downs, ko: o.fight().ko }; }, [holds, HOLD.time]);
+  for (let i = 0; i < 3000 && o.fight().ko !== 'out' && o.state() === 'play'; i++) { const r = o.radio(), a = o.audio(); s.push({ t: o.clock().ko, line: r.line, sub: sub(), downs: a.downs, plays: a.plays }); o.ff(1 / 30); }
+  return { s, state: o.state(), sub: sub(), downs: o.audio().downs, plays: o.audio().plays, ko: o.fight().ko }; }, [holds, HOLD.time]);
 test('R18 moved: the knock-out comes as the rescue line\'s talk ends, with no closing tone', async ({ page }) => {
   await noVoices(page); const errors = watchErrors(page); await start(page); await toComms(page); await onHold(page); const r = await throughCall(page), last = r.s.at(-1);
   expect(r.s.some(x => x.sub.includes('one small problem'))).toBe(true); expect(last.line).toContain('twenty min'); expect(last.t).toBeLessThan(KO.call);
-  expect(r.downs).toBe(r.s.find(x => x.line?.includes('twenty min')).downs); /* pre-flight F6: the sample at the rescue line itself; T10 inherits this check through throughCall */ expect([r.state, r.sub, r.ko]).toEqual(['end', '', 'out']); expect(errors).toEqual([]); });
+  expect(r.downs).toBe(r.s.find(x => x.line?.includes('twenty min')).downs); /* pre-flight F6: the sample at the rescue line itself */ expect([r.state, r.sub, r.ko]).toEqual(['play', '', 'out']);
+  expect(r.plays - last.plays).toBe(1); /* pre-flight F13: the knock-out's frame plays the thud alone, not the level change's door */ expect(await area(page)).toBe('prison'); expect(errors).toEqual([]); });
 test('R18 moved: at KO.call the knock-out comes whatever is on the air', async ({ page }) => {
   await noVoices(page); const errors = watchErrors(page); await start(page); await toComms(page); await onHold(page); const r = await throughCall(page, 3), last = r.s.at(-1);
   expect(Math.abs(last.t - KO.call)).toBeLessThanOrEqual(2 / 30); expect(last.line).not.toBe(null); expect(r.s.some(x => x.sub.includes('twenty min'))).toBe(false);
-  expect([r.state, r.sub, r.ko]).toEqual(['end', '', 'out']); expect(errors).toEqual([]); });
+  expect([r.state, r.sub, r.ko]).toEqual(['play', '', 'out']); expect(await area(page)).toBe('prison'); expect(errors).toEqual([]); });
+// Pre-flight F11: pause right after the call and drive time with ff, resuming only for the frames a check needs, so a slow runner cannot drift past a phase.
+const pausePress = async (page, on) => { await page.keyboard.press('Escape'); await expect.poll(() => paused(page)).toBe(on); };
+// R9 moved (replaces "the comms array ... then the end screen"): the run clock stops at Houston (the call outlasts 5 s) and stays
+// stopped through the knock-out; the end screen's time is now boarding's (the lift-off tests below)
+test('R9 moved: the knock-out: black, ANOTHER SMALL PROBLEM, the wake in the cell, THE CELLS; the clock froze through it', async ({ page }) => {
+  await noVoices(page); const errors = watchErrors(page); await start(page); await toComms(page); await onHold(page); await expect(page.locator('#prompt')).toContainText('ON HOLD');
+  await throughCall(page); await pausePress(page, true); const f0 = await fight(page);
+  await page.evaluate(s => window.ospTest.ff(s), KO.stamp + .1); await pausePress(page, false); await expect(page.locator('#stamp')).toHaveText(KO.text); await expect(page.locator('#stamp')).toBeVisible();
+  await twoFrames(page); expect((await page.evaluate(() => window.ospTest.capture())).mean).toBeLessThan(5); // pre-flight F3: the dither lifts pure black (black .81, mean 2.2 of 37), so test the mean
+  await pausePress(page, true); await page.evaluate(s => window.ospTest.ff(s), KO.out - KO.stamp + .1); expect((await fight(page)).ko).toBe('down');
+  // to the step you stand (a fixed ff would overshoot by the frames the checks above ran live, and the run clock restarts as you stand)
+  await page.evaluate(() => { const o = window.ospTest; for (let i = 0; i < 300 && o.fight().ko; i++) o.ff(1 / 30); }); const f = await fight(page); expect([f.ko, f.area]).toEqual([null, 'prison']);
+  expect(f.run).toBe(f0.run); expect(f.time - f.run).toBeGreaterThan(KO.out + KO.down + KO.getUp + 5); await pausePress(page, false); await expect(page.locator('#flash')).toContainText('THE CELLS'); expect(errors).toEqual([]); });
+test('pausing in the black or the wake freezes the knock-out (Review Focus 1)', async ({ page }) => {
+  await noVoices(page); await start(page); await toComms(page); await onHold(page); await throughCall(page); await pausePress(page, true); // pre-flight F11: paused first, then ff lands each phase exactly
+  for (const s of [KO.stamp, KO.out - KO.stamp + .5]) { await page.evaluate(x => window.ospTest.ff(x), s);
+    const c = (await clock(page)).ko; expect(c).not.toBe(null); await page.waitForTimeout(600); expect((await clock(page)).ko).toBe(c); }
+  expect((await fight(page)).area).toBe('prison'); await pausePress(page, false); });
 // R23: the music stays ducked between the lines of a sequence: in the gaps of the switchboard's three-line intro (after its first or
 // second line, the rest still waiting) the duck holds. Between lines with no story line waiting (nothing, or a reaction alone) it is
 // off: the duck is set as a line goes off, and a story line can only leave the queue by keying up. One evaluate of 1/30 s steps,

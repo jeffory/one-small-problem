@@ -18,8 +18,9 @@ export function createHud() {
     help: t => { if (help.textContent !== t) help.textContent = t; },
     seed: t => { $('seed').textContent = t; },
     mode: m => { for (const e of MODES.play) e.style.display = MODES[m].includes(e) ? '' : 'none'; if (m !== 'play') unstamp(); },
-    // The title drop: ONE SMALL PROBLEM slams on (the shell's CSS animation, from 1.8x and clear over .18 s, runs as it shows).
-    stamp: () => { unstamp(); stamp.style.display = 'block'; stampT = setTimeout(unstamp, STAMP_TIME * 1000); },
+    // The title drop: text (the opening's ONE SMALL PROBLEM, or the knock-out's) slams on (the shell's CSS animation, from 1.8x and
+    // clear over .18 s, runs as it shows).
+    stamp: (text = 'ONE SMALL PROBLEM') => { unstamp(); stamp.textContent = text; stamp.style.display = 'block'; stampT = setTimeout(unstamp, STAMP_TIME * 1000); },
     status: ({ hp, cells, weapon }) => {
       if (!shown) { shown = true; stat.append('HEALTH ', num, rest); } // M8: only the number turns red, below 25
       const h = String(hp), t = `   CELLS ${cells}   ${weapon}`;

@@ -10,10 +10,16 @@ export const EXIT = { reach: 2.5 };
 export const exitOf = B => B.props.find(q => q.kind === 'exit');
 
 // The knock-out. call: the most seconds from Houston picking up to the knock-out, the fallback when no radio ends the cut-off line
-// first (the bot, replays, Node). The rest time the wake in the cell, which comes later; for now the knock-out ends the run.
+// first (the bot, replays, Node). The rest time the wake in the cell (fight.js knockOut):
 // out: seconds of black; stamp: seconds into the black that text stamps; fade: seconds the light takes to come back; down: seconds
 // on the floor, the look locked, eye m above it and pitched pitch rad, coming level; getUp: seconds to stand; hp: health on waking.
 export const KO = { call: 30, out: 5, stamp: 1.5, fade: 1, down: 3, getUp: .8, eye: .3, pitch: .6, hp: 70, text: 'ANOTHER SMALL PROBLEM' };
+// The knock-out as the shell and the view see it, for a fight F: koLight, the light (0 in the black, coming back over KO.fade s on
+// the floor, else 1); koLock, the look locked (in the black and on the floor); wakeIn, how far through the wake (0 to 1 from the
+// floor to standing, else 0).
+export const koLight = F => F.ko?.phase === 'out' ? 0 : F.ko?.phase === 'down' ? Math.min(1, F.ko.t / KO.fade) : 1;
+export const koLock = F => !!F.ko && (F.ko.phase === 'out' || F.ko.phase === 'down');
+export const wakeIn = F => { const p = F.ko?.phase; return p === 'down' || p === 'up' ? Math.min(1, ((p === 'up' ? KO.down : 0) + F.ko.t) / (KO.down + KO.getUp)) : 0; };
 
 // The rescue ship in the dash (area 6), the same lander as yours, coming down at the rescue site (world.escape.site) as you arrive.
 // clock: seconds from arriving to it leaving without you; warn: the clock shows red under this; calls: the marks (s left) the radio

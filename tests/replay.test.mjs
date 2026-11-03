@@ -62,3 +62,24 @@ function playBase(view) {
 test('a run that enters the base mid-fight, dies there and restarts replays bit for bit, with or without the view', () => {
   const a = playBase(false), b = playBase(true); assert.ok(a.areas >= 2 && a.deaths >= 1 && a.restarts >= 1, JSON.stringify({ ...a, snaps: a.snaps.length }));
   assert.equal(a.snaps[0], b.snaps[0]); assert.equal(a.snaps[1], b.snaps[1]); assert.deepEqual([a.areas, a.deaths, a.restarts, a.kills], [b.areas, b.deaths, b.restarts, b.kills]); });
+
+import { HOLD, callSpot } from '../src/game/hold.js';
+const IDLE = { fwd: 0, strafe: 0, run: false, jump: false, fire: false, use: false, weapon: -1, wheel: 0 };
+// Plan 6: on hold with the waves cleared, Houston 1 s in, KO.call later the knock-out and the wake; in the cell walk at the bars
+// pressing E every 40 frames, then swing at the guard. The view swaps to the prison's scene on the level event.
+function playKo(view) {
+  const F = createFight(W, 3), p = F.player, r = makeRng('replay-ko'), out = { kos: 0, kills: 0, snaps: [] }, s = callSpot(W.baseMap), b = W.prisonMap.bars;
+  Object.assign(p, { x: s.x, z: s.z, y: F.lv.ground(s.x, s.z) }); stepFight(F, { ...IDLE, use: true }, 1 / 60); F.hold.plan.length = 0; F.hold.t = HOLD.time - 1; F.god = true;
+  let V = null, frame = null, t = 0; if (view) { const gl = fakeGL(), sc = buildBaseScene(gl, W.baseMap); V = createFightView(gl, sc); frame = { ...sc, exposure: 1 }; }
+  const snap = () => JSON.stringify([F.time, F.run, F.area, F.ko, F.cell, F.hp, F.kills, p, F.ars, F.bolts, F.parts, F.pickups, F.aliens.map(a => ({ ...a, enc: F.encs.indexOf(a.enc) })), F.rng.next()]);
+  for (let i = 0; i < 2000; i++) {
+    const el = r.range(1 / 144, 1 / 18), dt = Math.min(.25, el), n = Math.max(1, Math.ceil(dt / .05)), g = F.aliens.find(a => a.enc.guard && a.state !== 'dead'), cell = F.area === 4 && !F.ko;
+    if (cell) p.yaw = g ? Math.atan2(p.x - g.x, p.z - g.z) : Math.atan2(p.x - b.x, p.z - b.z);
+    const inp = { ...IDLE, fwd: cell ? 1 : 0, use: i % 40 === 0, fire: !!g && i % 3 === 0 };
+    for (let k = 0; k < n; k++) stepFight(F, k ? { ...inp, use: false } : inp, dt / n);
+    for (const e of F.events) { if (e.type === 'ko') out.kos++; if (e.type === 'kill') out.kills++; if (view && e.type === 'area' && e.level) setScene(V, buildBaseScene(fakeGL(), W.prisonMap)); }
+    F.events.length = 0; t += el; if (view) fillFrame(V, F, frame, t); if (i === 1000 || i === 1999) out.snaps.push(snap()); }
+  out.F = F; return out; }
+test('a run through the knock-out into the cell, the bang and the guard replays bit for bit, with or without the view (Plan 6)', () => {
+  const a = playKo(false), b = playKo(true); assert.equal(a.kos, 1); assert.deepEqual([a.F.area, a.F.ko], [4, null]); assert.ok(a.F.cell.bang !== null, 'banged');
+  assert.equal(a.snaps[0], b.snaps[0]); assert.equal(a.snaps[1], b.snaps[1]); assert.equal(a.kills, b.kills); });

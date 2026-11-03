@@ -11,7 +11,7 @@ import { RIGS, partMatrixTo, worldSpheresTo } from './rigs.js';
 import { WEAPONS, TEAL } from './weapons.js';
 import { PLAYER } from './player.js'; import { RADIO } from './radio.js';
 import { landerMeshes, pieceMatrix } from './lander.js';
-import { FLARE, flareAt } from './escape.js'; import { FX } from './opening.js';
+import { FLARE, flareAt, wakeIn } from './escape.js'; import { FX } from './opening.js';
 
 // Per-frame caps (16 lights, 8 spheres, 512 sprites of which at most 192 opaque); FAR culls aliens and small props at 80 m.
 const MAX_L = 16, MAX_SPH = 8, MAX_SPR = 512, MAX_OPQ = 192, FAR = 80;
@@ -224,11 +224,13 @@ export function fillFrame(V, F, frame, t) {
   vignette(F, t, K); K[1] = F.flash || 0;
 }
 
-// The hurt vignette (Plan 5): a hit flares it by hurtT, below RADIO.low hp a rim pulses at VIG.hz, death closes it in. God mode,
-// Houston's call (F.ko), a won fight and the opening's view (no hp) never show the rim. Writes K[0] and K[2], leaves K[1], returns K.
+// The hurt vignette (Plan 5): a hit flares it by hurtT, below RADIO.low hp a rim pulses at VIG.hz, death closes it in, and so does
+// the knock-out's wake on the cell floor, opening as you get up (Plan 6). God mode, Houston's call (F.ko), a won fight and the
+// opening's view (no hp) never show the rim. Writes K[0] and K[2], leaves K[1], returns K.
 export const VIG = { hit: .6, low: .22, pulse: .35, hz: 1, reach: .4, dead: .8, deadReach: .8 };
 export function vignette(F, t, K) {
   if (F.state === 'dead') { K[0] = VIG.dead; K[2] = VIG.deadReach; return K; }
+  if (F.ko?.phase === 'down' || F.ko?.phase === 'up') { K[0] = VIG.dead * (1 - wakeIn(F)); K[2] = VIG.deadReach; return K; }
   const low = F.hp < RADIO.low && !F.god && !F.ko && !F.won ? VIG.low * (1 + VIG.pulse * Math.sin(2 * Math.PI * VIG.hz * t)) : 0;
   K[0] = Math.max(VIG.hit * F.hurtT, low); K[2] = VIG.reach; return K;
 }

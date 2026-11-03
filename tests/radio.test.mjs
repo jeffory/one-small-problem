@@ -8,7 +8,9 @@ test('the script: 150 to 205 short lines "X|text" with known speakers, every cue
   const all = Object.values(SCRIPT).flat(); assert.ok(all.length >= 150 && all.length <= 205, `${all.length}`); for (const l of all) assert.match(l, /^[HYSP]\|.{2,90}$/);
   assert.deepEqual(Object.keys(SCRIPT).sort(), Object.keys(CUES).sort()); assert.deepEqual(Object.keys(WHO).sort(), ['H', 'P', 'S', 'Y']); for (const k in WHO) assert.equal(VOICE[k].length, 2);
   assert.deepEqual(SCRIPT.bang, ['S|PRISONER. QUIET.']); assert.equal(SCRIPT.nudge[0], 'H|Try banging on the door. Works in every movie.');
-  assert.equal(SCRIPT.golf.length, 5); assert.deepEqual(SCRIPT.touchdown, ['Y|Contact light. Engine stop.', "H|We copy, you're down. Beautiful work."]);
+  assert.equal(SCRIPT.golf.length, 7); assert.equal(SCRIPT.golf[4], 'H|Five. Flight has started a spreadsheet.'); // pre-flight F19
+  assert.deepEqual(SCRIPT.golf.slice(5), ['H|Six. They really were collecting them.', "H|That's all seven. Shepard always said his slice was out of this world."]);
+  assert.deepEqual(SCRIPT.wake, ['H|\u2026come in. Come in. You were out for two hours.', 'Y|They took my guns.', "H|Did they take the flag? \u2026They left the flag. They think it's a religious item."]); assert.deepEqual(SCRIPT.touchdown, ['Y|Contact light. Engine stop.', "H|We copy, you're down. Beautiful work."]);
   assert.deepEqual(SCRIPT.step, ["Y|Okay Houston, I'm stepping off the\u2014"]); assert.deepEqual(SCRIPT.company, ['Y|\u2026Houston, are we expecting anyone?']);
   assert.deepEqual(SCRIPT.telemetry, ['H|\u2026say again? We just lost all telemetry from the lander.']); assert.deepEqual(SCRIPT.title, ['Y|Houston\u2026 we have one small problem.']);
   assert.deepEqual(SCRIPT.houston, ['H|Houston, go ahead.', 'Y|Houston\u2026 we have one small problem.']);
@@ -44,6 +46,7 @@ test('fight events map to cues (radio)', () => {
   for (const [type, key] of [['dead', 'dead'], ['restart', 'restart'], ['flag', 'grab'], ['boom', 'boom'], ['holdmsg', 'holding']]) assert.equal(keyOf([{ type }]), key);
   for (const kind of ['pistol', 'scatter', 'tape', 'cells']) assert.equal(keyOf([{ type: 'pickup', kind }]), kind);
   assert.equal(keyOf([{ type: 'hold' }]), 'hold,hold,hold'); assert.equal(keyOf([{ type: 'houston' }]), 'houston,houston,rescue');
+  assert.equal(keyOf([{ type: 'wake' }], { ko: { phase: 'down' } }), 'wake,wake,wake'); // while knocked out, the wake still cues (Plan 6)
   const R = createRadio(always); radioEvents(R, [{ type: 'golf', n: 3 }], { kills: 0, hp: 100, state: 'play' }); assert.equal('H|' + R.q[0].text, SCRIPT.golf[2]); });
 test('dawdling: RADIO.dawdle s with no progress cues a dawdle line, only while counting (radio)', () => { const R = R0(), F = { kills: 0, hp: 100, state: 'play' };
   assert.equal(said(run(R, RADIO.dawdle - 1, false, true)).length, 0); radioEvents(R, [{ type: 'area', id: 'surface' }], F);

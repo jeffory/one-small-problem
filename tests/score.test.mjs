@@ -5,9 +5,10 @@ test('the share link is the page address without its hash plus #SEED; from file:
   assert.equal(shareLink('https://x.io/g/index.html?a=1#OLD', 'APOLLO-4471'), 'https://x.io/g/index.html?a=1#APOLLO-4471');
   assert.equal(shareLink('http://localhost:4173/index.html', 'EAGLE-0001'), 'http://localhost:4173/index.html#EAGLE-0001');
   assert.equal(shareLink('file:///home/k/index.html#APOLLO-4471', 'APOLLO-4471'), null); });
-test('the best time per seed is kept under osp.best.SEED, and only a lower time replaces it', () => { const s = mem();
+test('the best time per seed is kept under osp.best2.SEED, and only a lower time replaces it', () => { const s = mem();
   assert.deepEqual(recordBest(s, 'A-1', 100), { best: 100, isNew: true }); assert.deepEqual(recordBest(s, 'A-1', 120), { best: 100, isNew: false });
-  assert.deepEqual(recordBest(s, 'A-1', 90), { best: 90, isNew: true }); assert.deepEqual(recordBest(s, 'B-2', 300), { best: 300, isNew: true }); assert.equal(s.m.get('osp.best.A-1'), '90'); });
-test('a garbage value, a store that throws or no store at all never throws (Review Focus 4)', () => { const s = mem(); s.setItem('osp.best.A-1', 'abc');
+  assert.deepEqual(recordBest(s, 'A-1', 90), { best: 90, isNew: true }); assert.deepEqual(recordBest(s, 'B-2', 300), { best: 300, isNew: true }); assert.equal(s.m.get('osp.best2.A-1'), '90');
+  s.setItem('osp.best.C-3', '10'); assert.deepEqual(recordBest(s, 'C-3', 600), { best: 600, isNew: true }, 'a one-level best (Plans 1-5) never beats a two-level run'); });
+test('a garbage value, a store that throws or no store at all never throws (Review Focus 4)', () => { const s = mem(); s.setItem('osp.best2.A-1', 'abc');
   assert.deepEqual(recordBest(s, 'A-1', 50), { best: 50, isNew: true }); const bad = { getItem() { throw new Error('x'); }, setItem() { throw new Error('y'); } };
   assert.deepEqual(recordBest(bad, 'A-1', 50), { best: null, isNew: false }); assert.deepEqual(recordBest(null, 'A-1', 50), { best: null, isNew: false }); });

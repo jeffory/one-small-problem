@@ -44,9 +44,9 @@ test('a crater restart rebuilds the crater, keeps the surface pickups you left, 
   const F = createFight(W); grab(F); enterArea(F, 1); const tape = F.pickups.find(q => q.area === 0 && q.kind === 'tape'), cr = F.aliens.find(a => a.area === 1); cr.hp = 5;
   hurtPlayer(F, 999, 0, 0, 0); run(F, idle, DEATH_TIME + .1);
   assert.ok(F.pickups.includes(tape)); assert.ok(F.aliens.length > 0 && F.aliens.every(a => a.area === 1)); assert.equal(F.aliens.find(a => a.id === cr.id).hp, ALIENS[cr.type].hp); });
-test('a golf ball counts once, flashes GOLF BALL n/5, and stays found after a death', () => { const F = createFight(W), g = F.balls[0];
+test('a golf ball counts once, flashes GOLF BALL n/7, and stays found after a death', () => { const F = createFight(W), g = F.balls[0];
   assert.deepEqual(F.balls.map(b => b.id), [0, 1, 2]); put(F, g.x, g.z); stepFight(F, idle, 1 / 60);
-  assert.equal(F.golf, 1); assert.deepEqual(F.found, [0]); assert.equal(F.events.find(e => e.type === 'golf').text, `GOLF BALL 1/${GOLF_TOTAL}`); assert.equal(GOLF_TOTAL, 5);
+  assert.equal(F.golf, 1); assert.deepEqual(F.found, [0]); assert.equal(F.events.find(e => e.type === 'golf').text, `GOLF BALL 1/${GOLF_TOTAL}`); assert.equal(GOLF_TOTAL, 7);
   hurtPlayer(F, 999, 0, 0, 0); run(F, idle, DEATH_TIME + .1); assert.equal(F.golf, 1); assert.deepEqual(F.balls.map(b => b.id), [1, 2]); });
 test('a crater restart takes away the surface canisters that were lit or shot out, so nothing explodes later; the rest stay as they were', () => {
   const F = createFight(W); enterArea(F, 1); const [lit, spent, hit, ok] = F.canisters.filter(c => c.area === 0); lit.hp = 0; lit.fuse = .15; spent.hp = 0; hit.hp = 5;

@@ -11,7 +11,7 @@ export const CUES = {
   first: { once: 1 }, brute: { cool: 20, p: .8 }, floater: { cool: 30, p: .7 }, multi: { cool: 20 }, kill: { cool: 15, p: .2 }, boom: { cool: 20, p: .5 },
   golf: { at: 1 }, dawdle: {}, crater: {}, base: {}, comms: {}, climb: {}, dash: { seq: 1 }, dead: {}, restart: { p: .5 },
   bang: { crit: 1 }, nudge: { at: 1 }, guard: { crit: 1 }, freed: { seq: 1 }, pa: { cool: 30 },
-  flare: { seq: 1 }, countdown: { at: 1 }, rush: { seq: 1 }, missed: { crit: 1 }, board: { seq: 1 }, sting: { seq: 1 } };
+  flare: { seq: 1 }, countdown: { at: 1 }, rush: { seq: 1 }, missed: { crit: 1 }, board: { seq: 1 }, sting: { seq: 1 }, wake: { seq: 1 } };
 export const SCRIPT = {
   touchdown: ["Y|Contact light. Engine stop.", "H|We copy, you're down. Beautiful work."],
   cabin: ["H|We show the hatch open. That's usually the cue to go outside."], // carry-over (Task 7 review): still in the cabin OPEN.stay s after touchdown
@@ -52,7 +52,8 @@ export const SCRIPT = {
     "H|Copy the explosion. Was that on purpose?", "H|Seismology just called. They'd like you to stop.", "H|Nice. Explosions are cheaper than ammunition."],
   golf: ["H|Is that a golf ball? That's one of Shepard's. Bag it.", "H|Another golf ball. He said miles and miles. He was not exaggerating.",
     "H|Three golf balls. Flight would like to know where you think you are.", "H|Four. The aliens appear to have been collecting them.",
-    "H|That's all five. Shepard always said his slice was out of this world."],
+    "H|Five. Flight has started a spreadsheet.", "H|Six. They really were collecting them.",
+    "H|That's all seven. Shepard always said his slice was out of this world."],
   dawdle: ["H|Just checking in. We see you standing still.", "H|Flight would like to remind you that oxygen is a finite resource.",
     "H|Are you sightseeing? You can sightsee on the way.", "H|Hey. The base is that way.", "H|We're burning daylight. Technically two weeks of it, but still.",
     "H|Everything okay up there? You've gone very quiet.", "H|The press is asking what you're doing. So are we.", "H|Reminder: the mission clock is running.",
@@ -76,6 +77,8 @@ export const SCRIPT = {
     "S|Thank you for your patience. Your patience has been noted.", "S|You can also reach us by screaming into the void.", "Y|The hold music is honestly not bad.",
     "S|Please do not shoot the staff."],
   houston: ["H|Houston, go ahead.", "Y|Houston\u2026 we have one small problem."],
+  wake: ["H|\u2026come in. Come in. You were out for two hours.", "Y|They took my guns.", // the wake in the cell (spec 2 step 4)
+    "H|Did they take the flag? \u2026They left the flag. They think it's a religious item."],
   bang: ["S|PRISONER. QUIET."],
   nudge: ["H|Try banging on the door. Works in every movie.", "H|Still with us? The bars. Bang on the bars.", "Y|Hello? Room service?", "H|Flight suggests making a nuisance of yourself. You're good at that."],
   guard: ["H|One guard, coming to check on you. You have a flag pole. We like those odds."],

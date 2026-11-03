@@ -13,10 +13,11 @@ export function shareLink(href, seed) {
   return href.startsWith('file:') ? null : href.split('#')[0] + '#' + seed;
 }
 
-// The best time for a seed lives under osp.best.SEED as seconds. A lower time, or the first one, is written and is new.
+// The best time for a seed lives under osp.best2.SEED as seconds (Plan 6: a run is two levels long now, so the one-level bests
+// under osp.best.SEED are left behind and never beat it). A lower time, or the first one, is written and is new.
 export function recordBest(store, seed, time) {
   try {
-    const key = 'osp.best.' + seed, v = parseFloat(store.getItem(key)), best = v >= 0 ? v : null; // NaN and garbage: no best
+    const key = 'osp.best2.' + seed, v = parseFloat(store.getItem(key)), best = v >= 0 ? v : null; // NaN and garbage: no best
     if (best !== null && best <= time) return { best, isNew: false };
     store.setItem(key, String(time));
     return { best: time, isNew: true };
