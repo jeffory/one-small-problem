@@ -70,10 +70,10 @@ export function createBot(world, rng, finale = false) {
 // dt seconds of play: the Input for this step. It also turns F.player, at most BOT.turn rad/s in yaw and in pitch.
 export function botStep(bot, F, dt) {
   const p = F.player, A = F.ars, W = F.world, R = bot.rng;
-  // 1. done at the comms room's door (unless it plays the finale), when Houston picks up, or stalled (no progress, or a run past
-  // BOT.max s)
+  // 1. done at the comms room's door (unless it plays the finale), when Houston picks up (F.ko) or the run is won, or stalled (no
+  // progress, or a run past BOT.max s)
   if (F.area === 3 && !bot.finale) bot.done = 'comms';
-  if (F.won) bot.done = 'houston';
+  if (F.ko || F.won) bot.done = 'houston';
   if (!bot.done && F.time > BOT.max) bot.done = 'stall';
   if (bot.done) return { ...IDLE };
   // the stage: each belongs to one level (in the base, to the comms room, then the array, then on hold), so a new level is

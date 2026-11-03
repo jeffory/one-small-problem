@@ -2,7 +2,9 @@
 // at a time: keyed up (a Quindar tone), spoken when a voice exists and always subtitled, keyed down, then a gap. Story lines (seq
 // and crit cues) are never dropped and play first, in the order cued; behind them waits at most one reaction, the newest replacing
 // any still waiting, dropped once it has waited RADIO.stale s; after a reaction the radio keeps quiet RADIO.chat s. The shell applies
-// the actions stepRadio returns. Pure: its clock is R.clock, advanced only by stepRadio, and its randomness the rng it is made with.
+// the actions stepRadio returns. While knocked out (F.ko, from Houston picking up) only Houston's and the wake's lines are cued
+// (R18), and silence kills the radio at the knock-out. Pure: its clock is R.clock, advanced only by stepRadio, and its randomness
+// the rng it is made with.
 import { SCRIPT, CUES } from './script.js';
 
 // Seconds unless noted. key: each Quindar tone, before and after a line; gap: between lines; min: the shortest a line is up; cps:
@@ -11,7 +13,7 @@ import { SCRIPT, CUES } from './script.js';
 // low: the health under which a hit gets a "low" line; dawdle: play without progress per dawdle line; multi: [kills, within s].
 export const RADIO = { key: .25, gap: .5, min: 1.6, cps: 14, slack: 1.5, pad: 2, stale: 5, chat: 4, low: 30, dawdle: 50, multi: [3, 4] };
 const EPS = 1e-9, NONE = Object.freeze([]), PROGRESS = new Set(['kill', 'pickup', 'flag', 'golf', 'area', 'restart', 'hold']);
-const PLAIN = { flag: 'grab', dead: 'dead', restart: 'restart', boom: 'boom', hold: 'hold', holdmsg: 'holding', houston: 'houston' };
+const PLAIN = { flag: 'grab', dead: 'dead', restart: 'restart', boom: 'boom', hold: 'hold', holdmsg: 'holding' };
 const AREA_CUES = new Set(['crater', 'base', 'comms']);
 
 // R.q: the lines waiting, {id, key, who (a WHO letter), text, crit, at (R.clock when cued), voiced}; R.cur: the line on the air.
@@ -42,12 +44,13 @@ export function radioCue(R, key, n) {
   return true;
 }
 
-// The fight's events as cues, one per event. The progress events restart the dawdle clock. Once Houston has picked up only
-// Houston cues, so nothing steps on the punchline (R18); an alien killed by another's bolt (team 1) isn't yours to react to (R25).
+// The fight's events as cues, one per event (Houston's, two: the pair, then the rescue line Houston is cut off in). The progress
+// events restart the dawdle clock. While knocked out only Houston and the wake cue, so nothing steps on the punchline or the
+// cut-off line (R18); an alien killed by another's bolt (team 1) isn't yours to react to (R25).
 export function radioEvents(R, events, F) {
   for (const e of events) {
     const t = e.type;
-    if (F.won && t !== 'houston' || e.team) continue;
+    if (F.ko && t !== 'houston' && t !== 'wake' || e.team) continue;
     if (PROGRESS.has(t)) R._idle = 0;
     if (t === 'kill') {
       const K = R._kills, [many, within] = RADIO.multi;
@@ -60,6 +63,7 @@ export function radioEvents(R, events, F) {
     } else if (t === 'pickup') radioCue(R, e.kind);
     else if (t === 'golf') radioCue(R, 'golf', e.n);
     else if (t === 'area') { if (AREA_CUES.has(e.id)) radioCue(R, e.id); }
+    else if (t === 'houston') { radioCue(R, 'houston'); radioCue(R, 'rescue'); }
     else if (PLAIN[t]) radioCue(R, PLAIN[t]);
   }
 }
@@ -95,8 +99,8 @@ export function stepRadio(R, dt, voiced, dawdle) {
 // it started, as a subtitle (R15). One for any other line (a stale onend) is ignored.
 export function radioDone(R, id, failed) { const L = R.cur; if (L && L.id === id) { if (failed) L.voiced = false; else L.done = true; } }
 
-// Whether the dawdle clock runs: in play only, never on hold or after Houston picks up (R16).
-export const dawdling = (state, F) => state === 'play' && !F.hold && !F.won;
+// Whether the dawdle clock runs: in play only, never on hold, while knocked out or once boarded (R16).
+export const dawdling = (state, F) => state === 'play' && !F.hold && !F.ko && !F.won;
 
 // The game pauses: a story line keyed or talking goes back to the head of the queue (a copy with a new id, so its cancelled
 // utterance's onend can't end the replay) to play again from the start; a reaction is dropped. One keying down just ends.
@@ -116,6 +120,14 @@ export function pauseRadio(R) {
 export function cutReaction(R) {
   const L = R.cur; R.q = R.q.filter(l => l.key !== 'holding');
   return L && (!L.crit || L.key === 'holding') && R.phase !== 'gap' && R.phase !== 'idle' ? over(R) : NONE;
+}
+
+// The knock-out: the radio dies at once, taking the line on the air (keyed, talking or keying down, whose subtitle comes down
+// with no closing tone) and every line waiting. The actions, as stepRadio's.
+export function silence(R) {
+  const on = R.cur && (R.phase === 'key' || R.phase === 'talk' || R.phase === 'unkey');
+  R.q.length = 0; R.cur = null; go(R, 'gap', null);
+  return on ? [{ do: 'off' }] : NONE;
 }
 
 // Nothing on the air or waiting.

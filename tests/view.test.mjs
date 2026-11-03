@@ -25,7 +25,7 @@ test('the planted flag is drawn on the surface level only', () => { const fr = f
 test('the view model follows the weapon and is gone when dead', () => { const F = createFight(W), fr = frame();
   fillFrame(V, F, fr, 0); assert.equal(fr.view, null); put(F, F.flag.x + 1, F.flag.z); stepFight(F, { ...idle, use: true }, 1 / 60); fillFrame(V, F, fr, 0); assert.equal(fr.view.gpu, V.gpu.pole);
   give(F.ars, 1, 10); fillFrame(V, F, fr, 0); assert.equal(fr.view.gpu, V.gpu.pistol); F.hp = 1; hurtPlayer(F, 5, 0, 0, 0); fillFrame(V, F, fr, 0); assert.equal(fr.view, null); });
-test('the vignette: a hit flares it by hurtT, low health pulses a rim at 1 Hz, death is heavy; never for god mode, a won fight or the opening (Plan 5, Review Focus 3)', () => {
+test('the vignette: a hit flares it by hurtT, low health pulses a rim at 1 Hz, death is heavy; never for god mode, a won fight, Houston\'s call or the opening (Plan 5, Review Focus 3)', () => {
   const F = createFight(W), fr = frame(), near = (a, b) => Math.abs(a - b) < 1e-9;
   fillFrame(V, F, fr, 0); assert.deepEqual([...fr.tint], [0, 0, VIG.reach]);
   hurtPlayer(F, 10, 0, 0, 0); fillFrame(V, F, fr, 0); assert.ok(near(fr.tint[0], VIG.hit * .5)); assert.equal(fr.tint[2], VIG.reach);
@@ -34,6 +34,7 @@ test('the vignette: a hit flares it by hurtT, low health pulses a rim at 1 Hz, d
   hurtPlayer(F, 10, 0, 0, 0); fillFrame(V, F, fr, .75); assert.ok(near(fr.tint[0], Math.max(VIG.hit * F.hurtT, VIG.low * (1 - VIG.pulse))));
   F.god = true; F.hurtT = 0; fillFrame(V, F, fr, .25); assert.equal(fr.tint[0], 0); F.god = false;
   F.won = true; F.hurtT = 0; fillFrame(V, F, fr, .25); assert.equal(fr.tint[0], 0); F.won = false; // a won fight below 30 hp shows no rim (pre-flight F6)
+  F.ko = { phase: 'call', t: 0 }; F.hurtT = 0; fillFrame(V, F, fr, .25); assert.equal(fr.tint[0], 0); F.ko = null; // nor does Houston's call (Plan 6)
   hurtPlayer(F, 99, 0, 0, 0); fillFrame(V, F, fr, 0); assert.deepEqual([...fr.tint], [VIG.dead, 0, VIG.deadReach]);
   const O = createOpening(W, createFight(W)); stepOpening(O, idle, 1 / 60); fillFrame(V, O.view, fr, .25); assert.equal(fr.tint[0], 0); });
 test('the held pole rests low, right of and below the crosshair, and its swing sweeps across the centre (R18)', () => { const F = createFight(W), fr = frame(), p = F.player;

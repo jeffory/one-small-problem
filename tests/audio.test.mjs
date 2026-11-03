@@ -4,7 +4,7 @@ const sfx = buildSfx(), spy = () => { const o = {}; o.AC = class extends FakeAC 
 const all = A => { A.start(); A.sfx('pistol'); A.song('base'); A.air(true); A.air(false); A.duck(true); A.duck(false); A.key(true); A.key(false); A.bed(true); A.bed(false); A.volume(.5); A.pause(); A.resume(); return A.info(); };
 test('no AudioContext, a constructor that throws, or nodes that throw: every call is a silent no-op (Review Focus 2)', () => {
   for (const AC of [undefined, class { constructor() { throw new Error('blocked'); } }, class extends FakeAC { createGain() { throw new Error('x'); } }]) {
-    const A = createAudio({ AC, sfx }); let info; assert.doesNotThrow(() => { info = all(A); }); assert.equal(info.ctx, null); } });
+    const A = createAudio({ AC, sfx }); let info; assert.doesNotThrow(() => { info = all(A); }); assert.equal(info.ctx, null); assert.equal(info.downs, 0); } });
 test('start() makes one context on the gesture and resumes it; SFX run through the air filter, MIX.vacuum Hz outside and MIX.air in the base; pause suspends (audio)', () => {
   const s = spy(); let made = 0; const AC = class extends s.AC { constructor() { super(); made++; } }, A = createAudio({ AC, sfx }); assert.equal(A.info().ctx, null);
   A.start(); A.start(); assert.equal(made, 1); assert.equal(A.info().ctx, 'running'); A.air(false); assert.equal(A.info().cut, MIX.vacuum); A.air(true); assert.equal(A.info().cut, MIX.air);
@@ -13,10 +13,10 @@ test('one SFX name plays at most once per MIX.gap s; an unknown name is ignored 
   A.sfx('pistol'); A.sfx('pistol'); A.sfx('nope'); assert.equal(A.info().plays, n0 + 1); s.ctx.currentTime += MIX.gap + .01; A.sfx('pistol'); A.sfx('zap'); assert.equal(A.info().plays, n0 + 3); });
 test('ducking pulls the music to MIX.duck of its level and back (audio)', () => { const s = spy(), A = createAudio({ AC: s.AC, sfx }); A.start();
   A.duck(true); assert.ok(Math.abs(A.info().music - MIX.music * MIX.duck) < 1e-9); A.duck(false); assert.ok(Math.abs(A.info().music - MIX.music) < 1e-9); });
-test('key(true) sounds 2525 Hz and key(false) 2475 Hz for MIX.tone s, each with a burst of static (radio)', () => { const s = spy(), A = createAudio({ AC: s.AC, sfx }); A.start();
+test('key(true) sounds 2525 Hz and key(false) 2475 Hz for MIX.tone s, each with a burst of static; info().downs counts the closing tones (radio)', () => { const s = spy(), A = createAudio({ AC: s.AC, sfx }); A.start();
   let k = s.ctx.made.length; A.key(true); const o = s.ctx.made.slice(k).filter(n => n.kind === 'osc'); assert.equal(o.length, 1); assert.equal(o[0].frequency.value, 2525);
   assert.ok(Math.abs(o[0].stopped - o[0].started - MIX.tone) < 1e-9); assert.ok(s.ctx.made.slice(k).some(n => n.kind === 'src' && n.buffer));
-  k = s.ctx.made.length; A.key(false); assert.equal(s.ctx.made.slice(k).find(n => n.kind === 'osc').frequency.value, 2475); });
+  assert.equal(A.info().downs, 0); k = s.ctx.made.length; A.key(false); assert.equal(s.ctx.made.slice(k).find(n => n.kind === 'osc').frequency.value, 2475); assert.equal(A.info().downs, 1); });
 test('sfxFor maps fight events to sounds, with alien shots and blasts fading by distance (audio)', () => { const p = { x: 0, z: 0 };
   assert.deepEqual([0, 1, 2].map(w => sfxFor({ type: 'fire', w }, p)), [['pole', 1], ['pistol', 1], ['scatter', 1]]);
   assert.deepEqual(sfxFor({ type: 'zap', x: 20, z: 0 }, p), ['zap', .5]); assert.equal(sfxFor({ type: 'zap', x: 50, z: 0 }, p), null);

@@ -6,7 +6,7 @@ import { ZZFX_RATE } from './zzfx.js';
 export const MIX = { music: .45, sfx: .7, radio: .5, duck: .35, fade: .5, vacuum: 380, air: 18000, tones: [2525, 2475], tone: .25, toneVol: .12, bed: .025, gap: .06 };
 const quiet = p => { try { p?.catch?.(() => {}); } catch {} };
 export function createAudio({ AC = globalThis.AudioContext ?? globalThis.webkitAudioContext, sfx, songs = null }) {
-  let ctx = null, dead = !AC, G = null, bufs = {}, vol = 1, inAir = false, ducked = false, song = null, plays = 0, ready = {}, peaks = {}, cur = null;
+  let ctx = null, dead = !AC, G = null, bufs = {}, vol = 1, inAir = false, ducked = false, song = null, plays = 0, downs = 0, ready = {}, peaks = {}, cur = null;
   const last = {}, safe = f => (...a) => { if (dead) return; try { return f(...a); } catch { /* audio never breaks the game */ } };
   const gain = (v, to) => { const g = ctx.createGain(); g.gain.value = v; g.connect(to); return g; };
   const musicLevel = () => MIX.music * (ducked ? MIX.duck : 1);
@@ -56,7 +56,7 @@ export function createAudio({ AC = globalThis.AudioContext ?? globalThis.webkitA
     air: safe(on => { inAir = !!on; if (G) ramp(G.filter.frequency, on ? MIX.air : MIX.vacuum, .02); }),
     duck: safe(on => { ducked = !!on; if (G) ramp(G.music.gain, musicLevel()); }),
     key: safe(up => {
-      if (!G) return; const o = ctx.createOscillator(), g = ctx.createGain(), t = ctx.currentTime;
+      if (!G) return; if (!up) downs++; const o = ctx.createOscillator(), g = ctx.createGain(), t = ctx.currentTime;
       o.frequency.value = MIX.tones[up ? 0 : 1]; g.gain.value = MIX.toneVol; o.connect(g); g.connect(G.radio); o.start(t); o.stop(t + MIX.tone);
       const s = ctx.createBufferSource(); s.buffer = bufs.static; if (s.buffer) { s.connect(G.radio); s.start(t); }
     }),
@@ -66,7 +66,8 @@ export function createAudio({ AC = globalThis.AudioContext ?? globalThis.webkitA
     song: safe(name => { song = name ?? null; playMusic(); }),
     pause: safe(() => { if (ctx) quiet(ctx.suspend()); }),
     resume: safe(() => { if (ctx) quiet(ctx.resume()); }),
-    info: () => ({ ctx: ctx ? ctx.state : null, air: inAir, duck: ducked, cut: G ? G.filter.frequency.value : null, music: G ? G.music.gain.value : null, plays, song,
+    // plays: SFX started; downs: closing Quindar tones (key(false) with a context)
+    info: () => ({ ctx: ctx ? ctx.state : null, air: inAir, duck: ducked, cut: G ? G.filter.frequency.value : null, music: G ? G.music.gain.value : null, plays, downs, song,
       songs: { ...peaks } }),
   };
   return A;

@@ -1,5 +1,5 @@
 import test from 'node:test'; import assert from 'node:assert/strict'; import { generateWorld } from '../src/gen/world.js'; import { makeRng } from '../src/gen/rng.js';
-import { createFight, stepFight, hurtPlayer, DEATH_TIME } from '../src/game/fight.js'; import { hurtAlien } from '../src/game/aliens.js'; import { createBot, botStep } from '../src/game/bot.js';
+import { createFight, stepFight, hurtPlayer, knockOut, DEATH_TIME } from '../src/game/fight.js'; import { KO } from '../src/game/escape.js'; import { hurtAlien } from '../src/game/aliens.js'; import { createBot, botStep } from '../src/game/bot.js';
 import { HOLD, ENDING, planWaves, dishOf, callSpot } from '../src/game/hold.js';
 const W = generateWorld('APOLLO-4471'), M = W.baseMap, idle = { fwd: 0, strafe: 0, run: false, jump: false, fire: false, use: false, weapon: -1, wheel: 0 };
 const run = (F, inp, secs, dt = 1 / 60) => { for (let t = 0; t < secs; t += dt) stepFight(F, inp, dt); };
@@ -17,12 +17,12 @@ test('E at the comms array puts you on hold with three tapes and two cells on th
   const G = createFight(W, 3); stepFight(G, { ...idle, use: true }, 1 / 60); assert.equal(G.hold, null); });
 test('the waves come out of the spawn doors on time, at most HOLD.cap alive; holdmsg every HOLD.msg s; Houston picks up at HOLD.time and then nothing hurts you (final stand)', () => {
   const F = atArray(); F.god = true; stepFight(F, { ...idle, use: true }, 1 / 60); const plan = F.hold.plan, born = new Map(), ev = []; let live = 0, t = 0;
-  while (!F.won && t < HOLD.time + 2) { stepFight(F, idle, 1 / 30); t += 1 / 30; for (const e of F.events) ev.push([e.type, F.hold.t]); F.events.length = 0;
+  while (!F.ko && t < HOLD.time + 2) { stepFight(F, idle, 1 / 30); t += 1 / 30; for (const e of F.events) ev.push([e.type, F.hold.t]); F.events.length = 0;
     for (const a of F.aliens) if (!born.has(a)) { const q = plan[born.size], d = M.spawnDoors[q.door]; born.set(a, F.hold.t);
       assert.equal(a.type, q.type); assert.ok(Math.hypot(a.x - d.x, a.z - d.z) < 1e-9, 'at its door'); assert.ok(F.hold.t >= q.at - 1e-9 && a.area === 3); }
     for (const a of F.aliens) if (a.state !== 'dead' && F.hold.t - born.get(a) > 3) hurtAlien(a, 999, 0, 0); // a defender clears them, so every wave comes
     live = Math.max(live, F.aliens.filter(a => a.state !== 'dead').length); }
-  assert.equal(born.size, plan.length); assert.ok(live <= HOLD.cap); assert.ok(F.won);
+  assert.equal(born.size, plan.length); assert.ok(live <= HOLD.cap); assert.ok(F.ko);
   const h = ev.find(e => e[0] === 'houston'); assert.ok(h && Math.abs(h[1] - HOLD.time) <= 1 / 30 + 1e-9);
   assert.equal(ev.filter(e => e[0] === 'holdmsg').length, Math.floor((HOLD.time - HOLD.msg / 2) / HOLD.msg) + 1);
   F.god = false; const hp = F.hp; hurtPlayer(F, 500, 0, 0, 0); assert.equal(F.hp, hp); assert.equal(F.state, 'play'); });
@@ -48,23 +48,30 @@ const finale = (seed, uneven) => { const W = generateWorld(seed), F = createFigh
   F.god = true; let t = 0, off = 0, longest = 0;
   while (!bot.done && t < 900) { const dt = uneven ? Math.min(.25, r.range(1 / 144, 1 / 18)) : 1 / 30, n = Math.max(1, Math.ceil(dt / .05));
     for (let k = 0; k < n; k++) { const inp = botStep(bot, F, dt / n); stepFight(F, k ? { ...inp, use: false, weapon: -1, wheel: 0 } : inp, dt / n);
-      if (F.hold && !F.won) { off = Math.hypot(F.player.x - c.x, F.player.z - c.z) > 1 ? off + dt / n : 0; longest = Math.max(longest, off); } }
+      if (F.hold && !F.ko) { off = Math.hypot(F.player.x - c.x, F.player.z - c.z) > 1 ? off + dt / n : 0; longest = Math.max(longest, off); } }
     F.events.length = 0; t += dt; }
   return { F, bot, t, longest }; };
 test('the immortal bot with the finale on plays a whole run, wreck to Houston, within 800 s, never more than 1 m off the call spot for 5 s on hold (final stand, R7)', () => {
   for (const [seed, uneven] of [['APOLLO-4471', false], ['BOT-0028', true], ['BOT-0007', true]]) { const { F, bot, t, longest } = finale(seed, uneven);
-    assert.equal(bot.done, 'houston', seed); assert.ok(F.won && t < 800, `${seed} ${t}`); assert.ok(longest < 5, `${seed}: ${longest} s more than 1 m off the call spot`); } });
+    assert.equal(bot.done, 'houston', seed); assert.ok(F.ko && t < 800, `${seed} ${t}`); assert.ok(longest < 5, `${seed}: ${longest} s more than 1 m off the call spot`); } });
 // R8: a death in the step Houston would pick up leaves no Houston behind (hp 0 there stands in for a blow earlier in the step)
 test('dying in the step Houston would pick up: no Houston; after the restart you are off hold and not won, and E at the array starts a hold that runs (final stand, R8)', () => {
   const F = atArray(); stepFight(F, { ...idle, use: true }, 1 / 60); F.aliens.length = 0; F.hold.plan.length = 0; F.hold.t = HOLD.time - 1 / 120; F.events.length = 0;
-  F.hp = 0; stepFight(F, idle, 1 / 60); assert.ok(!F.events.some(e => e.type === 'houston')); assert.deepEqual([F.state, F.won], ['dead', false]);
-  run(F, idle, DEATH_TIME + .1); assert.deepEqual([F.state, F.hold, F.won, F.wonAt], ['play', null, false, null]);
+  F.hp = 0; stepFight(F, idle, 1 / 60); assert.ok(!F.events.some(e => e.type === 'houston')); assert.deepEqual([F.state, F.ko], ['dead', null]);
+  run(F, idle, DEATH_TIME + .1); assert.deepEqual([F.state, F.hold, F.ko, F.won], ['play', null, null, false]);
   const s = callSpot(M); put(F, s.x, s.z); stepFight(F, { ...idle, use: true }, 1 / 60); const t0 = F.hold.t; run(F, idle, 1, 1 / 30);
-  assert.ok(Math.abs(F.hold.t - t0 - 1) < .05, `${F.hold.t}`); assert.equal(F.won, false); });
-// R9: the end screen's time and kills stop at Houston, so a best time doesn't depend on how long the ending's radio talks, and the
-// invulnerable ending can't farm kills
-test('the run\'s time and kills stop at Houston: wonAt is the sim time then, and no kill after it counts (final stand, R9)', () => {
+  assert.ok(Math.abs(F.hold.t - t0 - 1) < .05, `${F.hold.t}`); assert.equal(F.ko, null); });
+// R9 moved (Plan 6): the run clock F.run and the kill count stop at Houston, so a best time doesn't depend on how long Houston's call
+// takes, and the invulnerable call can't farm kills; F.time runs on (F.won and F.wonAt now mean boarded)
+test('R9 moved: F.run and kills stop at Houston while F.time runs on', () => {
   const F = atArray(); F.god = true; stepFight(F, { ...idle, use: true }, 1 / 60); F.hold.plan = [0, 1].map(door => ({ at: 0, type: 'sk', door, wave: 0 }));
   stepFight(F, idle, 1 / 30); const [a, b] = F.aliens; hurtAlien(a, 999, 0, 0); stepFight(F, idle, 1 / 30); assert.equal(F.kills, 1);
-  F.hold.t = HOLD.time - 1 / 60; stepFight(F, idle, 1 / 30); assert.ok(F.won); assert.equal(F.wonAt, F.time); const at = F.wonAt;
-  hurtAlien(b, 999, 0, 0); run(F, idle, 5); assert.equal(b.state, 'dead'); assert.equal(F.kills, 1); assert.equal(F.wonAt, at); assert.ok(F.time > at + 4.9); });
+  F.hold.t = HOLD.time - 1 / 60; stepFight(F, idle, 1 / 30); assert.deepEqual([F.ko.phase, F.won, F.wonAt], ['call', false, null]); const at = F.run, t0 = F.time;
+  hurtAlien(b, 999, 0, 0); run(F, idle, 5); assert.equal(F.kills, 1); assert.equal(F.run, at); assert.ok(F.time > t0 + 4.9); });
+const houston = () => { const F = atArray(); stepFight(F, { ...idle, use: true }, 1 / 60); F.aliens.length = 0; F.hold.plan.length = 0; F.hold.t = HOLD.time; stepFight(F, idle, 1 / 60); F.events.length = 0; return F; };
+test('the knock-out comes KO.call s after Houston or at once by knockOut, only once; nothing hurts meanwhile (Review Focus 1)', () => {
+  assert.deepEqual(KO, { call: 30, out: 5, stamp: 1.5, fade: 1, down: 3, getUp: .8, eye: .3, pitch: .6, hp: 70, text: 'ANOTHER SMALL PROBLEM' });
+  const F = houston(); hurtPlayer(F, 500, 0, 0, 0); assert.equal(F.hp, 100); let t = 0, n = 0;
+  while (F.ko.phase === 'call' && t < KO.call + 1) { stepFight(F, idle, .25); t += .25; n += F.events.filter(e => e.type === 'ko').length; F.events.length = 0; }
+  assert.ok(Math.abs(t - KO.call) <= .25 + 1e-9, `${t}`); assert.equal(n, 1); assert.equal(knockOut(F), false);
+  const G = houston(); assert.equal(knockOut(G), true); assert.equal(knockOut(G), false); assert.equal(G.events.filter(e => e.type === 'ko').length, 1); });

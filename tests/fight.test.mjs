@@ -147,10 +147,10 @@ test('the first scoring kill drops tape .7 m from its other drop toward you; a l
   const p = F.player, dx = tape.x - gun.x, dz = tape.z - gun.z, d = Math.hypot(dx, dz), toward = (dx * (p.x - gun.x) + dz * (p.z - gun.z)) / d / Math.hypot(p.x - gun.x, p.z - gun.z);
   assert.ok(Math.abs(d - PICKUP.tapeOff) < 1e-9 && toward > .999, `${d} ${toward}`);
   const n = F.pickups.length; kill(F, b); assert.equal(F.kills, 2); assert.equal(F.pickups.length, n); });
-test('an alien-bolt kill (Plan 4 R25) or a kill after Houston (Plan 4 R9) is not the first kill; the next scoring kill is (Plan 5)', () => {
-  for (const how of ['foe', 'won']) { const F = createFight(W); F.pickups.length = 0; F.rng.next = () => .999; const [a, b] = F.aliens.filter(x => x.type === 'sk' && !x.enc.first);
-    if (how === 'won') F.won = true; kill(F, a, how === 'foe'); assert.equal(F.kills, 0); assert.ok(!F.pickups.some(p => p.kind === 'tape'), how);
-    F.won = false; kill(F, b); assert.equal(F.kills, 1); assert.equal(F.pickups.filter(p => p.kind === 'tape').length, 1, how); } });
+test('an alien-bolt kill (Plan 4 R25), a kill in Houston\'s call or once boarded (Plan 4 R9, moved in Plan 6) is not the first kill; the next scoring kill is (Plan 5)', () => {
+  for (const how of ['foe', 'won', 'ko']) { const F = createFight(W); F.pickups.length = 0; F.rng.next = () => .999; const [a, b] = F.aliens.filter(x => x.type === 'sk' && !x.enc.first);
+    if (how === 'won') F.won = true; if (how === 'ko') F.ko = { phase: 'call', t: 0 }; kill(F, a, how === 'foe'); assert.equal(F.kills, 0); assert.ok(!F.pickups.some(p => p.kind === 'tape'), how);
+    F.won = false; F.ko = null; kill(F, b); assert.equal(F.kills, 1); assert.equal(F.pickups.filter(p => p.kind === 'tape').length, 1, how); } });
 test('after the first kill tape drops by chance from the sim rng: skitterers 10%, floaters 20%, brutes always (Plan 5)', () => {
   const F = createFight(W), S = W.spawn, x = S.x + 30, z = S.z, enc = { x, z, p: 0, first: false, area: 0, room: -1, alerted: false, waved: false };
   F.aliens.length = 0; F.kills = 1; assert.deepEqual(PICKUP.tapeDrop, { sk: .1, fl: .2, br: 1 });

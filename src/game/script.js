@@ -5,7 +5,7 @@ export const VOICE = { H: [.9, 1.05], Y: [1.05, 1], S: [.5, .85] }; // speech pi
 // seq: every line in order, critical; crit: one line, critical; once: once per run; cool: s between cues; p: chance; at: line n of radioCue(R, key, n)
 export const CUES = {
   touchdown: { seq: 1 }, cabin: { crit: 1 }, step: { seq: 1 }, nag: { crit: 1 }, autoplant: { seq: 1 }, planted: { seq: 1 }, company: { seq: 1 }, telemetry: { seq: 1 }, title: { seq: 1 },
-  hold: { seq: 1 }, holding: { crit: 1 }, houston: { seq: 1 },
+  hold: { seq: 1 }, holding: { crit: 1 }, houston: { seq: 1 }, rescue: { seq: 1 },
   grab: { once: 1 }, pistol: { once: 1 }, scatter: { once: 1 }, tape: { cool: 20, p: .6 }, cells: { cool: 20, p: .5 }, low: { cool: 25 }, fall: { cool: 20 },
   first: { once: 1 }, brute: { cool: 20, p: .8 }, floater: { cool: 30, p: .7 }, multi: { cool: 20 }, kill: { cool: 15, p: .2 }, boom: { cool: 20, p: .5 },
   golf: { at: 1 }, dawdle: {}, crater: {}, base: {}, comms: {}, dead: {}, restart: { p: .5 } };
@@ -72,4 +72,5 @@ export const SCRIPT = {
     "Y|Come on, come on, come on.", "S|Press one to surrender. Press two to surrender in English.", "Y|Houston, I'm on hold.",
     "S|Thank you for your patience. Your patience has been noted.", "S|You can also reach us by screaming into the void.", "Y|The hold music is honestly not bad.",
     "S|Please do not shoot the staff."],
-  houston: ["H|Houston, go ahead.", "Y|Houston\u2026 we have one small problem."] };
+  houston: ["H|Houston, go ahead.", "Y|Houston\u2026 we have one small problem."],
+  rescue: ["H|Copy. We heard. Rescue vehicle is go, touchdown at your lander in twenty min\u2014"] }; // cut off: its talk ending is the knock-out

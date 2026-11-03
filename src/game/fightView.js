@@ -213,10 +213,10 @@ export function fillFrame(V, F, frame, t) {
 }
 
 // The hurt vignette (Plan 5): a hit flares it by hurtT, below RADIO.low hp a rim pulses at VIG.hz, death closes it in. God mode,
-// a won fight and the opening's view (no hp) never show the rim. Writes K[0] and K[2], leaves K[1], returns K.
+// Houston's call (F.ko), a won fight and the opening's view (no hp) never show the rim. Writes K[0] and K[2], leaves K[1], returns K.
 export const VIG = { hit: .6, low: .22, pulse: .35, hz: 1, reach: .4, dead: .8, deadReach: .8 };
 export function vignette(F, t, K) {
   if (F.state === 'dead') { K[0] = VIG.dead; K[2] = VIG.deadReach; return K; }
-  const low = F.hp < RADIO.low && !F.god && !F.won ? VIG.low * (1 + VIG.pulse * Math.sin(2 * Math.PI * VIG.hz * t)) : 0;
+  const low = F.hp < RADIO.low && !F.god && !F.ko && !F.won ? VIG.low * (1 + VIG.pulse * Math.sin(2 * Math.PI * VIG.hz * t)) : 0;
   K[0] = Math.max(VIG.hit * F.hurtT, low); K[2] = VIG.reach; return K;
 }

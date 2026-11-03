@@ -1,6 +1,8 @@
 // The fight: one pure simulation tying the player, weapons, bolts, aliens, pickups and canisters together, run on a level
 // (the surface or the base; see areas.js). Deterministic: every random draw comes from F.rng = makeRng(world.seed + '/sim');
-// there is no wall clock, DOM or GPU here.
+// there is no wall clock, DOM or GPU here. F.time is the sim's clock; F.run is the run's (the end screen's time), which stops while
+// F.ko and once F.won. F.ko is the knock-out, null until Houston picks up: {phase, t}, 'call' from Houston to the knock-out (t its
+// seconds), then 'out'. While F.ko or F.won (boarded, which sets F.wonAt) nothing hurts you and no kill counts.
 import { makeRng } from '../gen/rng.js';
 import { sampleGround, flagSpot } from '../gen/surface.js';
 import { cameraBasis } from '../gfx/math.js';
@@ -13,6 +15,7 @@ import { ALIENS, createAlien, stepAlien, hurtAlien, move, level, muzzleAt } from
 import { AREAS, AREA_TEXT, LEVEL, makeLevel, areaStart, advanceArea } from './areas.js';
 import { K } from '../gen/base.js';
 import { HOLD, planWaves, dishOf } from './hold.js';
+import { KO } from './escape.js';
 
 // Alien drops (pistol, scatter, flCells) are 20% up on Plan 2's 20, 16 and 15 after the first play-test (H5). Tape drops (Plan 5) come from the sim's
 // F.rng, not generation, so the goldens are untouched: tapeDrop is the chance per alien type, tapeOff the distance it lies from another drop.
@@ -37,8 +40,8 @@ export function createFight(world, k = 0) {
   const F = { world, area: k, lv, gravity: lv.gravity, rng: makeRng(world.seed + '/sim'), player: createPlayer(areaStart(world, k), lv.ground), hp: 100, ars: createArsenal(),
     encs: [], aliens: [], bolts: [], pickups: [], canisters: [], balls: [], parts: [], decals: [], booms: [],
     flag: { x: fs.x, y: sampleGround(world, fs.x, fs.z), z: fs.z, held: false }, entry: { owned: [false, false, false], cells: 0, flagHeld: false },
-    state: 'play', deadT: 0, time: 0, kills: 0, shots: 0, shotT: 9, hurtT: 0, field: createField(), fieldT: 0, events: [], god: false,
-    found: [], golf: 0, hold: null, won: false, wonAt: null };
+    state: 'play', deadT: 0, time: 0, run: 0, kills: 0, shots: 0, shotT: 9, hurtT: 0, field: createField(), fieldT: 0, events: [], god: false,
+    found: [], golf: 0, hold: null, ko: null, won: false, wonAt: null };
   clearDecals(F);
   const C = F._ctx = { ground: lv.ground, ceil: lv.ceil, px: 0, py: 0, pz: 0, field: F.field, rng: F.rng, others: F.aliens,
     los: a => lineOfSight(F.lv.ground, muzzleAt(a, C), [C.px, C.py + PLAYER.eye, C.pz], F.lv.ceil),
@@ -88,10 +91,10 @@ export function enterArea(F, k) {
   F.events.push({ type: 'area', area: k, id: AREAS[k], level: fresh, text: AREA_TEXT[k] });
 }
 
-// cause (optional) rides on the 'hurt' event: 'fall' for a hard landing (R18), for Plan 4's radio. Once Houston has picked up
-// nothing hurts you.
+// cause (optional) rides on the 'hurt' event: 'fall' for a hard landing (R18), for Plan 4's radio. From Houston picking up to the
+// wake (F.ko), and once boarded (F.won), nothing hurts you.
 export function hurtPlayer(F, dmg, kx, ky, kz, cause) {
-  if (F.state === 'dead' || F.won) return;
+  if (F.state === 'dead' || F.ko || F.won) return;
   F.hp -= dmg;
   if (F.god) F.hp = Math.max(1, F.hp);
   F.hurtT = Math.min(1, F.hurtT + dmg / 20);
@@ -111,7 +114,7 @@ function die(F) {
 // Houston never picked up (R8).
 export function restartArea(F) {
   const E = F.entry, A = F.ars, k = F.area;
-  F.aliens.length = 0; F.hold = null; F.won = false; F.wonAt = null;
+  F.aliens.length = 0; F.hold = null; F.ko = null; F.won = false; F.wonAt = null;
   keep(F.pickups, q => q.area < k);
   keep(F.canisters, c => c.area < k && !(c.hp <= 0 || c.fuse > 0));
   keep(F.balls, b => b.area < k);
@@ -156,8 +159,8 @@ export function aimPoint(F) {
 }
 
 export function stepFight(F, input, dt) {
-  // 1. clock and death; the body still falls and slides to rest (M4)
-  F.time += dt; F.shotT += dt;
+  // 1. the clocks (the run's stops while knocked out or once boarded, R9) and death; the body still falls and slides to rest (M4)
+  F.time += dt; F.shotT += dt; if (!F.ko && !F.won) F.run += dt;
   if (F.state === 'dead') {
     F.deadT += dt;
     stepPlayer(F.player, STILL, dt, F.lv.ground, F.lv.bound, F.gravity, F.lv.ceil, F.area === 1 ? FALL.safe : Infinity);
@@ -197,7 +200,7 @@ export function stepFight(F, input, dt) {
   }
   // 5a. on hold: the waves come in, until Houston picks up; only while you are alive this step (R8): a blow in steps 3-5 has
   // already killed you, and hp set to 0 directly is only turned into a death at step 11
-  if (F.hold && !F.won && F.state === 'play' && F.hp > 0) stepHold(F, dt);
+  if (F.hold && !F.ko && F.state === 'play' && F.hp > 0) stepHold(F, dt);
   // 5b. the player can't stand inside a live walker or a canister
   bodies(F);
   // 6. bolts, 7. deaths, 8. canisters
@@ -211,6 +214,16 @@ export function stepFight(F, input, dt) {
   F.hurtT = Math.max(0, F.hurtT - 2 * dt);
   // 11. death check (hurtPlayer already enters death; this catches hp set directly)
   if (F.state === 'play' && F.hp <= 0) { if (F.god) F.hp = 1; else die(F); }
+  // 12. Houston's call: the knock-out KO.call s after Houston, unless the radio's cut-off line brought it sooner
+  if (F.ko?.phase === 'call' && (F.ko.t += dt) >= KO.call) knockOut(F);
+}
+
+// Houston's call ends in the knock-out: the shell calls this as the cut-off line's talk ends, and stepFight at KO.call s after
+// Houston without it. Only from 'call', so it happens once; true if it did. For now the shell ends the run there.
+export function knockOut(F) {
+  if (F.ko?.phase !== 'call') return false;
+  F.ko = { phase: 'out', t: 0 }; F.events.push({ type: 'ko' });
+  return true;
 }
 
 // On hold at the array d (the dish): the waves are planned now, from the sim rng, so a retry after a death gets new ones. The
@@ -231,8 +244,8 @@ function startHold(F, d) {
 
 // dt seconds on hold. Planned spawns come in order once due, while fewer than HOLD.cap hold aliens are alive (one that finds no
 // free slot waits, and so do those after it), each at its door, first moving next step. Mission Control's on-hold message is
-// due every HOLD.msg s from HOLD.msg / 2; at HOLD.time Houston picks up, and the run's time stops there (R9: wonAt, which the
-// end screen and the best time use, whatever the ending's radio takes).
+// due every HOLD.msg s from HOLD.msg / 2; at HOLD.time Houston picks up and Houston's call begins (F.ko), so the run's clock
+// stops there (R9: F.run, which the end screen and the best time use, whatever the call's radio takes).
 function stepHold(F, dt) {
   const H = F.hold, P = H.plan, D = F.world.baseMap.spawnDoors;
   H.t += dt;
@@ -244,7 +257,7 @@ function stepHold(F, dt) {
     a.area = 3; F.aliens.push(a);
   }
   while (H.t >= HOLD.msg / 2 + H.msgs * HOLD.msg) F.events.push({ type: 'holdmsg', n: H.msgs++ });
-  if (H.t >= HOLD.time) { F.won = true; F.wonAt = F.time; F.events.push({ type: 'houston' }); }
+  if (H.t >= HOLD.time) { F.ko = { phase: 'call', t: 0 }; F.events.push({ type: 'houston' }); }
 }
 
 // R16: the player is pushed out of live walkers and canisters (horizontally, where their heights overlap). A push to where the
@@ -302,9 +315,9 @@ function flyBolts(F, dt) {
   }
 }
 
-// New deaths score (until Houston picks up, R9: no kill farming in the invulnerable ending; and not one an alien's bolt finished,
-// _foe, whose kill event carries team 1, R25), splash goo and drop; corpses sink over their last SINK seconds and go after CORPSE.
-// Ids never change.
+// New deaths score (not while knocked out or once boarded, R9: no kill farming while you can't be hurt; and not one an alien's
+// bolt finished, _foe, whose kill event carries team 1, R25), splash goo and drop; corpses sink over their last SINK seconds and
+// go after CORPSE. Ids never change.
 function deaths(F) {
   const G = F.lv.ground, L = F.aliens; let w = 0;
   for (const a of L) {
@@ -320,7 +333,7 @@ function deaths(F) {
 }
 
 function killed(F, a) {
-  const scored = !F.won && !a._foe; a._died = F.time; if (scored) F.kills++;
+  const scored = !F.ko && !F.won && !a._foe; a._died = F.time; if (scored) F.kills++;
   const c = worldSpheres(a)[0], gy = F.lv.ground(a.x, a.z);
   burst(F, 'goo', c[0], c[1], c[2], 24, 1.5, 1, 3, 8, 8);
   F.events.push({ type: 'kill', x: a.x, y: gy, z: a.z, kind: a.type, n: F.kills, team: a._foe });

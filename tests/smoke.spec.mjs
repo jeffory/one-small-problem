@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test'; import { pathToFileURL } from 'node:url'; import { resolve } from 'node:path';
 import { generateWorld } from '../src/gen/world.js'; import { checksumWorld } from '../src/gen/checksum.js';
-import { HELP_TIME } from '../src/ui/hud.js'; import { fmtTime } from '../src/ui/score.js'; import { OPEN } from '../src/game/opening.js'; import { ENDING } from '../src/game/hold.js'; import { CUES } from '../src/game/script.js';
+import { HELP_TIME } from '../src/ui/hud.js'; import { fmtTime } from '../src/ui/score.js'; import { OPEN } from '../src/game/opening.js'; import { HOLD } from '../src/game/hold.js'; import { KO } from '../src/game/escape.js'; import { CUES } from '../src/game/script.js';
 export const URLS = [['file', pathToFileURL(resolve('dist/index.html')).href], ['http', 'http://localhost:4173/index.html']];
 // Benign Firefox parser note about the packed binary payload when the server's utf-8 header overrides the page's iso-8859-15 meta; real decoding failures are caught by the ready check.
 const BENIGN = /byte stream was erroneous according to the character encoding/i;
@@ -232,22 +232,22 @@ export const onHold = async page => { await page.keyboard.press('KeyE'); await e
 const clock = page => page.evaluate(() => window.ospTest.clock());
 test('the comms array puts you on hold; Houston picks up after the final stand; then the end screen (final stand)', async ({ page }) => {
   const errors = watchErrors(page); await start(page); await toComms(page); await onHold(page); await expect(page.locator('#prompt')).toContainText('ON HOLD');
-  await page.evaluate(() => { window.ospTest.god(true); window.ospTest.ff(91); }); await expect.poll(() => state(page)).toBe('ending');
-  await expect(page.locator('#end')).toBeVisible({ timeout: 20_000 }); expect(await state(page)).toBe('end');
-  // R9: the time and kills shown are those at Houston, not at the end of the ending (at least ENDING.min s later)
-  const f = await fight(page); expect(f.time - f.wonAt).toBeGreaterThan(5); await expect(page.locator('#stats')).toContainText('TIME ' + fmtTime(f.wonAt));
+  await page.evaluate(() => { window.ospTest.god(true); window.ospTest.ff(91); }); await expect.poll(() => fight(page).then(f => f.ko)).not.toBe(null);
+  await expect(page.locator('#end')).toBeVisible({ timeout: 40_000 }); expect(await state(page)).toBe('end');
+  // R9 moved: the time shown is the run clock, which stops at Houston, not at the knock-out (Houston's call outlasts 5 s); kills stop there too
+  const f = await fight(page); expect(f.time - f.run).toBeGreaterThan(5); await expect(page.locator('#stats')).toContainText('TIME ' + fmtTime(f.run));
   await expect(page.locator('#stats')).toContainText('KILLS ' + f.kills); expect(errors).toEqual([]); });
 test('dying during the final stand restarts you at the comms door, off hold (final stand)', async ({ page }) => {
   const errors = watchErrors(page); await start(page); await toComms(page); await onHold(page); await page.evaluate(() => window.ospTest.hurt(999));
   await expect(page.locator('#prompt')).toContainText('the comms room door'); await expect.poll(() => fight(page).then(f => f.state), { timeout: 10_000 }).toBe('play');
   const f = await fight(page); expect([f.area, f.atStart, f.hold]).toEqual(['comms', true, null]); expect(errors).toEqual([]); });
-test('pausing on hold or mid-ending stops the hold timer and the ending countdown until you resume (Review Focus 3)', async ({ page }) => {
+test('pausing on hold or in Houston\'s call stops the hold timer and the knock-out clock until you resume (Review Focus 3)', async ({ page }) => {
   await start(page); await toComms(page); await onHold(page); await page.keyboard.press('Escape'); await expect.poll(() => paused(page)).toBe(true);
   const h = (await clock(page)).hold; await page.waitForTimeout(600); expect((await clock(page)).hold).toBe(h); await page.keyboard.press('Escape');
-  await page.evaluate(() => { window.ospTest.god(true); window.ospTest.ff(91); }); await expect.poll(() => state(page)).toBe('ending');
-  await page.keyboard.press('Escape'); await expect.poll(() => paused(page)).toBe(true); const e = (await clock(page)).ending; await page.waitForTimeout(600);
-  expect((await clock(page)).ending).toBe(e); await expect(page.locator('#end')).toBeHidden(); await page.keyboard.press('Escape');
-  await expect(page.locator('#end')).toBeVisible({ timeout: 20_000 }); });
+  await page.evaluate(() => { window.ospTest.god(true); window.ospTest.ff(91); }); await expect.poll(() => fight(page).then(f => f.ko)).toBe('call');
+  await page.keyboard.press('Escape'); await expect.poll(() => paused(page)).toBe(true); const e = (await clock(page)).ko; await page.waitForTimeout(600);
+  expect((await clock(page)).ko).toBe(e); await expect(page.locator('#end')).toBeHidden(); await page.keyboard.press('Escape');
+  await expect(page.locator('#end')).toBeVisible({ timeout: 40_000 }); });
 test('a new run starts at the settled wreck (opening)', async ({ page }) => { const errors = watchErrors(page); await start(page);
   expect(await page.evaluate(() => [window.ospTest.state(), window.ospTest.opening()])).toEqual(['play', null]); // ospTest.play() skips the opening
   expect(await page.evaluate(() => window.ospTest.wreck())).toEqual({ n: 11, still: 11 }); const s = await page.evaluate(() => window.ospTest.capture());
@@ -322,11 +322,11 @@ test('pausing mid-line takes the subtitle down, and the story line plays again f
   expect(await page.evaluate(() => window.ospTest.radio())).toEqual({ line: null, queued: ['touchdown', 'touchdown'], dawdle: 0 });
   await page.keyboard.press('Escape'); await expect.poll(() => paused(page)).toBe(false); await expect(page.locator('#sub')).toHaveText('YOU: Contact light. Engine stop.');
   await expect(page.locator('#sub')).toHaveClass(/\bon\b/); expect(errors).toEqual([]); });
-// R16: the dawdle clock runs in play (here a few seconds with no progress), but not on hold or in the ending after Houston
+// R16: the dawdle clock runs in play (here a few seconds with no progress), but not on hold or in Houston's call
 test('the dawdle clock stops on hold and after Houston picks up (R16)', async ({ page }) => {
   const errors = watchErrors(page), dawdle = () => page.evaluate(() => window.ospTest.radio().dawdle); await start(page); await page.evaluate(() => window.ospTest.ff(3));
   expect(await dawdle()).toBeGreaterThan(2.5); await toComms(page); await onHold(page); await page.evaluate(() => { window.ospTest.god(true); window.ospTest.ff(60); });
-  expect(await dawdle()).toBe(0); await page.evaluate(() => window.ospTest.ff(31)); await expect.poll(() => state(page)).toBe('ending'); expect(await dawdle()).toBe(0);
+  expect(await dawdle()).toBe(0); await page.evaluate(() => window.ospTest.ff(31)); await expect.poll(() => fight(page).then(f => f.ko)).toBe('call'); expect(await dawdle()).toBe(0);
   expect(errors).toEqual([]); });
 // The whole game twice: the first on the URL's seed; the second after Back to title cleared it, so New Game rolls a Moon nobody
 // chose. Each #new click locks the mouse, and #back takes the click only because finish() lets it go (pre-flight F1).
@@ -335,28 +335,23 @@ test('two whole games in a row: title, opening, play, the final stand, Houston, 
   const errors = watchErrors(page); await page.goto(URLS[1][1] + '#APOLLO-4471'); await ready(page);
   for (let g = 0; g < 2; g++) { await page.click('#new'); await expect.poll(() => state(page)).toBe('opening'); await throughOpening(page);
     await toComms(page); await onHold(page); await page.evaluate(() => { window.ospTest.god(true); window.ospTest.ff(91); });
-    await expect(page.locator('#end')).toBeVisible({ timeout: 20_000 }); await expect(page.locator('#stats')).toContainText('GOLF BALLS');
+    await expect(page.locator('#end')).toBeVisible({ timeout: 40_000 }); await expect(page.locator('#stats')).toContainText('GOLF BALLS');
     await page.click('#back'); await expect(page.locator('#title')).toBeVisible(); expect(await state(page)).toBe('title'); }
   expect(await page.evaluate(() => location.hash)).toBe(''); expect(errors).toEqual([]); });
-// R18: the ending's gate in the shell. In one evaluate (no frames between steps): 1/30 s steps on hold until Houston picks up, then
-// through the ending, noting the ending's clock, whether the radio is idle and the subtitle at each step. As the ending starts, the
-// switchboard's three lines are cued `holds` more times. Returns the samples, the ending's length T (its clock at the last sample,
-// plus the step that ended it), the state and #sub.
-const throughEnding = (page, holds = 0) => page.evaluate(n => { const o = window.ospTest, sub = () => document.getElementById('sub').textContent, s = []; o.god(true);
-  for (let i = 0; i < 3000 && o.state() !== 'ending'; i++) o.ff(1 / 30);
+// R18 moved: on hold to just before Houston (cueing the switchboard intro `holds` times), then through the call to the knock-out.
+const throughCall = (page, holds = 0) => page.evaluate(([n, H]) => { const o = window.ospTest, sub = () => document.getElementById('sub').textContent, s = []; o.god(true);
+  for (let i = 0; i < 3000 && o.clock().hold < H - .1; i++) o.ff(1 / 30);
   for (let i = 0; i < n; i++) o.cue('hold');
-  for (let i = 0; i < 1000 && o.state() === 'ending'; i++) { const r = o.radio(); s.push({ t: o.clock().ending, idle: !r.line && !r.queued.length, line: r.line, sub: sub() }); o.ff(1 / 30); }
-  return { s, T: s.at(-1).t + 1 / 30, state: o.state(), sub: sub(), end: getComputedStyle(document.getElementById('end')).display }; }, holds);
-test('the end screen comes ENDING.min s after Houston once the radio is idle, else as it goes idle, with the punchline over and no subtitle left (R18)', async ({ page }) => {
-  await noVoices(page); const errors = watchErrors(page); await start(page); await toComms(page); await onHold(page); const r = await throughEnding(page);
-  const idle = r.s.find(x => x.idle)?.t ?? r.T; expect(r.s.some(x => x.sub.includes('one small problem'))).toBe(true);
-  expect(r.T).toBeGreaterThanOrEqual(ENDING.min - 1e-6); expect(r.T).toBeLessThanOrEqual(Math.max(ENDING.min, idle) + 2 / 30 + 1e-6); expect(r.T).toBeLessThan(ENDING.max);
-  expect([r.state, r.sub, r.end]).toEqual(['end', '', 'flex']); expect(errors).toEqual([]); });
-test('at ENDING.max the end screen comes whatever is still on the air, and takes its subtitle down (R18)', async ({ page }) => {
-  await noVoices(page); const errors = watchErrors(page); await start(page); await toComms(page); await onHold(page);
-  const r = await throughEnding(page, 3), last = r.s.at(-1); // still talking at ENDING.max
-  expect(Math.abs(r.T - ENDING.max)).toBeLessThanOrEqual(2 / 30); expect(last.line).not.toBe(null); expect(last.sub).not.toBe('');
-  expect([r.state, r.sub, r.end]).toEqual(['end', '', 'flex']); expect(errors).toEqual([]); });
+  for (let i = 0; i < 3000 && o.fight().ko !== 'out' && o.state() === 'play'; i++) { const r = o.radio(); s.push({ t: o.clock().ko, line: r.line, sub: sub(), downs: o.audio().downs }); o.ff(1 / 30); }
+  return { s, state: o.state(), sub: sub(), downs: o.audio().downs, ko: o.fight().ko }; }, [holds, HOLD.time]);
+test('R18 moved: the knock-out comes as the rescue line\'s talk ends, with no closing tone', async ({ page }) => {
+  await noVoices(page); const errors = watchErrors(page); await start(page); await toComms(page); await onHold(page); const r = await throughCall(page), last = r.s.at(-1);
+  expect(r.s.some(x => x.sub.includes('one small problem'))).toBe(true); expect(last.line).toContain('twenty min'); expect(last.t).toBeLessThan(KO.call);
+  expect(r.downs).toBe(r.s.find(x => x.line?.includes('twenty min')).downs); /* pre-flight F6: the sample at the rescue line itself; T10 inherits this check through throughCall */ expect([r.state, r.sub, r.ko]).toEqual(['end', '', 'out']); expect(errors).toEqual([]); });
+test('R18 moved: at KO.call the knock-out comes whatever is on the air', async ({ page }) => {
+  await noVoices(page); const errors = watchErrors(page); await start(page); await toComms(page); await onHold(page); const r = await throughCall(page, 3), last = r.s.at(-1);
+  expect(Math.abs(last.t - KO.call)).toBeLessThanOrEqual(2 / 30); expect(last.line).not.toBe(null); expect(r.s.some(x => x.sub.includes('twenty min'))).toBe(false);
+  expect([r.state, r.sub, r.ko]).toEqual(['end', '', 'out']); expect(errors).toEqual([]); });
 // R23: the music stays ducked between the lines of a sequence: in the gaps of the switchboard's three-line intro (after its first or
 // second line, the rest still waiting) the duck holds. Between lines with no story line waiting (nothing, or a reaction alone) it is
 // off: the duck is set as a line goes off, and a story line can only leave the queue by keying up. One evaluate of 1/30 s steps,
