@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test'; import { pathToFileURL } from 'node:url'; import { resolve } from 'node:path';
 import { generateWorld } from '../src/gen/world.js'; import { checksumWorld } from '../src/gen/checksum.js';
-import { HELP_TIME } from '../src/ui/hud.js';
+import { HELP_TIME } from '../src/ui/hud.js'; import { fmtTime } from '../src/ui/score.js';
 export const URLS = [['file', pathToFileURL(resolve('dist/index.html')).href], ['http', 'http://localhost:4173/index.html']];
 // Benign Firefox parser note about the packed binary payload when the server's utf-8 header overrides the page's iso-8859-15 meta; real decoding failures are caught by the ready check.
 const BENIGN = /byte stream was erroneous according to the character encoding/i;
@@ -232,7 +232,10 @@ const clock = page => page.evaluate(() => window.ospTest.clock());
 test('the comms array puts you on hold; Houston picks up after the final stand; then the end screen (final stand)', async ({ page }) => {
   const errors = watchErrors(page); await start(page); await toComms(page); await onHold(page); await expect(page.locator('#prompt')).toContainText('ON HOLD');
   await page.evaluate(() => { window.ospTest.god(true); window.ospTest.ff(91); }); await expect.poll(() => state(page)).toBe('ending');
-  await expect(page.locator('#end')).toBeVisible({ timeout: 20_000 }); expect(await state(page)).toBe('end'); expect(errors).toEqual([]); });
+  await expect(page.locator('#end')).toBeVisible({ timeout: 20_000 }); expect(await state(page)).toBe('end');
+  // R9: the time and kills shown are those at Houston, not at the end of the ending (at least ENDING.min s later)
+  const f = await fight(page); expect(f.time - f.wonAt).toBeGreaterThan(5); await expect(page.locator('#stats')).toContainText('TIME ' + fmtTime(f.wonAt));
+  await expect(page.locator('#stats')).toContainText('KILLS ' + f.kills); expect(errors).toEqual([]); });
 test('dying during the final stand restarts you at the comms door, off hold (final stand)', async ({ page }) => {
   const errors = watchErrors(page); await start(page); await toComms(page); await onHold(page); await page.evaluate(() => window.ospTest.hurt(999));
   await expect(page.locator('#prompt')).toContainText('the comms room door'); await expect.poll(() => fight(page).then(f => f.state), { timeout: 10_000 }).toBe('play');

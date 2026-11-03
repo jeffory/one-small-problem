@@ -129,13 +129,14 @@ function boot() {
     state = 'title';
     menus.title(true, normalizeSeed(location.hash)); hud.mode('none'); hud.seed('');
   }
-  // The end screen: the fight's sim time (deaths count; the opening and pauses don't), lifetime kills, golf balls and the
-  // seed's best time. The mouse is let go, so #back, #copy and #link take clicks (pre-flight F1).
+  // The end screen: the fight's sim time up to Houston picking up (deaths count; the opening, pauses and the ending don't, R9),
+  // lifetime kills (frozen at Houston too), golf balls and the seed's best time. The mouse is let go, so #back, #copy and #link
+  // take clicks (pre-flight F1).
   function finish() {
     if (state !== 'play' && state !== 'ending') return;
-    const { F, seed } = run;
+    const { F, seed } = run, time = F.wonAt ?? F.time;
     state = 'end'; unpause();
-    menus.end({ time: F.time, kills: F.kills, golf: F.golf, link: shareLink(location.href, seed), seed, ...recordBest(store, seed, F.time) });
+    menus.end({ time, kills: F.kills, golf: F.golf, link: shareLink(location.href, seed), seed, ...recordBest(store, seed, time) });
     hud.mode('none');
     input.unlock();
   }
@@ -211,7 +212,7 @@ function boot() {
     player: () => { const p = run.F.player; return { x: p.x, y: p.y, z: p.z }; },
     fight: () => { const F = run.F, p = F.player, s = areaStart(run.world, F.area);
       return { hp: F.hp, cells: F.ars.cells, cur: F.ars.cur, state: F.state, kills: F.kills, bolts: F.bolts.length, shots: F.shots, area: AREAS[F.area], golf: F.golf, time: F.time, atStart: Math.hypot(p.x - s.x, p.z - s.z) < 1,
-        hold: F.hold?.t ?? null, won: F.won }; },
+        hold: F.hold?.t ?? null, won: F.won, wonAt: F.wonAt }; },
     area: () => AREAS[run.F.area],
     grab: () => { const F = run.F, p = F.player; p.x = F.flag.x + 1; p.z = F.flag.z; p.y = F.lv.ground(p.x, p.z); stepFight(F, { ...IDLE, use: true }, .001); },
     give: () => { const A = run.F.ars; for (let i = 0; i < WEAPONS.length; i++) A.owned[i] = true; A.cells = 150; if (A.cur < 0) A.cur = 0; },

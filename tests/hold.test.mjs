@@ -40,6 +40,31 @@ test('dying during the final stand restarts you at the comms door off hold, its 
 test('an idle player at the array does not survive the hold: the final stand is a real fight (final stand)', () => {
   const F = atArray(); stepFight(F, { ...idle, use: true }, 1 / 60); let died = false;
   for (let t = 0; t < HOLD.time && !died; t += 1 / 30) { stepFight(F, idle, 1 / 30); died = F.events.some(e => e.type === 'dead'); F.events.length = 0; } assert.ok(died); });
-test('the immortal bot with the finale on plays a whole run, wreck to Houston, within 800 s (final stand)', () => {
-  const F = createFight(W), bot = createBot(W, makeRng('finale'), true); F.god = true; let t = 0;
-  while (!bot.done && t < 900) { stepFight(F, botStep(bot, F, 1 / 30), 1 / 30); F.events.length = 0; t += 1 / 30; } assert.equal(bot.done, 'houston'); assert.ok(F.won && t < 800, `${t}`); });
+// R7: the brief's "stays within 1 m of the call spot" means it walks back to within 1 m after a knock (claws, lunges and blasts throw
+// it metres off), so the longest stretch more than 1 m away is bounded. APOLLO-4471 at fixed 1/30 s steps is the brief's run;
+// BOT-0028 and BOT-0007 at uneven frame times cut as main.js does were pinned 3 m off behind the dish pedestal (26.2 s and 11.8 s)
+// by a straight walk home.
+const finale = (seed, uneven) => { const W = generateWorld(seed), F = createFight(W), bot = createBot(W, makeRng('finale'), true), r = makeRng('dt' + seed), c = callSpot(W.baseMap);
+  F.god = true; let t = 0, off = 0, longest = 0;
+  while (!bot.done && t < 900) { const dt = uneven ? Math.min(.25, r.range(1 / 144, 1 / 18)) : 1 / 30, n = Math.max(1, Math.ceil(dt / .05));
+    for (let k = 0; k < n; k++) { const inp = botStep(bot, F, dt / n); stepFight(F, k ? { ...inp, use: false, weapon: -1, wheel: 0 } : inp, dt / n);
+      if (F.hold && !F.won) { off = Math.hypot(F.player.x - c.x, F.player.z - c.z) > 1 ? off + dt / n : 0; longest = Math.max(longest, off); } }
+    F.events.length = 0; t += dt; }
+  return { F, bot, t, longest }; };
+test('the immortal bot with the finale on plays a whole run, wreck to Houston, within 800 s, never more than 1 m off the call spot for 5 s on hold (final stand, R7)', () => {
+  for (const [seed, uneven] of [['APOLLO-4471', false], ['BOT-0028', true], ['BOT-0007', true]]) { const { F, bot, t, longest } = finale(seed, uneven);
+    assert.equal(bot.done, 'houston', seed); assert.ok(F.won && t < 800, `${seed} ${t}`); assert.ok(longest < 5, `${seed}: ${longest} s more than 1 m off the call spot`); } });
+// R8: a death in the step Houston would pick up leaves no Houston behind (hp 0 there stands in for a blow earlier in the step)
+test('dying in the step Houston would pick up: no Houston; after the restart you are off hold and not won, and E at the array starts a hold that runs (final stand, R8)', () => {
+  const F = atArray(); stepFight(F, { ...idle, use: true }, 1 / 60); F.aliens.length = 0; F.hold.plan.length = 0; F.hold.t = HOLD.time - 1 / 120; F.events.length = 0;
+  F.hp = 0; stepFight(F, idle, 1 / 60); assert.ok(!F.events.some(e => e.type === 'houston')); assert.deepEqual([F.state, F.won], ['dead', false]);
+  run(F, idle, DEATH_TIME + .1); assert.deepEqual([F.state, F.hold, F.won, F.wonAt], ['play', null, false, null]);
+  const s = callSpot(M); put(F, s.x, s.z); stepFight(F, { ...idle, use: true }, 1 / 60); const t0 = F.hold.t; run(F, idle, 1, 1 / 30);
+  assert.ok(Math.abs(F.hold.t - t0 - 1) < .05, `${F.hold.t}`); assert.equal(F.won, false); });
+// R9: the end screen's time and kills stop at Houston, so a best time doesn't depend on how long the ending's radio talks, and the
+// invulnerable ending can't farm kills
+test('the run\'s time and kills stop at Houston: wonAt is the sim time then, and no kill after it counts (final stand, R9)', () => {
+  const F = atArray(); F.god = true; stepFight(F, { ...idle, use: true }, 1 / 60); F.hold.plan = [0, 1].map(door => ({ at: 0, type: 'sk', door, wave: 0 }));
+  stepFight(F, idle, 1 / 30); const [a, b] = F.aliens; hurtAlien(a, 999, 0, 0); stepFight(F, idle, 1 / 30); assert.equal(F.kills, 1);
+  F.hold.t = HOLD.time - 1 / 60; stepFight(F, idle, 1 / 30); assert.ok(F.won); assert.equal(F.wonAt, F.time); const at = F.wonAt;
+  hurtAlien(b, 999, 0, 0); run(F, idle, 5); assert.equal(b.state, 'dead'); assert.equal(F.kills, 1); assert.equal(F.wonAt, at); assert.ok(F.time > at + 4.9); });

@@ -34,7 +34,7 @@ export function createFight(world, k = 0) {
     encs: [], aliens: [], bolts: [], pickups: [], canisters: [], balls: [], parts: [], decals: [], booms: [],
     flag: { x: fs.x, y: sampleGround(world, fs.x, fs.z), z: fs.z, held: false }, entry: { owned: [false, false, false], cells: 0, flagHeld: false },
     state: 'play', deadT: 0, time: 0, kills: 0, shots: 0, shotT: 9, hurtT: 0, field: createField(), fieldT: 0, events: [], god: false,
-    found: [], golf: 0, hold: null, won: false };
+    found: [], golf: 0, hold: null, won: false, wonAt: null };
   clearDecals(F);
   const C = F._ctx = { ground: lv.ground, ceil: lv.ceil, px: 0, py: 0, pz: 0, field: F.field, rng: F.rng, others: F.aliens,
     los: a => lineOfSight(F.lv.ground, muzzleAt(a, C), [C.px, C.py + PLAYER.eye, C.pz], F.lv.ceil),
@@ -103,10 +103,11 @@ function die(F) {
 
 // Back to the current area's start with what you entered it with, facing it (and any later area of the level) fresh. Earlier
 // areas of the level keep the pickups, intact canisters and golf balls you left there; every alien goes, so those you fled from
-// are gone. Found golf balls stay found. A death on hold takes you off hold (its aliens and supplies are area 3's).
+// are gone. Found golf balls stay found. A death on hold takes you off hold (its aliens and supplies are area 3's), and
+// Houston never picked up (R8).
 export function restartArea(F) {
   const E = F.entry, A = F.ars, k = F.area;
-  F.aliens.length = 0; F.hold = null;
+  F.aliens.length = 0; F.hold = null; F.won = false; F.wonAt = null;
   keep(F.pickups, q => q.area < k);
   keep(F.canisters, c => c.area < k && !(c.hp <= 0 || c.fuse > 0));
   keep(F.balls, b => b.area < k);
@@ -190,8 +191,9 @@ export function stepFight(F, input, dt) {
     const e = a.enc, dx = p.x - e.x, dz = p.z - e.z;
     if (e.alerted || dx * dx + dz * dz < wake * wake) stepAlien(a, C, dt); else a.t += dt;
   }
-  // 5a. on hold: the waves come in, until Houston picks up
-  if (F.hold && !F.won) stepHold(F, dt);
+  // 5a. on hold: the waves come in, until Houston picks up; only while you are alive this step (R8): a blow in steps 3-5 has
+  // already killed you, and hp set to 0 directly is only turned into a death at step 11
+  if (F.hold && !F.won && F.state === 'play' && F.hp > 0) stepHold(F, dt);
   // 5b. the player can't stand inside a live walker or a canister
   bodies(F);
   // 6. bolts, 7. deaths, 8. canisters
@@ -225,7 +227,8 @@ function startHold(F, d) {
 
 // dt seconds on hold. Planned spawns come in order once due, while fewer than HOLD.cap hold aliens are alive (one that finds no
 // free slot waits, and so do those after it), each at its door, first moving next step. Mission Control's on-hold message is
-// due every HOLD.msg s from HOLD.msg / 2; at HOLD.time Houston picks up.
+// due every HOLD.msg s from HOLD.msg / 2; at HOLD.time Houston picks up, and the run's time stops there (R9: wonAt, which the
+// end screen and the best time use, whatever the ending's radio takes).
 function stepHold(F, dt) {
   const H = F.hold, P = H.plan, D = F.world.baseMap.spawnDoors;
   H.t += dt;
@@ -237,7 +240,7 @@ function stepHold(F, dt) {
     a.area = 3; F.aliens.push(a);
   }
   while (H.t >= HOLD.msg / 2 + H.msgs * HOLD.msg) F.events.push({ type: 'holdmsg', n: H.msgs++ });
-  if (H.t >= HOLD.time) { F.won = true; F.events.push({ type: 'houston' }); }
+  if (H.t >= HOLD.time) { F.won = true; F.wonAt = F.time; F.events.push({ type: 'houston' }); }
 }
 
 // R16: the player is pushed out of live walkers and canisters (horizontally, where their heights overlap). A push to where the
@@ -295,7 +298,8 @@ function flyBolts(F, dt) {
   }
 }
 
-// New deaths score, splash goo and drop; corpses sink over their last SINK seconds and go after CORPSE. Ids never change.
+// New deaths score (until Houston picks up, R9: no kill farming in the invulnerable ending), splash goo and drop; corpses sink
+// over their last SINK seconds and go after CORPSE. Ids never change.
 function deaths(F) {
   const G = F.lv.ground, L = F.aliens; let w = 0;
   for (const a of L) {
@@ -311,7 +315,7 @@ function deaths(F) {
 }
 
 function killed(F, a) {
-  a._died = F.time; F.kills++;
+  a._died = F.time; if (!F.won) F.kills++;
   const c = worldSpheres(a)[0], gy = F.lv.ground(a.x, a.z);
   burst(F, 'goo', c[0], c[1], c[2], 24, 1.5, 1, 3, 8, 8);
   F.events.push({ type: 'kill', x: a.x, y: gy, z: a.z });

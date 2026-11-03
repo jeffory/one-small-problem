@@ -21,7 +21,7 @@ import { cameraBasis } from '../gfx/math.js';
 export const BOT = { wp: 3, turn: 5, fire: .052, sight: 40, noise: .04, strafe: 1.3, stuck: 3, stall: 45, use: 1.6 };
 // GAIN: the drop in the distance left (m or field steps) that counts as progress; JIG: how long a jiggle lasts (s); NOISE_T: how
 // often the aim noise is redrawn (s); DODGE: the dodge strafe; POLE: how near (m) a target must be to swing the flag pole at it;
-// SCATTER: how near for the scattergun; STAY: on hold it keeps within this of the call spot (m): it walks back once half of it away.
+// SCATTER: how near for the scattergun; STAY: on hold it keeps within this of the call spot (m): it heads back once half of it away.
 const GAIN = 1, JIG = 1, NOISE_T = .5, DODGE = .6, POLE = 2.4, SCATTER = 10, PITCH = 1.5, STAY = 1;
 const DI = [1, -1, 0, 0], DJ = [0, 0, 1, -1], IDLE = { fwd: 0, strafe: 0, run: false, jump: false, fire: false, use: false, weapon: -1, wheel: 0 };
 const wrap = a => Math.atan2(Math.sin(a), Math.cos(a)), clamp = (v, m) => Math.max(-m, Math.min(m, v));
@@ -83,12 +83,17 @@ export function botStep(bot, F, dt) {
   if (stage === 'base') {
     const B = W.baseMap, s = down(bot.bf ??= baseField(B, B.commsDoor.x, B.commsDoor.z), B.n, B.half, p.x, p.z);
     [gx, gz, rem] = s || [B.commsDoor.x, B.commsDoor.z, Infinity];
-  } else if (stage === 'call') {
-    const B = W.baseMap, c = callSpot(B), d = dishOf(B), s = down(bot.cf ??= baseField(B, c.x, c.z), B.n, B.half, p.x, p.z);
-    [gx, gz, rem] = s || [c.x, c.z, Infinity];
-    inp.use = Math.hypot(d.x - p.x, d.z - p.z) <= HOLD.reach - .3;
-  } else if (stage === 'hold') {
-    const c = callSpot(W.baseMap); gx = c.x; gz = c.z; rem = 0; parked = Math.hypot(gx - p.x, gz - p.z) < STAY / 2;
+  } else if (stage === 'call' || stage === 'hold') {
+    const B = W.baseMap, c = callSpot(B), f = bot.cf ??= baseField(B, c.x, c.z), s = down(f, B.n, B.half, p.x, p.z);
+    if (stage === 'call') {
+      const d = dishOf(B); [gx, gz, rem] = s || [c.x, c.z, Infinity];
+      inp.use = Math.hypot(d.x - p.x, d.z - p.z) <= HOLD.reach - .3;
+    } else {
+      // R7: knocked off the call spot, it goes home by the field (round the dish pedestal and the crates, never into them);
+      // inside the call tile, or with no field step, straight
+      const home = s && f[Math.round(p.z + B.half) * B.n + Math.round(p.x + B.half)] > 0;
+      [gx, gz] = home ? s : [c.x, c.z]; rem = 0; parked = Math.hypot(c.x - p.x, c.z - p.z) < STAY / 2;
+    }
   } else if (stage === 'flag') {
     gx = F.flag.x; gz = F.flag.z; rem = Math.hypot(gx - p.x, gz - p.z); inp.use = rem < BOT.use;
   } else {
@@ -131,12 +136,12 @@ export function botStep(bot, F, dt) {
   const m = BOT.turn * dt;
   p.yaw += clamp(wrap(wy - p.yaw), m); p.pitch += clamp(wp - p.pitch, m);
 
-  // 6. move toward the goal whatever the facing (analog keys), unless parked; with a target walk, dodging side to side
-  // (on hold the walk back to the call spot outpulls the dodge); jiggle when stuck
+  // 6. move toward the goal whatever the facing (analog keys), unless parked; with a target walk, dodging side to side, except
+  // on hold off the call spot, where it runs home still fighting (R7: a knock-back costs seconds, not the stand); jiggle when stuck
   const rel = Math.atan2(p.x - gx, p.z - gz) - p.yaw;
   if (!parked) { inp.fwd = Math.cos(rel); inp.strafe = -Math.sin(rel); }
   if ((bot.dodgeT += dt) >= BOT.strafe) { bot.dodgeT -= BOT.strafe; bot.dodge = -bot.dodge; }
-  if (T) { inp.strafe += DODGE * bot.dodge; inp.run = false; }
+  if (T && (stage !== 'hold' || parked)) { inp.strafe += DODGE * bot.dodge; inp.run = false; }
   if (bot.jig > 0) { bot.jig -= dt; inp.jump = true; inp.strafe = bot.side; }
 
   // 7. the weapon: the scattergun near, else the pistol, else the pole; fire when the view is within BOT.fire of the target's
