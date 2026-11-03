@@ -145,13 +145,15 @@ const calling = () => { const F = createFight(W, 3); F.aliens.length = 0; F.ko =
 const through = (F, dt) => { const ev = [], at = {}, p = F.player, x = p.x, z = p.z; let t = 0, moved = 0;
   while (F.ko && t < 20) { stepFight(F, { ...idle, fwd: 1 }, dt); t += dt; for (const e of F.events) if (['stamp', 'wake', 'woke'].includes(e.type)) { ev.push(e.type); at[e.type] = t; }
     F.events.length = 0; if (F.ko && F.ko.phase !== 'up') moved = Math.max(moved, Math.hypot(p.x - x, p.z - z)); } return { ev, at, moved }; };
-test('the knock-out: stripped into the shut cell; black, the stamp, the wake on the floor, look locked, up, THE CELLS', () => {
-  const F = calling(); give(F.ars, 1, 80); F.hp = 33; assert.ok(knockOut(F)); const r0 = F.run;
+test('the knock-out: stripped into the shut cell, your kills and golf balls kept (spec 3); black, the stamp, the wake on the floor, look locked, up, THE CELLS', () => {
+  const F = calling(); give(F.ars, 1, 80); F.hp = 33; Object.assign(F, { kills: 7, golf: 3, found: [0, 2, 3] }); assert.ok(knockOut(F)); const r0 = F.run;
+  assert.deepEqual([F.kills, F.golf, F.found], [7, 3, [0, 2, 3]], 'carried into the cell');
   assert.deepEqual([F.area, F.lv.id, F.ko.phase, F.hp, F.ars.owned, F.ars.cells, F.flag.held, F.cell.shut, F.hold], [4, 'prison', 'out', KO.hp, [true, false, false], 0, true, true, null]);
   assert.deepEqual([F.entry.owned, F.entry.cells, koLight(F), koLock(F), F.eye], [[true, false, false], 0, 0, true, KO.eye]);
   const { ev, at, moved } = through(F, 1 / 30); assert.deepEqual(ev, ['stamp', 'wake', 'woke']); assert.equal(moved, 0, 'still on the floor');
   assert.ok(Math.abs(at.stamp - KO.stamp) < .05 && Math.abs(at.wake - KO.out) < .05 && Math.abs(at.woke - KO.out - KO.down - KO.getUp) < .08, JSON.stringify(at)); // pre-flight F4: with the carried overshoot each is within one 1/30 step
-  assert.deepEqual([F.ko, F.eye, koLight(F), koLock(F), wakeIn(F)], [null, undefined, 1, false, 0]); assert.ok(F.run - r0 < .04, 'the run clock stopped'); });
+  assert.deepEqual([F.ko, F.eye, koLight(F), koLock(F), wakeIn(F)], [null, undefined, 1, false, 0]); assert.ok(F.run - r0 < .04, 'the run clock stopped');
+  assert.deepEqual([F.kills, F.golf, F.found], [7, 3, [0, 2, 3]], 'kept through the wake'); });
 test('a slow frame across the knock-out: each event once, in order (Review Focus 5)', () => { const F = calling(); knockOut(F); assert.deepEqual(through(F, .25).ev, ['stamp', 'wake', 'woke']); });
 test('the prison\'s sights: near the cow, the chair and the exit lift each cue once a run', () => {
   assert.deepEqual(SIGHTS, { cow: 5, chair: 4, exit: 12 }); const F = cellF(), ev = []; openBars(F); F.aliens.length = 0; F.god = true;

@@ -67,7 +67,7 @@ test('R9 moved: F.run and kills stop at Houston while F.time runs on', () => {
   const F = atArray(); F.god = true; stepFight(F, { ...idle, use: true }, 1 / 60); F.hold.plan = [0, 1].map(door => ({ at: 0, type: 'sk', door, wave: 0 }));
   stepFight(F, idle, 1 / 30); const [a, b] = F.aliens; hurtAlien(a, 999, 0, 0); stepFight(F, idle, 1 / 30); assert.equal(F.kills, 1);
   F.hold.t = HOLD.time - 1 / 60; stepFight(F, idle, 1 / 30); assert.deepEqual([F.ko.phase, F.won, F.wonAt], ['call', false, null]); const at = F.run, t0 = F.time;
-  hurtAlien(b, 999, 0, 0); run(F, idle, 5); assert.equal(F.kills, 1); assert.equal(F.run, at); assert.ok(F.time > t0 + 4.9); });
+  hurtAlien(b, 999, 0, 0); run(F, idle, 5); assert.equal(b.state, 'dead'); assert.equal(F.kills, 1); assert.equal(F.run, at); assert.ok(F.time > t0 + 4.9); });
 const houston = () => { const F = atArray(); stepFight(F, { ...idle, use: true }, 1 / 60); F.aliens.length = 0; F.hold.plan.length = 0; F.hold.t = HOLD.time; stepFight(F, idle, 1 / 60); F.events.length = 0; return F; };
 test('the knock-out comes KO.call s after Houston or at once by knockOut, only once; nothing hurts meanwhile (Review Focus 1)', () => {
   assert.deepEqual(KO, { call: 30, out: 5, stamp: 1.5, fade: 1, down: 3, getUp: .8, eye: .3, pitch: .6, hp: 70, text: 'ANOTHER SMALL PROBLEM' });
