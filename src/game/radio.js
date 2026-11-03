@@ -110,9 +110,13 @@ export function pauseRadio(R) {
   return R.phase === 'unkey' ? over(R) : [];
 }
 
-// Houston picks up: a reaction on the air (keyed, talking or keying down) ends now, so the Houston pair keys after just the gap;
-// a story line plays on, and nothing on the air leaves nothing to cut (R18). The actions, as stepRadio's.
-export function cutReaction(R) { return R.cur && !R.cur.crit && R.phase !== 'gap' && R.phase !== 'idle' ? over(R) : NONE; }
+// Houston picks up, and the hold's chatter is over: on-hold messages still waiting are dropped, and a reaction or an on-hold
+// message on the air (keyed, talking or keying down) ends now, so the Houston pair keys after just the gap; a story line plays on,
+// and nothing on the air leaves nothing to cut (R18, R26). The actions, as stepRadio's.
+export function cutReaction(R) {
+  const L = R.cur; R.q = R.q.filter(l => l.key !== 'holding');
+  return L && (!L.crit || L.key === 'holding') && R.phase !== 'gap' && R.phase !== 'idle' ? over(R) : NONE;
+}
 
 // Nothing on the air or waiting.
 export function radioIdle(R) { return !R.cur && !R.q.length && (R.phase === 'idle' || R.phase === 'gap'); }

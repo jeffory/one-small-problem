@@ -78,8 +78,8 @@ test('Houston picking up cuts a reaction on the air, keyed, talking or keying do
     const R = createRadio(always); radioCue(R, 'low'); while (R.phase !== phase) stepRadio(R, 1 / 60, voiced, false); assert.equal(R.cur.key, 'low');
     radioEvents(R, [{ type: 'houston' }], WON); const c0 = R.clock; assert.deepEqual(cutReaction(R).map(a => a.do), ['off'], phase); assert.equal(R.cur, null);
     const k = run(R, 1, voiced).find(a => a.do === 'key'); assert.equal(k.line.text, SCRIPT.houston[0].slice(2)); assert.ok(k.t - c0 <= .6, `${phase}: keyed ${(k.t - c0).toFixed(3)} s after`); }
-  const Q = createRadio(always); radioCue(Q, 'holding'); run(Q, .5, true); radioEvents(Q, [{ type: 'houston' }], WON);
-  assert.deepEqual(cutReaction(Q), []); assert.equal(Q.cur.key, 'holding', 'a story line is never cut');
+  const Q = createRadio(always); radioCue(Q, 'hold'); run(Q, .5, true); radioEvents(Q, [{ type: 'houston' }], WON);
+  assert.deepEqual(cutReaction(Q), []); assert.equal(Q.cur.key, 'hold', 'a story line is never cut'); assert.deepEqual(Q.q.map(l => l.key), ['hold', 'hold', 'houston', 'houston']);
   const E = createRadio(always); assert.deepEqual(cutReaction(E), [], 'idle'); radioCue(E, 'low'); run(E, 4); assert.equal(E.phase, 'gap'); assert.deepEqual(cutReaction(E), [], 'in the gap'); });
 // R18: the reviewer's ending (main.js's order: the fight's events, the radio's step, then on Houston the cut, then the gate) with a
 // voice whose onend never comes, a reaction on the air as Houston picks up, and a pickup and kills during the ending
@@ -99,3 +99,30 @@ test('the ending lasts ENDING.min s with the radio idle, waits for a line still 
   assert.ok(RADIO.slack * 200 / RADIO.cps + RADIO.pad > ENDING.max);
   for (; !endingOver(t, L); t += dt) stepRadio(L, dt, true, false);
   assert.ok(Math.abs(t - ENDING.max) <= dt + 1e-9, `${t}`); assert.equal(L.phase, 'talk', 'still on the air'); });
+// R26 (completes R18): Houston also ends the hold's chatter: an on-hold message on the air is cut like a reaction, and those still
+// waiting are dropped; the switchboard intro and the Houston pair never are
+import { HOLD } from '../src/game/hold.js';
+test('Houston cuts an on-hold message on the air and drops those waiting, keeping the Houston pair (R26)', () => {
+  const R = createRadio(always); radioCue(R, 'holding'); run(R, .5, true); radioCue(R, 'holding'); radioCue(R, 'low'); assert.equal(R.cur.key, 'holding');
+  radioEvents(R, [{ type: 'houston' }], WON); assert.deepEqual(cutReaction(R).map(a => a.do), ['off']); assert.equal(R.cur, null);
+  assert.deepEqual(R.q.map(l => l.key), ['houston', 'houston', 'low'], 'the waiting on-hold message is dropped');
+  const Q = createRadio(always); radioCue(Q, 'low'); run(Q, .5, true); radioCue(Q, 'holding'); radioEvents(Q, [{ type: 'houston' }], WON);
+  assert.deepEqual(cutReaction(Q).map(a => a.do), ['off']); assert.deepEqual(Q.q.map(l => l.key), ['houston', 'houston']); });
+// R26: the case R18 left open, the hold from E to the end screen in main.js's order with a voice whose onend never comes (the slack
+// fallback), the longest lines, the switchboard intro at 0, an on-hold message every HOLD.msg s from HOLD.msg / 2, and a reaction
+// keyed in the half second before the last of them (77 s), which pushes it onto the air as Houston picks up at HOLD.time. Before
+// R26 the pair keyed 3.25-3.73 s late and ENDING.max cut the punchline off; now it keys at .5 s and ends at 11.45 s.
+const longest = L => L.reduce((m, l, i) => (l.length > L[m].length ? i : m), 0);
+const LONG = { next: () => 0, int: n => (n === SCRIPT.low.length ? longest(SCRIPT.low) : n === SCRIPT.holding.length ? longest(SCRIPT.holding) : 0), range: a => a };
+test('with a voice whose onend never comes and an on-hold message on the air at Houston, the pair keys within .6 s and the punchline ends before ENDING.max (R26)', () => {
+  for (const react of [76.5, 76.75, 76.98]) {
+    const R = createRadio(LONG), dt = 1 / 60; radioCue(R, 'hold'); let t = 0, msgs = 0, won = false, endT = 0, onAir = null, keyed = null, punch = null;
+    for (let i = 0; i < 200 / dt; i++) {
+      const ev = [];
+      if (!won) { while (t >= HOLD.msg / 2 + msgs * HOLD.msg - 1e-9) ev.push({ type: 'holdmsg', n: msgs++ }); if (Math.abs(t - react) < dt / 2) ev.push({ type: 'hurt' }); if (t >= HOLD.time - 1e-9) { won = true; ev.push({ type: 'houston' }); } }
+      radioEvents(R, ev, { won, hp: 10, state: 'play' });
+      for (const a of stepRadio(R, dt, true, false)) { if (a.do === 'key' && a.line.key === 'houston' && keyed === null) keyed = endT; if (a.do === 'unkey' && a.line.text === PUNCH) punch = endT; }
+      if (ev.some(e => e.type === 'houston')) { onAir = R.cur?.key; cutReaction(R); } else if (won && endingOver(endT += dt, R)) break;
+      t += dt; }
+    assert.equal(onAir, 'holding', `${react}: an on-hold message on the air at Houston`); assert.ok(keyed !== null && keyed <= .6, `${react}: the pair keyed ${keyed} s after Houston`);
+    assert.ok(punch !== null && punch < endT && endT < ENDING.max, `${react}: punchline ends at ${punch} s, the ending at ${endT.toFixed(2)} s`); } });

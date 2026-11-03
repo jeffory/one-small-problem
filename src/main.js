@@ -194,8 +194,9 @@ function boot() {
   // After the opening the wreck keeps settling, a call at a time, until every piece is still (pre-flight F29). A level swap is handled for whatever run is on screen, and the events (the fight's and the opening's) are
   // cleared here, so each call (a frame or an ff step) sees only its own (pre-flight F3). When the bot is done (the comms room, or
   // stalled) a fresh attract Moon replaces it; the hash is never touched. Houston picking up starts the ending and cuts a
-  // reaction on the air, its voice with it, so the punchline comes at once (R18); the ending goes to the end screen after
-  // ENDING.min s once the radio is idle, or after ENDING.max s whatever it is saying (endingOver; finish hushes it).
+  // reaction or on-hold message on the air, its voice with it, so the punchline comes at once (R18, R26); the ending goes to
+  // the end screen after ENDING.min s once the radio is idle, or after ENDING.max s whatever it is saying (endingOver; finish
+  // hushes it).
   function advance(dt, inp) {
     const F = run.F, B = run.bot, O = run.O, n = Math.max(1, Math.ceil(dt / .05)), h = dt / n, playing = state === 'play' || state === 'ending';
     if (state === 'title') for (let k = 0; k < n && !B.done; k++) { const b = botStep(B, F, h); stepFight(F, k ? { ...b, use: false, weapon: -1, wheel: 0 } : b, h); }
