@@ -69,6 +69,13 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npx playwright install --with-deps chromium firefox
+      # Firefox's AudioContext only reaches 'running' with an audio device (the runner has none): give it a silent null sink
+      - name: Silent PulseAudio sink
+        run: |
+          sudo apt-get install -y pulseaudio
+          pulseaudio -D --exit-idle-time=-1
+          pactl load-module module-null-sink sink_name=dummy
+          pactl set-default-sink dummy
       # xvfb-run: headless Firefox gets no WebGL2 on a GPU-less runner; playwright.config.mjs runs it headed on CI, which needs a display
       - run: xvfb-run -a npm run test:smoke
       - name: Upload test results
