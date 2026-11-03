@@ -93,6 +93,9 @@ function checkPrison(seed, B) {
   const n = B.n, h = B.half, tile = (o) => Math.round(o.z + h) * n + Math.round(o.x + h), P = B.plan, L = B.crit.length;
   phist[B.attempt] = (phist[B.attempt] || 0) + 1;
   if (!baseAccept(B)) bad('baseAccept');
+  // Final review FR3: no crate on the exit lift's dais (the hall's centred 4 x 4) or the one-tile ring round it.
+  const ex = B.props.find((q) => q.kind === 'exit'), off = (t) => Math.max(Math.abs(t % n - h - ex.x), Math.abs((t - t % n) / n - h - ex.z));
+  for (let t = 0; t < n * n; t++) if (B.kind[t] === TILE.cover && off(t) <= 2.5) { bad('a crate ' + (off(t) <= 1.5 ? 'on' : 'by') + ' the exit lift dais'); break; }
   if (!inRange(L, PRISON_PLAN.crit) || !inRange(B.side.length, PRISON_PLAN.side) || B.links.filter((l) => l.loop).length !== 1) bad('room counts');
   if (B.crit.map((r) => B.rooms[r].theme).filter((t) => t !== 'plain').join() !== 'cell,cellblock,guard,interro,evidence,hall' || B.side.some((r) => B.rooms[r].theme !== 'side')) bad('theme order');
   const shut = B.floor.slice(); for (const t of B.bars.tiles) shut[t] = BASE.wall;
@@ -107,8 +110,8 @@ function checkPrison(seed, B) {
   for (const e of P.encounters) { if (e.area !== 4) bad('encounter area'); for (const a of e.aliens) if (!stand(a)) bad('alien off reachable floor, room ' + e.room); }
   for (const q of [...P.pickups, ...P.canisters, ...P.golf]) if (q.area !== 4 || !stand(q)) bad('item off reachable floor');
 }
-// The escape plan (Plan 6): the climb (area 5) like level 1's crater, the dash (area 6) at p .6 to 1 with full budgets, golf 6 off
-// the route, and the rescue site. A site from the fallback is not rock-clear or not flat, so it fails here.
+// The escape plan (Plan 6): the climb (area 5) like level 1's crater, the dash (area 6) at p .6 to 1 with its budgets scaled by
+// ESCAPE.dashScale (final review FR2), golf 6 off the route, and the rescue site. A site from the fallback is not rock-clear or not flat, so it fails here.
 let dashMin = Infinity, dashMax = 0, siteFlat = 0, shipGap = Infinity, dashGap = Infinity, dashSpread = Infinity, dashTight = 0;
 function checkEscape(seed, w, stands) {
   const bad = (m) => { fail++; console.error(seed, 'escape', m); };
@@ -119,7 +122,7 @@ function checkEscape(seed, w, stands) {
   if (D.length < 6) bad('dash encounters ' + D.length);
   dashMin = Math.min(dashMin, D.length); dashMax = Math.max(dashMax, D.length);
   if (D.some((e) => e.p < ESCAPE.dashP[0] || e.p > ESCAPE.dashP[1])) bad('dash p');
-  if (E.encounters.some((e) => e.first || cost(e) !== budgetAt(e.p))) bad('first or budget');
+  if (E.encounters.some((e) => e.first || cost(e) !== Math.floor(budgetAt(e.p) * (e.area === 6 ? ESCAPE.dashScale : 1)))) bad('first or budget');
   E.encounters.forEach((e, k) => e.aliens.forEach((a) => { if (a.type !== 'fl' && !stands(a)) bad('alien unreachable ' + k); }));
   const cnt = (a, kd) => E.pickups.filter((u) => u.area === a && u.kind === kd).length;
   if ([cnt(5, 'tape'), cnt(5, 'cells'), cnt(6, 'tape'), cnt(6, 'cells')].join() !== '1,1,2,2' || E.pickups.length !== 6) bad('pickup counts');

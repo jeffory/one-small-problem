@@ -39,10 +39,11 @@ export function routePlanner(world) {
   };
   const dist = (a, b) => { const dx = a.x - b.x, dz = a.z - b.z; return Math.sqrt(dx * dx + dz * dz); };
 
-  // Brute, then floaters, then skitterers from the budget at progress p; k (the encounter's index) picks the first floater by parity.
-  const compose = (p, k, r) => {
+  // Brute, then floaters, then skitterers from the budget at progress p, times scale; k (the encounter's index) picks the first
+  // floater by parity.
+  const compose = (p, k, r, scale = 1) => {
     const types = [];
-    let B = budgetAt(p);
+    let B = Math.floor(budgetAt(p) * scale);
     if (p >= 0.3 && B >= 4) { types.push('br'); B -= 4; }
     if (B >= 2 && (k % 2 === 1 || r.next() < 0.35)) { types.push('fl'); B -= 2; }
     if (B >= 4 && r.next() < 0.3) { types.push('fl'); B -= 2; }
@@ -110,18 +111,19 @@ export function routePlanner(world) {
   };
 
   // A walk along pts: an encounter about every GAP m from FIRST_AT to 8 m short of the end (each centred 12 m on), at p0 + dp times
-  // the fraction of the way (firstOne: the first is a lone skitterer, flagged first); two tapes and two cell caches beside the way;
-  // and canister clusters by the walk's encounters 1, 3 and its last. With off ({x, z, r}) the encounters stop short of it: the
-  // last centre is 1 m before where pts first comes within r + 1 m of (x, z) (1 m steps), so every centre is r m or more from it
-  // (and so is every canister), with the count spread over the shorter way at about GAP m (6 at least, as ever).
-  const walk = (pts, rng, area, p0, dp, firstOne, off = null) => {
+  // the fraction of the way (firstOne: the first is a lone skitterer, flagged first), its budget times scale; two tapes and two
+  // cell caches beside the way; and canister clusters by the walk's encounters 1, 3 and its last. With off ({x, z, r}) the
+  // encounters stop short of it: the last centre is 1 m before where pts first comes within r + 1 m of (x, z) (1 m steps), so
+  // every centre is r m or more from it (and so is every canister), with the count spread over the shorter way at about GAP m (6
+  // at least, as ever).
+  const walk = (pts, rng, area, p0, dp, firstOne, off = null, scale = 1) => {
     const L = polylineLength(pts), at = (s) => pointAlong(pts, s), e0 = encounters.length;
     let end = 8;
     if (off) { let s = 0; while (s < L && dist(at(s), off) >= off.r + 1) s++; end = Math.max(end, L - s + 13); }
     const count = Math.max(5, Math.floor((L - FIRST_AT - (end - 8)) / GAP));
     for (let k = 0; k <= count; k++) {
       const s = FIRST_AT + k * (L - end - FIRST_AT) / count, p = p0 + dp * s / L, c = at(s + 12), first = firstOne && k === 0;
-      const aliens = first ? place(c, ['sk'], [-4, 4], [-4, 10], pts, s + 12, rng) : place(c, compose(p, k, rng), [-14, 14], [-4, 10], pts, s + 12, rng);
+      const aliens = first ? place(c, ['sk'], [-4, 4], [-4, 10], pts, s + 12, rng) : place(c, compose(p, k, rng, scale), [-14, 14], [-4, 10], pts, s + 12, rng);
       encounters.push({ x: c.x, z: c.z, p, first, area, aliens });
     }
     const onRoute = (kind, s, lo, hi, either) => {
@@ -203,18 +205,20 @@ export function planFight(world) {
 }
 
 // The escape (Plan 6), level 1's ground walked backwards on streams of its own: the climb up the switchback (area 5), like level 1's
-// crater; the dash from the rim toward the wreck (area 6) with no lone first skitterer, its encounters stopping ESCAPE.shipGap
-// short of the rescue site; golf ball 6 by the dash; and the rescue site (its own stream, so placed first, as it always was).
-// climbAt, climbP: the climb's encounter fractions and p range (as CRATER_AT, CRATER_P); dashP: the dash's p range; golf: golf 6's
-// band of the dash; site: its range (m) from your lander; flat: the most (m) world.h may vary within 4 m of it; rockGap: m it keeps
-// beyond each rock's larger of sx, sz; tries: candidate spots; shipGap: no dash encounter's centre and no dash canister comes
-// within this (m) of the site, so the last stretch to the ship is the rush's alone (Task 8 fix).
-export const ESCAPE = { climbAt: [.25, .6, .95], climbP: [.35, .5], dashP: [.6, 1], golf: [.4, .65], site: [20, 30], flat: .6, rockGap: 6, tries: 80, shipGap: 60 };
+// crater; the dash from the rim toward the wreck (area 6) with no lone first skitterer, its budgets at ESCAPE.dashScale and its
+// encounters stopping ESCAPE.shipGap short of the rescue site; golf ball 6 by the dash; and the rescue site (its own stream, so placed first, as it always was).
+// climbAt, climbP: the climb's encounter fractions and p range (as CRATER_AT, CRATER_P); dashP: the dash's p range; dashScale: its
+// alien budgets' scale (as the base's BASE_SCALE, the user's H2 remedy: at full budgets the dash was as hard as the base they found
+// too hard; final review FR2); golf: golf 6's band of the dash; site: its range (m) from your lander; flat: the most (m) world.h
+// may vary within 4 m of it; rockGap: m it keeps beyond each rock's larger of sx, sz; tries: candidate spots; shipGap: no dash
+// encounter's centre and no dash canister comes within this (m) of the site, so the last stretch to the ship is the rush's alone
+// (Task 8 fix).
+export const ESCAPE = { climbAt: [.25, .6, .95], climbP: [.35, .5], dashP: [.6, 1], dashScale: .5, golf: [.4, .65], site: [20, 30], flat: .6, rockGap: 6, tries: 80, shipGap: 60 };
 export function planEscape(world) {
   const P = routePlanner(world), stream = (s) => makeRng(world.seed + '/escape/' + s + '/' + world.attempt);
   const up = world.crater.path.slice().reverse(), back = world.route.slice().reverse(), site = rescueSite(world, P.standable, stream('site'));
   P.switchback(up, stream('climb'), 5, ESCAPE.climbAt, ESCAPE.climbP);
-  P.walk(back, stream('dash'), 6, ESCAPE.dashP[0], ESCAPE.dashP[1] - ESCAPE.dashP[0], false, { x: site.x, z: site.z, r: ESCAPE.shipGap });
+  P.walk(back, stream('dash'), 6, ESCAPE.dashP[0], ESCAPE.dashP[1] - ESCAPE.dashP[0], false, { x: site.x, z: site.z, r: ESCAPE.shipGap }, ESCAPE.dashScale);
   P.golfIn(stream('golf'), back, ESCAPE.golf, 6, 6);
   return { ...P.plan, site };
 }

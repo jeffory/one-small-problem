@@ -240,9 +240,12 @@ function build(seed, attempt, rng, cfg) {
       if (!feature(r, [[3, 1], [1, 3]], true, K.prop, 2, 'shelf')) return null;
       for (let k = 1 + rng.int(3); k > 0; k--) feature(r, [[3, 1], [1, 3]], false, K.prop, 2, 'shelf');
     } else if (th === 'hall') {
-      band(r, 8, (t) => { floor[t] = .3; });
+      // The exit lift's dais: a centred 4 x 4 at +.3. It is a prop while the crates are placed, so none stands on it or in the
+      // one-tile ring round it (a footprint's ring must be floor), then floor again (final review FR3).
+      band(r, 8, (t) => { floor[t] = .3; kind[t] = K.prop; });
       props.push(prop('exit', cx, .3, cz));
       for (let k = 8 + rng.int(3); k > 0; k--) feature(r, CRATE, false, K.cover, BASE.cover);
+      band(r, 8, (t) => { kind[t] = K.floor; });
     } else if (th === 'comms') {
       // The dais and the dish pedestal: a centred 6 x 6 at +.3, its inner 4 x 4 at +.6, the centre 2 x 2 a prop.
       band(r, 7, (t) => { floor[t] = .3; }); band(r, 8, (t) => { floor[t] = .6; }); band(r, 9, (t) => { kind[t] = K.prop; floor[t] = 2.5; });

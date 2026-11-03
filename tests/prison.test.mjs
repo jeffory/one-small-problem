@@ -24,6 +24,14 @@ test('the lift hall: 20 x 20, the exit lift raised at its centre, crates, no spa
   assert.deepEqual([r.theme, r.x1 - r.x0, r.z1 - r.z0, P.spawnDoors.length], ['hall', 20, 20, 0]); assert.deepEqual([e.x, e.z], [(r.x0 + r.x1 - 1) / 2 - h, (r.z0 + r.z1 - 1) / 2 - h]);
   assert.equal(P.floor[tile(e)], Math.fround(.3)); assert.ok(P.kind.some((k, t) => k === K.cover && P.room[t] === r.id));
   const red = P.lights.filter(l => l.kind === 1); assert.ok(red.length > 0 && red.every(l => P.room[tile(l)] === r.id)); });
+// Final review FR3: crates keep off the exit lift's dais (the hall's centred 4 x 4 at +.3) and a one-tile ring round it, and the
+// dais is floor again once they are placed. Before the fix a crate stood on the dais on 36% of seeds (on the lift's own centre
+// tiles on BOT-0000, BOT-0004 and BOT-0008), so the bot had to find floor beside the lift.
+test('no crate on the exit lift dais or the one-tile ring round it; the dais is floor at +.3', () => {
+  for (const s of ['APOLLO-4471', 'BOT-0000', 'BOT-0004', 'BOT-0008']) {
+    const B = s === 'APOLLO-4471' ? P : generateBase(s, baseAccept, PRISON_PLAN), e = B.props.find(q => q.kind === 'exit'), off = t => Math.max(Math.abs(t % n - h - e.x), Math.abs((t - t % n) / n - h - e.z));
+    for (let t = 0; t < n * n; t++) { if (B.kind[t] === K.cover) assert.ok(off(t) > 2.5, `${s}: a crate ${off(t) <= 1.5 ? 'on' : 'by'} the dais`);
+      if (off(t) <= 1.5) assert.deepEqual([B.kind[t], B.floor[t]], [K.floor, Math.fround(.3)], s); } } });
 test('the prison plan: the guard first; a brute in the guard room; golf 5, tape and cells in evidence; p .4-.9; area 4', () => {
   const L = P.crit.length, E = P.plan.encounters, g = E[0], in1 = P.rooms[1].in, ev = P.rooms.find(r => r.theme === 'evidence'), inEv = q => P.room[tile(q)] === ev.id;
   assert.deepEqual([g.first, g.guard, g.room, g.area, g.x, g.z, g.aliens.map(a => [a.type, a.x, a.z])], [true, true, 1, 4, in1.x, in1.z, [['sk', in1.x, in1.z]]]);
