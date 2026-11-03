@@ -14,8 +14,9 @@ import { AREAS, AREA_TEXT, LEVEL, makeLevel, areaStart, advanceArea } from './ar
 import { K } from '../gen/base.js';
 import { HOLD, planWaves, dishOf } from './hold.js';
 
-// Alien drops (pistol, scatter, flCells) are 20% up on Plan 2's 20, 16 and 15 after the first play-test (H5).
-export const PICKUP = { tape: 25, cells: 25, pistol: 24, scatter: 19, flCells: 18, pistolDrop: .3 };
+// Alien drops (pistol, scatter, flCells) are 20% up on Plan 2's 20, 16 and 15 after the first play-test (H5). Tape drops (Plan 5) come from the sim's
+// F.rng, not generation, so the goldens are untouched: tapeDrop is the chance per alien type, tapeOff the distance it lies from another drop.
+export const PICKUP = { tape: 25, cells: 25, pistol: 24, scatter: 19, flCells: 18, pistolDrop: .3, tapeDrop: { sk: .1, fl: .2, br: 1 }, tapeOff: .7 };
 export const CANISTER = { hp: 15, radius: .45, blast: 5, dmg: 70, knock: 9, fuse: .2 };
 export const DEATH_TIME = 2.5;
 // GOLF_TOTAL: golf balls in a world (3 on the surface, 2 in the base); DOOR_REACH: how near (m) the hangar door's use point E works.
@@ -319,12 +320,19 @@ function deaths(F) {
 }
 
 function killed(F, a) {
-  a._died = F.time; if (!F.won && !a._foe) F.kills++;
+  const scored = !F.won && !a._foe; a._died = F.time; if (scored) F.kills++;
   const c = worldSpheres(a)[0], gy = F.lv.ground(a.x, a.z);
   burst(F, 'goo', c[0], c[1], c[2], 24, 1.5, 1, 3, 8, 8);
   F.events.push({ type: 'kill', x: a.x, y: gy, z: a.z, kind: a.type, n: F.kills, team: a._foe });
   const kind = a.type === 'fl' ? 'cells' : a.type === 'br' ? 'scatter' : a.enc.first || F.rng.next() < PICKUP.pistolDrop ? 'pistol' : null;
   if (kind) F.pickups.push({ kind, x: a.x, y: gy, z: a.z, n: kind === 'cells' ? PICKUP.flCells : PICKUP[kind], area: a.area });
+  const c2 = PICKUP.tapeDrop[a.type]; // the first scoring kill drops tape with no roll; else by chance (rng drawn only when 0 < c2 < 1)
+  if (scored && F.kills === 1 || c2 >= 1 || c2 > 0 && F.rng.next() < c2) {
+    let x = a.x, y = gy, z = a.z;
+    if (kind) { const p = F.player, dx = p.x - a.x, dz = p.z - a.z, d = Math.hypot(dx, dz), tx = a.x + (d > 1e-6 ? dx / d : 1) * PICKUP.tapeOff, tz = a.z + (d > 1e-6 ? dz / d : 0) * PICKUP.tapeOff, ty = F.lv.ground(tx, tz);
+      if (Math.abs(ty - gy) <= WALL) { x = tx; y = ty; z = tz; } }
+    F.pickups.push({ kind: 'tape', x, y, z, n: PICKUP.tape, area: a.area });
+  }
 }
 
 // A shot-out canister lights its fuse; when the fuse runs out it is removed and explodes.

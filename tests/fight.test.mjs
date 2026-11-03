@@ -1,6 +1,6 @@
 import test from 'node:test'; import assert from 'node:assert/strict';
 import { sampleGround } from '../src/gen/surface.js'; import { generateWorld } from '../src/gen/world.js'; import { PLAYER } from '../src/game/player.js'; import { give, WEAPONS } from '../src/game/weapons.js';
-import { createFight, stepFight, hurtPlayer, PICKUP, CANISTER, DEATH_TIME } from '../src/game/fight.js'; import { ALIENS, createAlien } from '../src/game/aliens.js';
+import { createFight, stepFight, hurtPlayer, PICKUP, CANISTER, DEATH_TIME } from '../src/game/fight.js'; import { ALIENS, createAlien, hurtAlien } from '../src/game/aliens.js';
 const W = generateWorld('APOLLO-4471'), idle = { fwd: 0, strafe: 0, run: false, jump: false, fire: false, use: false, weapon: -1, wheel: 0 };
 const run = (F, inp, secs, dt = 1 / 60) => { for (let t = 0; t < secs; t += dt) stepFight(F, typeof inp === 'function' ? inp(t) : inp, dt); };
 const put = (F, x, z) => { Object.assign(F.player, { x, z, y: F.lv.ground(x, z), vx: 0, vy: 0, vz: 0, kx: 0, kz: 0 }); };
@@ -138,3 +138,27 @@ test('a level pole swing hits a skitterer at your feet 1.2 m ahead and one 40 de
   assert.deepEqual(swing(() => 0, [[0, -1.2], [1.2 * Math.sin(r), -1.2 * Math.cos(r)], [0, 1.2]]), [hurt, hurt, ALIENS.sk.hp]); });
 test('a skitterer 1.5 m ahead and 1 m down a slope is hit by a level swing (Review Focus 5)', () => {
   assert.deepEqual(swing((x, z) => (z < 0 ? .7 * z : 0), [[0, -1.5]]), [ALIENS.sk.hp - WEAPONS[0].dmg]); });
+const kill = (F, a, foe) => { hurtAlien(a, 999, 0, 0); if (foe) a._foe = 1; stepFight(F, idle, 1 / 60); };
+test('the first scoring kill drops tape .7 m from its other drop toward you; a later kill only by chance (Plan 5)', () => {
+  const F = createFight(W); F.pickups.length = 0; F.rng.next = () => .999; // no chance roll succeeds
+  const a = F.aliens.find(x => x.enc.first), b = F.aliens.find(x => x.type === 'sk' && !x.enc.first);
+  kill(F, a); assert.equal(F.kills, 1); const gun = F.pickups.find(p => p.kind === 'pistol'), tape = F.pickups.find(p => p.kind === 'tape');
+  assert.ok(gun && tape); assert.equal(tape.n, PICKUP.tape); assert.equal(tape.area, a.area);
+  const p = F.player, dx = tape.x - gun.x, dz = tape.z - gun.z, d = Math.hypot(dx, dz), toward = (dx * (p.x - gun.x) + dz * (p.z - gun.z)) / d / Math.hypot(p.x - gun.x, p.z - gun.z);
+  assert.ok(Math.abs(d - PICKUP.tapeOff) < 1e-9 && toward > .999, `${d} ${toward}`);
+  const n = F.pickups.length; kill(F, b); assert.equal(F.kills, 2); assert.equal(F.pickups.length, n); });
+test('an alien-bolt kill (Plan 4 R25) or a kill after Houston (Plan 4 R9) is not the first kill; the next scoring kill is (Plan 5)', () => {
+  for (const how of ['foe', 'won']) { const F = createFight(W); F.pickups.length = 0; F.rng.next = () => .999; const [a, b] = F.aliens.filter(x => x.type === 'sk' && !x.enc.first);
+    if (how === 'won') F.won = true; kill(F, a, how === 'foe'); assert.equal(F.kills, 0); assert.ok(!F.pickups.some(p => p.kind === 'tape'), how);
+    F.won = false; kill(F, b); assert.equal(F.kills, 1); assert.equal(F.pickups.filter(p => p.kind === 'tape').length, 1, how); } });
+test('after the first kill tape drops by chance from the sim rng: skitterers 10%, floaters 20%, brutes always (Plan 5)', () => {
+  const F = createFight(W), S = W.spawn, x = S.x + 30, z = S.z, enc = { x, z, p: 0, first: false, area: 0, room: -1, alerted: false, waved: false };
+  F.aliens.length = 0; F.kills = 1; assert.deepEqual(PICKUP.tapeDrop, { sk: .1, fl: .2, br: 1 });
+  for (const [type, i0] of [['sk', 5000], ['fl', 7000], ['br', 9000]]) { F.pickups.length = 0;
+    for (let i = 0; i < 1000; i++) { const a = createAlien({ type, x, y: sampleGround(W, x, z), z }, i0 + i, enc); a.area = 0; F.aliens.push(a); kill(F, a); }
+    const rate = F.pickups.filter(p => p.kind === 'tape').length / 1000; assert.ok(Math.abs(rate - PICKUP.tapeDrop[type]) < .04, `${type} ${rate}`); } });
+test('a dropped tape never lands in a wall or off a ledge: where .7 m toward you the ground is more than WALL higher or lower it lies at the alien (Review Focus 1, pre-flight F2)', () => {
+  for (const [px, h, want] of [[5, 0, .7], [5, 9, 0], [5, -9, 0], [-5, 9, -.7]]) {
+    const G = (x, z) => (x > .3 ? h : 0), F = stub(G, px); F.pickups.length = 0; F.kills = 1;
+    const a = createAlien({ type: 'br', x: 0, y: 0, z: 0 }, 900, F.encs[0]); a.area = 0; F.aliens.push(a); kill(F, a);
+    const t = F.pickups.find(p => p.kind === 'tape'); assert.ok(Math.abs(t.x - want) < 1e-9 && t.z === 0 && t.y === 0, `${px} ${h}: ${t.x}`); } });
