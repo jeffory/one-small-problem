@@ -116,17 +116,19 @@ export function createRenderer(gl, hdrOK, tex = bakeTextures(gl)) {
   }
 
   // Reads back the low-res palette target: fractions of in-palette and pure-black pixels, distinct RGB count, and the mean of
-  // (r + g + b) / 3 over the frame (0-255), and the mean redness max(0, r - (g + b) / 2) / 255 of the edge band
-  // (within w / 8 of the left or right side or h / 8 of the top or bottom) and of the centre box (|dx| < w / 8, |dy| < h / 8).
+  // (r + g + b) / 3 over the frame (0-255), the mean redness max(0, r - (g + b) / 2) / 255 of the edge band
+  // (within w / 8 of the left or right side or h / 8 of the top or bottom) and of the centre box (|dx| < w / 8, |dy| < h / 8),
+  // and hot: the count of hot red pixels (r >= 100 and r - max(g, b) >= 40; a red flare's dithered halo, pre-flight F9).
   function capture() {
     const px = new Uint8Array(w * h * 4), pal = new Set(PALETTE.map(s => parseInt(s, 16))), seen = new Set();
     gl.bindFramebuffer(gl.READ_FRAMEBUFFER, fboL); gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, px); gl.bindFramebuffer(gl.READ_FRAMEBUFFER, null);
-    let inPal = 0, black = 0, sum = 0, eS = 0, eN = 0, mS = 0, mN = 0;
+    let inPal = 0, black = 0, sum = 0, eS = 0, eN = 0, mS = 0, mN = 0, hot = 0;
     for (let i = 0; i < px.length; i += 4) { const c = px[i] << 16 | px[i + 1] << 8 | px[i + 2]; seen.add(c); if (pal.has(c)) inPal++; if (!c) black++; sum += px[i] + px[i + 1] + px[i + 2];
+      if (px[i] >= 100 && px[i] - Math.max(px[i + 1], px[i + 2]) >= 40) hot++;
       const x = (i >> 2) % w, y = ((i >> 2) - x) / w, red = Math.max(0, px[i] - (px[i + 1] + px[i + 2]) / 2) / 255;
       if (x < w / 8 || x >= w - w / 8 || y < h / 8 || y >= h - h / 8) { eS += red; eN++; }
       if (Math.abs(x + .5 - w / 2) < w / 8 && Math.abs(y + .5 - h / 2) < h / 8) { mS += red; mN++; } }
-    return { w, h, inPalette: inPal / (w * h), black: black / (w * h), colours: seen.size, mean: sum / 3 / (w * h), edge: eN ? eS / eN : 0, mid: mN ? mS / mN : 0 };
+    return { w, h, inPalette: inPal / (w * h), black: black / (w * h), colours: seen.size, mean: sum / 3 / (w * h), edge: eN ? eS / eN : 0, mid: mN ? mS / mN : 0, hot };
   }
 
   return { resize, render, capture };

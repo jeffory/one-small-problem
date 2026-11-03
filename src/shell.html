@@ -14,14 +14,18 @@ html,body{margin:0;height:100%;overflow:hidden;background:#000;color:#b8ae9c;fon
 #wa{display:inline-block;font-size:20px;line-height:1}
 #wa::before{content:'\2227'}
 #wd{color:#7a7266}
-#flash{position:fixed;left:50%;top:56px;transform:translateX(-50%);text-align:center}
+#clk{position:fixed;left:50%;top:50px;transform:translateX(-50%);display:none}
+#clk.on{display:block}
+#clk.low{color:#b8301a}
+.paused #clk{visibility:hidden}
+#flash{position:fixed;left:50%;top:76px;transform:translateX(-50%);text-align:center}
 #x{position:fixed;left:50%;top:50%;width:2px;height:2px;margin:-1px 0 0 -1px;background:#b8ae9c}
 #stamp{position:fixed;left:50%;top:38%;transform:translate(-50%,-50%);white-space:nowrap;display:none;animation:stamp .18s ease-in}
 @keyframes stamp{from{transform:translate(-50%,-50%) scale(1.8);opacity:0}}
 #sub{position:fixed;left:50%;bottom:12%;transform:translateX(-50%);width:max-content;max-width:70vw;text-align:center;padding:2px 8px;background:rgba(0,0,0,.5)}
 #sub:empty{display:none}
 #sub.on::before{content:'\25CF  ';color:#b8301a}
-#hud,#seed,#stat,#prompt,#flash,#way,#x,#stamp,#sub{pointer-events:none}
+#hud,#seed,#stat,#prompt,#flash,#way,#clk,#x,#stamp,#sub{pointer-events:none}
 #title,#end,#pause{position:fixed;inset:0;display:none;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:16px;text-align:center}
 #title{background:rgba(0,0,0,.35)}
 #end{background:rgba(0,0,0,.6)}
@@ -45,4 +49,4 @@ button:hover,button:focus-visible{border-color:#b8ae9c;outline:0}
 #msg{position:fixed;z-index:2;inset:0;display:flex;align-items:center;justify-content:center;text-align:center}
 </style>
 <!--BODY-->
-<canvas id="c"></canvas><div id="hud"></div><div id="seed"></div><div id="stat"></div><div id="prompt"></div><div id="flash"></div><div id="way"><div id="wa"></div><div id="wd"></div></div><div id="x"></div><div id="stamp">ONE SMALL PROBLEM</div><div id="sub"></div><div id="title"><h1 id="logo">ONE SMALL PROBLEM</h1><div id="mission"></div><button id="new">New Game</button></div><div id="end"><h2>MISSION REPORT</h2><div id="stats"></div><div id="share"><a id="link"></a><span id="code"></span><button id="copy">Copy</button></div><button id="back">Back to title</button></div><div id="pause"><h2>PAUSED</h2><label>Resolution<select id="res"><option value="0">180p</option><option value="1">270p</option><option value="2">360p</option><option value="3">Native</option></select></label><label>Palette<input id="pal" type="checkbox"></label><label>Volume<input id="vol" type="range" min="0" max="1" step=".1"></label><label>Mouse sensitivity<input id="sens" type="range" min=".25" max="3" step=".25"></label><label>Invert Y<input id="inv" type="checkbox"></label><div id="controls"></div><button id="resume">Resume</button><button id="quit">Quit to title</button></div><div id="msg">Loading... (needs a current desktop browser with WebGL2)</div>
+<canvas id="c"></canvas><div id="hud"></div><div id="seed"></div><div id="stat"></div><div id="prompt"></div><div id="flash"></div><div id="way"><div id="wa"></div><div id="wd"></div></div><div id="clk"></div><div id="x"></div><div id="stamp">ONE SMALL PROBLEM</div><div id="sub"></div><div id="title"><h1 id="logo">ONE SMALL PROBLEM</h1><div id="mission"></div><button id="new">New Game</button></div><div id="end"><h2>MISSION REPORT</h2><div id="stats"></div><div id="share"><a id="link"></a><span id="code"></span><button id="copy">Copy</button></div><button id="back">Back to title</button></div><div id="pause"><h2>PAUSED</h2><label>Resolution<select id="res"><option value="0">180p</option><option value="1">270p</option><option value="2">360p</option><option value="3">Native</option></select></label><label>Palette<input id="pal" type="checkbox"></label><label>Volume<input id="vol" type="range" min="0" max="1" step=".1"></label><label>Mouse sensitivity<input id="sens" type="range" min=".25" max="3" step=".25"></label><label>Invert Y<input id="inv" type="checkbox"></label><div id="controls"></div><button id="resume">Resume</button><button id="quit">Quit to title</button></div><div id="msg">Loading... (needs a current desktop browser with WebGL2)</div>

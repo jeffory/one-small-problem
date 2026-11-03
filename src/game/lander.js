@@ -141,10 +141,15 @@ export function landerMeshes() {
     return finishMesh(M); });
 }
 
+// The ring of dust a lander throws off as it lands or blows up (the opening's blast and the rescue ship's touchdown): puffs r m
+// out from its centre, flying out at v m/s and up at up m/s, each lasting life s, sized s m.
+export const PUFF = { r: 2.2, v: [9, 14], up: [1, 2.5], life: 3, s: [.35, .7] };
+
 // --- the break-up ---
-// The intact lander: every piece at its place, lift 0 (the opening raises it), the hatch shut, nothing flying.
-export function createWreck(world) {
-  const L = world.lander, ly = Math.atan2(world.spawn.dx, world.spawn.dz), c = Math.cos(ly), s = Math.sin(ly);
+// An intact lander: every piece at its place, lift 0 (the opening raises it), the hatch shut, nothing flying. By default yours,
+// at world.lander facing the spawn; the rescue ship stands at L (x, y, z) turned ly.
+export function createWreck(world, L = world.lander, ly = Math.atan2(world.spawn.dx, world.spawn.dz)) {
+  const c = Math.cos(ly), s = Math.sin(ly);
   const pieces = PIECES.map(({ at, fly }) => ({ x: L.x + c * at[0] + s * at[2], y: L.y + at[1], z: L.z - s * at[0] + c * at[2],
     yaw: ly, pitch: 0, roll: 0, vx: 0, vy: 0, vz: 0, wy: 0, wp: 0, wr: 0, still: !fly }));
   return { world, ly, lift: 0, hatch: 0, blown: false, acc: 0, pieces };

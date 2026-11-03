@@ -8,7 +8,7 @@ import { flagSpot, sampleBilinear } from '../gen/surface.js';
 import { PLAYER, stepPlayer, knock } from './player.js';
 import { ALIENS, createAlien, waveAt } from './aliens.js';
 import { muzzleWorld } from './rigs.js';
-import { PIECES, createWreck, blast, stepWreck, drawnGround } from './lander.js';
+import { PIECES, PUFF, createWreck, blast, stepWreck, drawnGround } from './lander.js';
 import { MAX_PARTS } from './fight.js';
 
 // The beats; times (s) count from the beat each follows. alt: the lander's height (m) as the descent starts; descent: the start to
@@ -34,7 +34,7 @@ export const EGRESS = [[0, 2.5, .2, 1.05], [0, 2.5, 1.45, .45], [0, 2.45, 2.0, 1
 // plume: the exhaust's glow sprites from the bell's mouth (y up, lander space), v down and up to side across, size s; rate a second.
 // glow: its light (y up, radius s, colour col times a flicker) and the cabin's (radius s, colour col).
 // boot: the puff at your first step. spark, foil, puff: the blast's (foil: v in a random direction plus up, each its own life, so
-// they thin out rather than all going at once (R10); puff: a ring r out, y up).
+// they thin out rather than all going at once (R10); puff: n of lander.js's PUFF ring, y up).
 // knock: the blast's shove (out, up). rise: the actors' heights over the ground, from and to (walkers, the floater); sink: from `at`
 // s after the blast they sink at v, the walkers out of sight and gone at `end`, the floater down to the ground and gone once there.
 // boom: its life. bolt: the actors' bolt radius. disc: the cabin's room (radius); drop: the knock-down eye's fall; turn: its look
@@ -46,7 +46,7 @@ export const FX = {
   boot: { n: 12, v: [.5, 1.5], up: [.3, 1], life: [.8, 1.4] },
   spark: { n: 30, h: 6, up: [1.5, 7], life: [.3, .7] },
   foil: { n: 140, v: [3, 9], up: 3, life: [7, 11] },
-  puff: { n: 56, r: 2.2, y: .3, v: [9, 14], up: [1, 2.5], life: 3, s: [.35, .7] },
+  puff: { n: 56, y: .3, ...PUFF },
   knock: [4, 2.5], rise: { walk: [-2.6, 0], fl: [-1, 3] }, sink: { at: 1, v: 1.3, end: 3 },
   boom: .6, bolt: .3, disc: .45, drop: .4, turn: 3,
 };

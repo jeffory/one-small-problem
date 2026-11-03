@@ -9,7 +9,7 @@ test('planWaves: the table\'s seven waves, each spending exactly its budget, a b
   const P = planWaves(makeRng('w'), 3), C = { sk: 1, fl: 2, br: 4 }; assert.ok(ENDING.min < ENDING.max);
   HOLD.waves.forEach(([at, b], w) => { const s = P.filter(q => q.wave === w); assert.equal(s.reduce((a, q) => a + C[q.type], 0), b); assert.equal(s.some(q => q.type === 'br'), b >= 6);
     s.forEach((q, i) => { assert.ok(Math.abs(q.at - (at + i * HOLD.gap)) < 1e-9); assert.ok(q.door >= 0 && q.door < 3); if (i) assert.equal(q.door, (s[i - 1].door + 1) % 3); }); });
-  for (let i = 1; i < P.length; i++) assert.ok(P[i].at >= P[i - 1].at); });
+  for (let i = 1; i < P.length; i++) assert.ok(P[i].at >= P[i - 1].at); assert.deepEqual(planWaves(makeRng('w'), 3), planWaves(makeRng('w'), 3, HOLD.waves)); });
 test('E at the comms array puts you on hold with three tapes and two cells on the dais; E at the door does nothing (final stand)', () => {
   const F = atArray(); stepFight(F, { ...idle, use: true }, 1 / 60); assert.ok(F.hold && F.hold.t >= 0); assert.ok(F.events.some(e => e.type === 'hold'));
   const mine = F.pickups.filter(q => q.area === 3), d = dishOf(M); assert.deepEqual(mine.map(q => q.kind).sort(), ['cells', 'cells', 'tape', 'tape', 'tape']);

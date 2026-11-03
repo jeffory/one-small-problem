@@ -1,7 +1,8 @@
-// Mission Control's radio script, spec 4.7: about 150 short lines "X|text" (X the speaker: Houston's CAPCOM, you, or the comms
-// array's alien switchboard), keyed by the cue that plays them, and how each cue behaves (CUES, read by radio.js). Pure data.
-export const WHO = { H: 'HOUSTON', Y: 'YOU', S: 'SWITCHBOARD' };
-export const VOICE = { H: [.9, 1.05], Y: [1.05, 1], S: [.5, .85] }; // speech pitch, rate
+// Mission Control's radio script, spec 4.7: about 150 short lines "X|text" (X the speaker: Houston's CAPCOM, you, the comms
+// array's alien switchboard, or the rescue ship's pilot), keyed by the cue that plays them, and how each cue behaves (CUES, read by
+// radio.js). Pure data.
+export const WHO = { H: 'HOUSTON', Y: 'YOU', S: 'SWITCHBOARD', P: 'PILOT' };
+export const VOICE = { H: [.9, 1.05], Y: [1.05, 1], S: [.5, .85], P: [.8, 1.1] }; // speech pitch, rate
 // seq: every line in order, critical; crit: one line, critical; once: once per run; cool: s between cues; p: chance; at: line n of radioCue(R, key, n)
 export const CUES = {
   touchdown: { seq: 1 }, cabin: { crit: 1 }, step: { seq: 1 }, nag: { crit: 1 }, autoplant: { seq: 1 }, planted: { seq: 1 }, company: { seq: 1 }, telemetry: { seq: 1 }, title: { seq: 1 },
@@ -9,7 +10,8 @@ export const CUES = {
   grab: { once: 1 }, pistol: { once: 1 }, scatter: { once: 1 }, tape: { cool: 20, p: .6 }, cells: { cool: 20, p: .5 }, low: { cool: 25 }, fall: { cool: 20 },
   first: { once: 1 }, brute: { cool: 20, p: .8 }, floater: { cool: 30, p: .7 }, multi: { cool: 20 }, kill: { cool: 15, p: .2 }, boom: { cool: 20, p: .5 },
   golf: { at: 1 }, dawdle: {}, crater: {}, base: {}, comms: {}, climb: {}, dash: { seq: 1 }, dead: {}, restart: { p: .5 },
-  bang: { crit: 1 }, nudge: { at: 1 }, guard: { crit: 1 }, freed: { seq: 1 }, pa: { cool: 30 } };
+  bang: { crit: 1 }, nudge: { at: 1 }, guard: { crit: 1 }, freed: { seq: 1 }, pa: { cool: 30 },
+  flare: { seq: 1 }, countdown: { at: 1 }, rush: { seq: 1 }, missed: { crit: 1 } };
 export const SCRIPT = {
   touchdown: ["Y|Contact light. Engine stop.", "H|We copy, you're down. Beautiful work."],
   cabin: ["H|We show the hatch open. That's usually the cue to go outside."], // carry-over (Task 7 review): still in the cabin OPEN.stay s after touchdown
@@ -81,4 +83,8 @@ export const SCRIPT = {
   pa: ["S|ATTENTION. A PRISONER IS LOOSE. DO NOT FEED THE PRISONER.", "S|REMINDER. THE INTERROGATION CHAIR IS NOT FOR STAFF USE.", "S|WILL THE OWNER OF THE COW PLEASE COLLECT THE COW.", "S|ALL GUARDS TO CELL ONE. ALL GUARDS. ANY GUARDS.", "S|THIS FACILITY HAS GONE ZERO DAYS WITHOUT AN ESCAPE.", "S|PLEASE RETURN TO YOUR CELL. THANK YOU FOR YOUR COOPERATION."],
   climb: ["H|That lift came up in the crater. You're right where you went in.", "H|Same switchback, other direction. Mind the drop.", "Y|Houston, I'm out. Heading up.", "H|Up the path. You know about the drop."],
   dash: ["H|Rescue is on final, coming down by your lander.", "H|It's the same model as yours. Try not to let them blow this one up."],
+  flare: ["H|Pilot's down. He's put up a flare. Follow the flare.", "P|Rescue One on the ground. I don't love it here."],
+  countdown: ["H|Pilot says three minutes.", "H|Pilot says two minutes. He's tapping the glass.", "P|One minute. I'm not kidding.", "H|Pilot says he's serious this time."],
+  rush: ["P|Contacts! Lots of contacts, coming over the ridge!", "H|Run. Just run.", "P|I'm not waiting forever, buddy."],
+  missed: ["H|They'll come round again. Be at the ship this time."],
   rescue: ["H|Copy. We heard. Rescue vehicle is go, touchdown at your lander in twenty min\u2014"] }; // cut off: its talk ending is the knock-out

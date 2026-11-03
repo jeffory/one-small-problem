@@ -5,14 +5,15 @@ const run = (R, secs, voiced = false, dawdle = false, dt = 1 / 60, out = []) => 
 const said = A => A.filter(a => a.do === 'key').map(a => a.line.who + '|' + a.line.text);
 const keyOf = (ev, f = {}) => { const R = createRadio(always); radioEvents(R, ev, { kills: 2, hp: 100, state: 'play', ...f }); return R.q.map(l => l.key).join(); };
 test('the script: 150 to 205 short lines "X|text" with known speakers, every cue scripted, and the spec\'s lines verbatim (radio)', () => {
-  const all = Object.values(SCRIPT).flat(); assert.ok(all.length >= 150 && all.length <= 205, `${all.length}`); for (const l of all) assert.match(l, /^[HYS]\|.{2,90}$/);
-  assert.deepEqual(Object.keys(SCRIPT).sort(), Object.keys(CUES).sort()); assert.deepEqual(Object.keys(WHO).sort(), ['H', 'S', 'Y']); for (const k in WHO) assert.equal(VOICE[k].length, 2);
+  const all = Object.values(SCRIPT).flat(); assert.ok(all.length >= 150 && all.length <= 205, `${all.length}`); for (const l of all) assert.match(l, /^[HYSP]\|.{2,90}$/);
+  assert.deepEqual(Object.keys(SCRIPT).sort(), Object.keys(CUES).sort()); assert.deepEqual(Object.keys(WHO).sort(), ['H', 'P', 'S', 'Y']); for (const k in WHO) assert.equal(VOICE[k].length, 2);
   assert.deepEqual(SCRIPT.bang, ['S|PRISONER. QUIET.']); assert.equal(SCRIPT.nudge[0], 'H|Try banging on the door. Works in every movie.');
   assert.equal(SCRIPT.golf.length, 5); assert.deepEqual(SCRIPT.touchdown, ['Y|Contact light. Engine stop.', "H|We copy, you're down. Beautiful work."]);
   assert.deepEqual(SCRIPT.step, ["Y|Okay Houston, I'm stepping off the\u2014"]); assert.deepEqual(SCRIPT.company, ['Y|\u2026Houston, are we expecting anyone?']);
   assert.deepEqual(SCRIPT.telemetry, ['H|\u2026say again? We just lost all telemetry from the lander.']); assert.deepEqual(SCRIPT.title, ['Y|Houston\u2026 we have one small problem.']);
   assert.deepEqual(SCRIPT.houston, ['H|Houston, go ahead.', 'Y|Houston\u2026 we have one small problem.']);
-  assert.deepEqual(SCRIPT.rescue, ['H|Copy. We heard. Rescue vehicle is go, touchdown at your lander in twenty min\u2014']); });
+  assert.deepEqual(SCRIPT.rescue, ['H|Copy. We heard. Rescue vehicle is go, touchdown at your lander in twenty min\u2014']);
+  assert.deepEqual([SCRIPT.flare[0], SCRIPT.countdown[0], SCRIPT.countdown[3], SCRIPT.missed[0]], ["H|Pilot's down. He's put up a flare. Follow the flare.", 'H|Pilot says three minutes.', "H|Pilot says he's serious this time.", "H|They'll come round again. Be at the ship this time."]); });
 test('a story cue plays every line in order: keyed up, spoken, keyed down, a gap, then the next (radio)', () => {
   const R = R0(); assert.ok(radioCue(R, 'touchdown')); const A = run(R, 20), keys = A.filter(a => a.do === 'key'); assert.deepEqual(said(A), SCRIPT.touchdown);
   assert.deepEqual(A.slice(0, 4).map(a => a.do), ['key', 'say', 'unkey', 'off']); assert.ok(Math.abs(A[1].t - A[0].t - RADIO.key) <= 1 / 60 + 1e-9);

@@ -83,3 +83,30 @@ test('back the way you came: E at the door does nothing in the climb; over the r
 test('the arrow climbs the switchback to the rim, then points at the rescue site; none in the prison', () => {
   const K = W.crater.path, n = K.length, vx = i => ({ x: K[i][0], z: K[i][1] }); for (let i = n - 1; i > 1; i--) assert.deepEqual(wayTarget(W, 5, vx(i)), vx(i - 1), `${i}`);
   const t = wayTarget(W, 5, vx(1)); assert.deepEqual([t.x, t.z], [W.crater.top.x, W.crater.top.z]); assert.equal(wayTarget(W, 4, P.start), null); assert.ok(wayfind(createFight(W, 5))); });
+import { SHIP, FLARE, RING, shipLift, flareAt } from '../src/game/escape.js'; import { PUFF } from '../src/game/lander.js'; import { HOLD, planWaves } from '../src/game/hold.js'; import { OPEN } from '../src/game/opening.js';
+import { PLAYER } from '../src/game/player.js'; import { makeRng } from '../src/gen/rng.js'; import { COST } from '../src/gen/encounters.js';
+test('the ship comes down on the opening\'s curve, lands, fires its flare 150 m up, opens its hatch', () => {
+  assert.deepEqual(SHIP, { clock: 240, warn: 30, calls: [180, 120, 60, 30], r: 2, reach: 1.6, alt: 24, descent: 9, hatch: 1, puffs: 40 }); assert.deepEqual([SHIP.alt, SHIP.descent], [OPEN.alt, OPEN.descent]);
+  assert.deepEqual(PUFF, { r: 2.2, v: [9, 14], up: [1, 2.5], life: 3, s: [.35, .7] }); // pre-flight F14
+  assert.deepEqual(FLARE, { up: 150, rise: 3, fall: 40, size: .6, ang: .01, trail: 10, gap: .5, col: [2.4, .3, .08] });
+  const F = createFight(W, 6), S = F.ship, st = W.escape.site; F.aliens.length = 0; assert.deepEqual([S.landed, S.left, S.W.lift], [false, SHIP.clock, SHIP.alt]); assert.equal(shipLift(SHIP.descent / 2), SHIP.alt / 4);
+  run(F, idle, SHIP.descent - .05); assert.ok(!S.landed && S.W.lift > 0 && flareAt(S) === null);
+  run(F, idle, .1); assert.ok(S.landed && S.W.lift === 0 && F.events.some(e => e.type === 'flare') && F.parts.some(q => q.kind === 'puff'));
+  run(F, idle, FLARE.rise); const f = flareAt(S); assert.ok(Math.abs(f.y - st.y - FLARE.up) < .5 && f.x === st.x && f.z === st.z);
+  run(F, idle, FLARE.fall); assert.equal(flareAt(S), null); assert.equal(S.W.hatch, 1); });
+test('the ship clock calls its marks; at 0 the ship leaves and the dash restarts at the rim, ship and clock fresh', () => {
+  const F = createFight(W, 6), ev = []; F.aliens.length = 0; let t = 0;
+  while (F.state === 'play' && t < SHIP.clock + 1) { stepFight(F, idle, .1); t += .1; for (const e of F.events) if (e.type === 'clock' || e.type === 'missed') ev.push(e.n ?? e.type); F.events.length = 0; }
+  assert.ok(Math.abs(t - SHIP.clock) < .11, `${t}`); assert.deepEqual(ev, [1, 2, 3, 4, 'missed']); run(F, idle, DEATH_TIME + .1);
+  assert.deepEqual([F.state, F.area, F.ship.landed], ['play', 6, false]); assert.ok(F.ship.left > SHIP.clock - .2 && near(F.player, areaStart(W, 6))); });
+test('the rush: once landed and near, waves from RING.n points 30-40 m round the ship, ids from RING.id, at most HOLD.cap alive', () => {
+  assert.deepEqual(RING, { near: 60, r: [30, 40], n: 6, id: 2000, hover: 3.5, waves: [[0, 4], [5, 5], [10, 6], [15, 6]] });
+  const P0 = planWaves(makeRng('r'), RING.n, RING.waves); RING.waves.forEach(([, b], w) => assert.equal(P0.filter(q => q.wave === w).reduce((s, q) => s + COST[q.type], 0), b));
+  const F = createFight(W, 6), st = W.escape.site; F.aliens.length = 0; F.god = true; put(F, st.x + RING.near - 5, st.z); run(F, idle, 1); assert.equal(F.ship.ring, null);
+  run(F, idle, SHIP.descent); assert.ok(F.ship.ring && F.events.some(e => e.type === 'rush')); assert.equal(F.ship.ring.pts.length, RING.n);
+  for (const q of F.ship.ring.pts) { const d = Math.hypot(q.x - st.x, q.z - st.z); assert.ok(d >= RING.r[0] - 1e-9 && d <= RING.r[1] + 1e-9); }
+  for (let i = 0; i < 600; i++) { stepFight(F, idle, 1 / 30); const R = F.aliens.filter(a => a.id >= RING.id && a.state !== 'dead'); assert.ok(R.length <= HOLD.cap && R.every(a => a.area === 6 && a.enc.alerted)); }
+  assert.ok(F.aliens.some(a => a.id >= RING.id)); });
+test('the landed ship is solid: you are pushed off its deck', () => {
+  const F = createFight(W, 6), st = W.escape.site; F.aliens.length = 0; run(F, idle, SHIP.descent + .1); put(F, st.x + .5, st.z); stepFight(F, idle, 1 / 60);
+  assert.ok(Math.hypot(F.player.x - st.x, F.player.z - st.z) >= SHIP.r + PLAYER.radius - 1e-6); });

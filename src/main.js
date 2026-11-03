@@ -227,10 +227,11 @@ function boot() {
       if (p.onGround && stride < 3) for (W.d += stride; W.d >= STRIDE; W.d -= STRIDE) audio.sfx('step', STEP_VOL);
       hud.status({ hp: Math.ceil(F.hp), cells: F.ars.cells, weapon: WEAPONS[F.ars.cur]?.name ?? '' });
       hud.way(wayfind(F));
+      hud.clock(F.ship && F.state === 'play' && !F.ko ? F.ship.left : null);
       if (F.time >= HELP_TIME) hud.help('');
       for (const ev of F.events) if (FLASH.has(ev.type) && ev.text) hud.flash(ev.text);
       const d = F.area === 3 && dishOf(run.world.baseMap);
-      hud.prompt(F.ko ? '' : F.state === 'dead' ? 'You died. Back to ' + BACK[F.area] + '...'
+      hud.prompt(F.ko ? '' : F.state === 'dead' ? F.ship?.left <= 0 ? 'The ship left without you. Back to the crater rim...' : 'You died. Back to ' + BACK[F.area] + '...'
         : F.lv.id === 'surface' && !F.flag.held && Math.hypot(p.x - F.flag.x, p.z - F.flag.z) < 2.2 ? '[E] grab the flag'
         : canBang(F) ? '[E] bang on the bars'
         : atExit(F) ? '[E] take the lift'
@@ -300,6 +301,9 @@ function boot() {
     lift: () => { const F = run.F, e = exitOf(F.world.prisonMap); if (F.area < 4) skipTo(F, 4); if (F.cell.shut) openBars(F); place(e.x + 1, e.z, 0); stepFight(F, { ...IDLE, use: true }, .001); },
     // The start of the climb (area 5) or the dash (area 6).
     climb: () => skipTo(run.F, 5), dash: () => skipTo(run.F, 6),
+    // The rescue ship in the dash ({landed, left: its clock, site}), else null; calm: every alien gone; turn: you face yaw, pitch.
+    ship: () => { const S = run.F.ship; return S && { landed: S.landed, left: S.left, site: { x: S.at.x, z: S.at.z } }; },
+    calm: () => { run.F.aliens.length = 0; }, turn: (yaw, pitch) => { Object.assign(run.F.player, { yaw, pitch }); },
     // 1.2 m inside the bars facing them; with press, one E.
     bang: (press = true) => { const F = run.F, b = F.world.prisonMap.bars; place(b.x - b.dx * 1.2, b.z - b.dz * 1.2, Math.atan2(-b.dx, -b.dz));
       if (press) stepFight(F, { ...IDLE, use: true }, .001); },

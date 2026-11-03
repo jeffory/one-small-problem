@@ -1,6 +1,7 @@
 // The fight view: every frame it turns a Fight into Frame fields (camera, meshes, lights, sphere occluders, sprites,
-// the first-person view model and the red hurt vignette). It only reads the fight, the scene's lamps and the lander's wreck; its GPU
-// work is the model and lander-piece upload and dispose. The opening's view (opening.js) is fight-shaped, with three optional
+// the first-person view model and the red hurt vignette). It only reads the fight, the scene's lamps and the landers (the wreck,
+// and the rescue ship in the dash); its GPU work is the model and lander-piece upload and dispose. The opening's view (opening.js)
+// is fight-shaped, with three optional
 // fields a real fight never has: eye (the eye's height over the feet, else PLAYER.eye), glow ([{x, y, z, s, r, g, b}], more
 // dynamic light candidates) and flash (0-1, the blast's white flash, to tint[1]).
 import { uploadMesh, disposeMesh } from '../gfx/gl.js';
@@ -10,6 +11,7 @@ import { RIGS, partMatrixTo, worldSpheresTo } from './rigs.js';
 import { WEAPONS, TEAL } from './weapons.js';
 import { PLAYER } from './player.js'; import { RADIO } from './radio.js';
 import { landerMeshes, pieceMatrix } from './lander.js';
+import { FLARE, flareAt } from './escape.js'; import { FX } from './opening.js';
 
 // Per-frame caps (16 lights, 8 spheres, 512 sprites of which at most 192 opaque); FAR culls aliens and small props at 80 m.
 const MAX_L = 16, MAX_SPH = 8, MAX_SPR = 512, MAX_OPQ = 192, FAR = 80;
@@ -92,6 +94,9 @@ export function fillFrame(V, F, frame, t) {
   for (const m of V.static) M.push(m);
   const R = V._wreck;
   if (R) for (let k = 0; k < R.pieces.length; k++) { const q = R.pieces[k]; if (near(q.x, q.z)) M.push(ent(V.pieces[k], pieceMatrix(R, k, mat()))); }
+  // the rescue ship, never culled at FAR: it shows the moment it clears the horizon
+  const Sh = F.ship;
+  if (Sh) for (let k = 0; k < Sh.W.pieces.length; k++) M.push(ent(V.pieces[k], pieceMatrix(Sh.W, k, mat())));
   for (const a of F.aliens) {
     if (!near(a.x, a.z)) continue;
     // R13 as amended by M1: a floater's 0.7 s wind-up pulses its flash between 0 and .22 at 6 Hz (a hit still flashes it fully)
@@ -115,10 +120,11 @@ export function fillFrame(V, F, frame, t) {
     M.push(ent(d.kind === 'goo' ? G.discGoo : G.discScorch, m));
   }
 
-  // 3. lights: the scene's lamps first, then the nearest of bolts, booms, the muzzle flash, canisters and the opening's glows
-  // (pre-flight F18)
+  // 3. lights: the scene's lamps first, then the nearest of bolts, booms, the muzzle flash, canisters, the opening's glows
+  // (pre-flight F18) and the rescue ship's engine as it comes down (the opening's plume light)
   reset();
   if (F.glow) for (const o of F.glow) add(o.x, o.y, o.z, o.s, o.r, o.g, o.b);
+  if (Sh && !Sh.landed) { const U = FX.glow.plume; add(Sh.at.x, Sh.at.y + Sh.W.lift + U.y, Sh.at.z, U.s, U.col[0], U.col[1], U.col[2]); }
   for (const b of F.bolts) add(b.x, b.y, b.z, 7, b.col[0] * 1.3, b.col[1] * 1.3, b.col[2] * 1.3);
   for (const o of F.booms) { const e = 1 - o.age / .6; add(o.x, o.y, o.z, 12, 2.4 * e, 1.6 * e, .7 * e); }
   if (mz) add(mz[0], mz[1], mz[2], 6, TEAL[0] * 1.5, TEAL[1] * 1.5, TEAL[2] * 1.5);
@@ -156,7 +162,7 @@ export function fillFrame(V, F, frame, t) {
   let ns = 0;
   for (const c of C) { if (ns >= MAX_SPH) break; ns = worldSpheresTo(S, ns, c.o, MAX_SPH); }
 
-  // 5. sprites: opaque goo, dust and the blast's dust-ring puffs (at most 192), then glows until 512
+  // 5. sprites: opaque goo, dust, the dust-ring puffs and the flare's smoke trail (at most 192), then glows until 512
   const P = frame.sprites = V._spr, D = P.data;
   const put = (i, c) => { const j = i * 8; D[j] = c.x; D[j + 1] = c.y; D[j + 2] = c.z; D[j + 3] = c.s; D[j + 4] = c.r; D[j + 5] = c.g; D[j + 6] = c.b; D[j + 7] = 0; };
   reset();
@@ -165,6 +171,7 @@ export function fillFrame(V, F, frame, t) {
     else if (q.kind === 'dust') add(q.x, q.y, q.z, .1, .18, .17, .15);
     else if (q.kind === 'puff') add(q.x, q.y, q.z, q.s, .2, .19, .17);
   }
+  if (Sh) for (let k = 1; k <= FLARE.trail; k++) { const q = flareAt(Sh, k * FLARE.gap); if (q) add(q.x, q.y, q.z, .4 + .15 * k, .18, .18, .17); }
   const no = P.nOpaque = keep(MAX_OPQ);
   for (let i = 0; i < no; i++) put(i, C[i]);
   reset();
@@ -186,6 +193,10 @@ export function fillFrame(V, F, frame, t) {
   }
   for (const o of F.booms) if (o.age < .4) add(o.x, o.y, o.z, 3 * (1 - o.age / .4), 1.2, .8, .35);
   if (mz) add(mz[0], mz[1], mz[2], .1, TEAL[0], TEAL[1], TEAL[2]);
+  // the rescue ship's red flare, at least FLARE.ang across however far, and kept first however crowded the frame: it is the goal
+  const fl = Sh && flareAt(Sh);
+  if (fl) { const d = Math.sqrt((fl.x - cx) * (fl.x - cx) + (fl.y - cy) * (fl.y - cy) + (fl.z - cz) * (fl.z - cz)), c = FLARE.col;
+    add(fl.x, fl.y, fl.z, Math.max(FLARE.size, d * FLARE.ang), c[0], c[1], c[2]); C[C.length - 1].d = -1; }
   // a golf ball glints for .15 s every 2.5 s, each on its own beat
   for (const b of F.balls) if (near(b.x, b.z) && (t + 1.7 * b.id) % 2.5 < .15) add(b.x, b.y + .06, b.z, .08, .5, .5, .45);
   for (const q of F.pickups) if (q.kind === 'tape' && near(q.x, q.z)) {

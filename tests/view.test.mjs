@@ -128,3 +128,10 @@ test('tape lies still on its edge on the ground and glints for .15 s in every 2.
   const want = TAPE_GLINT.on / .05; assert.ok(on >= Math.floor(want) && on <= Math.ceil(want) + 1, `${on}`); }); // derived from the table (pre-flight F1)
 test('the cell bars are drawn while shut, gone once open (Plan 6)', () => { const F = createFight(W, 4), fr = frame(), has = () => fr.meshes.some(m => m.gpu === V.gpu.bars);
   fillFrame(V, F, fr, 0); assert.ok(has()); openBars(F); fillFrame(V, F, fr, 0); assert.ok(!has()); });
+import { flareAt, FLARE, SHIP } from '../src/game/escape.js';
+test('the ship is drawn at any distance; its flare is one glow sprite at least FLARE.size (Plan 6)', () => {
+  const F = createFight(W, 6), fr = frame(), S = F.ship; F.aliens.length = 0; fillFrame(V, F, fr, 0);
+  assert.ok(Math.hypot(F.player.x - S.at.x, F.player.z - S.at.z) > 300); assert.equal(fr.meshes.filter(m => V.pieces.includes(m.gpu)).length, 11);
+  S.t = SHIP.descent + FLARE.rise; S.landed = true; fillFrame(V, F, fr, 0); const f = flareAt(S), D = fr.sprites.data; let glow = 0;
+  for (let i = fr.sprites.nOpaque; i < fr.sprites.nOpaque + fr.sprites.nGlow; i++) if (Math.hypot(D[i * 8] - f.x, D[i * 8 + 1] - f.y, D[i * 8 + 2] - f.z) < 1e-3 && D[i * 8 + 3] >= FLARE.size) glow++;
+  assert.equal(glow, 1); });

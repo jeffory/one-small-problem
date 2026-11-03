@@ -7,6 +7,9 @@ import { reachMap } from '../src/gen/passable.js';
 import { BASE, K as TILE, PRISON_PLAN, baseAccept } from '../src/gen/base.js';
 import { LIGHT_CAP, BASE_SCALE } from '../src/gen/baseplan.js';
 import { HOLD, dishOf, callSpot } from '../src/game/hold.js';
+import { SHIP } from '../src/game/escape.js';
+import { ALIENS } from '../src/game/aliens.js';
+import { CANISTER } from '../src/game/fight.js';
 // The base comes from generateWorld, one per seed: a layout that fails to construct or is rejected re-rolls, and that is
 // routine (pre-flight F7: printed, not gated). Only a seed that exhausts all BASE.attempts (32) attempts fails the soak,
 // because generateBase then throws (ruling R2).
@@ -106,7 +109,7 @@ function checkPrison(seed, B) {
 }
 // The escape plan (Plan 6): the climb (area 5) like level 1's crater, the dash (area 6) at p .6 to 1 with full budgets, golf 6 off
 // the route, and the rescue site. A site from the fallback is not rock-clear or not flat, so it fails here.
-let dashMin = Infinity, dashMax = 0, siteFlat = 0;
+let dashMin = Infinity, dashMax = 0, siteFlat = 0, shipGap = Infinity;
 function checkEscape(seed, w, stands) {
   const bad = (m) => { fail++; console.error(seed, 'escape', m); };
   const E = w.escape, C = E.encounters.filter((e) => e.area === 5), D = E.encounters.filter((e) => e.area === 6), cost = (e) => e.aliens.reduce((s, a) => s + COST[a.type], 0);
@@ -133,6 +136,12 @@ function checkEscape(seed, w, stands) {
   siteFlat = Math.max(siteFlat, hi - lo);
   if (hi - lo > ESCAPE.flat) bad('site not flat ' + (hi - lo));
   if (Math.abs(Math.hypot(S.dx, S.dz) - 1) > 1e-9 || S.dx * (w.rim.x - S.x) + S.dz * (w.rim.z - S.z) <= 0) bad('site facing');
+  // Task 8: the rescue ship's deck (a cylinder SHIP.r round the site) stands clear of every escape item: an alien keeps its own
+  // radius off it, a canister CANISTER.radius, a pickup or golf ball its centre.
+  const clear = (q, r, what) => { const g = Math.hypot(q.x - S.x, q.z - S.z) - SHIP.r - r; shipGap = Math.min(shipGap, g); if (g < 0) bad(what + ' on the rescue ship ' + g.toFixed(2)); };
+  E.encounters.forEach((e) => e.aliens.forEach((a) => clear(a, ALIENS[a.type].radius, a.type)));
+  for (const c of E.canisters) clear(c, CANISTER.radius, 'canister');
+  for (const q of [...E.pickups, ...E.golf]) clear(q, 0, q.kind ?? 'golf ' + q.id);
 }
 const hist = {}; let rerolls = 0, fail = 0, worst = 0, worstCrater = 0, rockMin = Infinity, worstEdge = Infinity, rockMax = 0, golfAll = 0, golfRock = 0;
 for (let n = 0; n < 1000; n++) {
@@ -210,7 +219,7 @@ console.log('base attempt histogram', JSON.stringify(bhist), 'rerolls', brerolls
 console.log('prison attempt histogram', JSON.stringify(phist));
 console.log('greenhouse canister clusters dropped', ghDropped + '/1000');
 console.log('golf balls beside a rock', golfRock + '/' + golfAll);
-console.log('escape: dash encounters min/max', dashMin, dashMax, 'worst site relief', siteFlat.toFixed(3));
+console.log('escape: dash encounters min/max', dashMin, dashMax, 'worst site relief', siteFlat.toFixed(3), 'least item clearance off the rescue ship', shipGap.toFixed(3), 'm');
 const rate = rerolls / 1000;
 console.log('attempt histogram', JSON.stringify(hist), 'rerolls', rerolls, 'rate', rate);
 console.log('worst centreline step', worst.toFixed(4), 'worst switchback step', worstCrater.toFixed(4), 'worst edge margin', worstEdge.toFixed(3), 'rocks min/max', rockMin, rockMax, 'failures', fail);

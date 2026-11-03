@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test'; import { pathToFileURL } from 'node:url'; import { resolve } from 'node:path';
 import { generateWorld } from '../src/gen/world.js'; import { checksumWorld } from '../src/gen/checksum.js';
-import { HELP_TIME } from '../src/ui/hud.js'; import { fmtTime } from '../src/ui/score.js'; import { OPEN } from '../src/game/opening.js'; import { HOLD } from '../src/game/hold.js'; import { KO, BREAK } from '../src/game/escape.js'; import { CUES } from '../src/game/script.js';
+import { HELP_TIME } from '../src/ui/hud.js'; import { fmtTime } from '../src/ui/score.js'; import { OPEN } from '../src/game/opening.js'; import { HOLD } from '../src/game/hold.js'; import { KO, BREAK, SHIP, FLARE } from '../src/game/escape.js'; import { CUES } from '../src/game/script.js';
 export const URLS = [['file', pathToFileURL(resolve('dist/index.html')).href], ['http', 'http://localhost:4173/index.html']];
 // Benign Firefox parser note about the packed binary payload when the server's utf-8 header overrides the page's iso-8859-15 meta; real decoding failures are caught by the ready check.
 const BENIGN = /byte stream was erroneous according to the character encoding/i;
@@ -75,7 +75,7 @@ test('weapon keys work without pointer lock; the capture click never fires (Revi
   await page.mouse.click(300, 300); await page.waitForTimeout(300); expect((await fight(page)).shots).toBe(0); });
 test('the HUD overlays let the capture click through to the canvas (M7)', async ({ page }) => {
   await start(page); await page.evaluate(() => window.ospTest.grab()); await page.waitForTimeout(300);
-  const hits = await page.evaluate(() => ['hud', 'seed', 'stat', 'prompt', 'flash', 'x', 'sub', 'way'].map(id => { const r = document.getElementById(id).getBoundingClientRect();
+  const hits = await page.evaluate(() => ['hud', 'seed', 'stat', 'prompt', 'flash', 'x', 'sub', 'way', 'clk'].map(id => { const r = document.getElementById(id).getBoundingClientRect();
     return r.width && r.height ? [id, document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)?.id] : null; }).filter(Boolean));
   expect(hits.length).toBeGreaterThanOrEqual(4); for (const [id, at] of hits) expect(at, id).toBe('c'); });
 test('below 25 health only the number turns red, and an unchanged status line is not rewritten (M8)', async ({ page }) => {
@@ -420,3 +420,16 @@ test('the lift to the climb: up outside the hangar door, the surface palette-tru
   const errors = watchErrors(page); await start(page); await page.evaluate(() => window.ospTest.lift()); await expect.poll(() => area(page)).toBe('climb');
   await expect(page.locator('#way')).toBeVisible(); expect(await page.evaluate(() => window.ospTest.audio().air)).toBe(false);
   const s = await page.evaluate(() => window.ospTest.capture()); expect(s.inPalette).toBe(1); expect(s.colours).toBeGreaterThan(8); expect(errors).toEqual([]); });
+const twoFrames = async page => { const f = await page.evaluate(() => window.ospTest.frames()); await expect.poll(() => page.evaluate(() => window.ospTest.frames())).toBeGreaterThan(f + 1); };
+test('from the rim the ship lands out of sight, but its red flare climbs above the horizon (Plan 6, spec 6)', async ({ page }) => {
+  const errors = watchErrors(page), cap = () => page.evaluate(() => window.ospTest.capture()); await start(page);
+  await page.evaluate(() => { const o = window.ospTest; o.god(true); o.dash(); o.calm(); }); await expect.poll(() => area(page)).toBe('dash');
+  const away = await page.evaluate(() => { const o = window.ospTest, s = o.ship().site, p = o.player(); o.turn(Math.atan2(p.x - s.x, p.z - s.z), .05); return Math.hypot(p.x - s.x, p.z - s.z); });
+  expect(away).toBeGreaterThan(300); // pre-flight F1: at the rim, not the wreck (spec 11)
+  await twoFrames(page); const a = await cap(); await page.evaluate(s => window.ospTest.ff(s), SHIP.descent + FLARE.rise + 1); await twoFrames(page); const b = await cap();
+  expect(b.hot).toBeGreaterThan(a.hot); expect(b.inPalette).toBe(1); expect(errors).toEqual([]); });
+test('the dash shows SHIP LEAVES m:ss under the arrow, red under SHIP.warn s (Plan 6)', async ({ page }) => {
+  const errors = watchErrors(page), clk = page.locator('#clk'); await start(page); await page.evaluate(() => { const o = window.ospTest; o.god(true); o.dash(); o.calm(); });
+  const m = Math.ceil(SHIP.clock / 60); await expect(clk).toHaveText(new RegExp('^SHIP LEAVES [' + (m - 1) + m + ']:\\d\\d$')); // pre-flight F8: read from SHIP.clock, so T12's retune can't break it
+  await expect(clk).not.toHaveClass(/low/); await page.evaluate(s => window.ospTest.ff(s), SHIP.clock - SHIP.warn + 1);
+  await expect(clk).toHaveClass(/low/); await expect(clk).toHaveText(/^SHIP LEAVES 0:\d\d$/); expect(errors).toEqual([]); });

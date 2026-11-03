@@ -3,7 +3,8 @@
 // there is no wall clock, DOM or GPU here. F.time is the sim's clock; F.run is the run's (the end screen's time), which stops while
 // F.ko and once F.won. F.ko is the knock-out, null until Houston picks up: {phase, t}, 'call' from Houston to the knock-out (t its
 // seconds), then 'out'. While F.ko or F.won (boarded, which sets F.wonAt) nothing hurts you and no kill counts. F.cell is the
-// prison cell while you are in area 4 ({shut}: its bars are closed), else null.
+// prison cell while you are in area 4 ({shut}: its bars are closed), else null. F.ship is the rescue ship while you are in area 6
+// (see arrive), else null.
 import { makeRng } from '../gen/rng.js';
 import { sampleGround, flagSpot } from '../gen/surface.js';
 import { cameraBasis } from '../gfx/math.js';
@@ -16,7 +17,8 @@ import { ALIENS, createAlien, stepAlien, hurtAlien, move, level, muzzleAt } from
 import { AREAS, AREA_TEXT, CRATER_AREAS, LEVEL, makeLevel, areaStart, advanceArea, stintEnd, setBars } from './areas.js';
 import { K } from '../gen/base.js';
 import { HOLD, planWaves, dishOf } from './hold.js';
-import { KO, BREAK, EXIT, exitOf } from './escape.js';
+import { KO, BREAK, EXIT, exitOf, SHIP, RING, shipLift, ringPoints } from './escape.js';
+import { PUFF, createWreck } from './lander.js';
 
 // Alien drops (pistol, scatter, flCells) are 20% up on Plan 2's 20, 16 and 15 after the first play-test (H5). Tape drops (Plan 5) come from the sim's
 // F.rng, not generation, so the goldens are untouched: tapeDrop is the chance per alien type, tapeOff the distance it lies from another drop.
@@ -32,6 +34,7 @@ export const MAX_PARTS = 300;
 // a particle stops it like a wall.
 const CORPSE = 8, SINK = 2, DECALS = { scorch: 40, goo: 24 }, BOOM_LIFE = .6, FIELD_DT = .25, GRAB = 2.2, REACH = 1.2;
 const CAN_Y = .4, CAN_H = .9, WALL = .35, TAU = 2 * Math.PI, sqrt = Math.sqrt, STILL = { fwd: 0, strafe: 0, run: false, jump: false };
+const clamp01 = k => Math.max(0, Math.min(1, k));
 // HOLD_ID: the first hold alien's id; HOVER: a hold floater's height above its door's floor (its top just under the lintel).
 const HOLD_ID = 1000, HOVER = 1.7;
 
@@ -42,7 +45,7 @@ export function createFight(world, k = 0) {
     encs: [], aliens: [], bolts: [], pickups: [], canisters: [], balls: [], parts: [], decals: [], booms: [],
     flag: { x: fs.x, y: sampleGround(world, fs.x, fs.z), z: fs.z, held: false }, entry: { owned: [false, false, false], cells: 0, flagHeld: false },
     state: 'play', deadT: 0, time: 0, run: 0, kills: 0, shots: 0, shotT: 9, hurtT: 0, field: createField(), fieldT: 0, events: [], god: false,
-    found: [], golf: 0, hold: null, ko: null, won: false, wonAt: null, cell: null };
+    found: [], golf: 0, hold: null, ko: null, won: false, wonAt: null, cell: null, ship: null };
   clearDecals(F);
   const C = F._ctx = { ground: lv.ground, ceil: lv.ceil, px: 0, py: 0, pz: 0, field: F.field, rng: F.rng, others: F.aliens,
     los: a => lineOfSight(F.lv.ground, muzzleAt(a, C), [C.px, C.py + PLAYER.eye, C.pz], F.lv.ceil),
@@ -75,9 +78,16 @@ function populate(F, from) {
   for (const g of plan.golf) if (mine(g) && !F.found.includes(g.id)) F.balls.push({ id: g.id, x: g.x, y: g.y, z: g.z, area: g.area });
 }
 
-// On arriving in area k, by any way in (a new fight, entering it, a restart): the cell's bars shut behind you in the prison
-// (area 4); out of it there is no cell.
+// On arriving in area k, by any way in (a new fight, entering it, a restart): in the dash (area 6) a fresh rescue ship starts down
+// at the rescue site, its clock full; the cell's bars shut behind you in the prison (area 4); out of them there is no ship or cell.
+// The ship: t, seconds since you arrived; left, the clock; landed; calls, the clock's marks called; at, the site; W, its lander
+// (lander.js, turned so its ladder faces the rim); ring, the rush once it starts (see stepShip), else null.
 function arrive(F, k) {
+  F.ship = null;
+  if (k === 6) {
+    const at = F.world.escape.site, W = createWreck(F.world, at, Math.atan2(at.dx, at.dz));
+    W.lift = SHIP.alt; F.ship = { t: 0, left: SHIP.clock, landed: false, calls: 0, at, W, ring: null };
+  }
   if (k !== 4) { F.cell = null; return; }
   const freed = !!F.cell?.freed;
   F.cell = { shut: !freed, bang: null, idle: 0, nudges: 0, pa: 0, freed }; setBars(F.lv, !freed);
@@ -241,6 +251,7 @@ export function stepFight(F, input, dt) {
   const k = advanceArea(F.world, F.area, p.x, p.z); if (k > F.area) enterArea(F, k);
   if (p.land > FALL.safe) hurtPlayer(F, FALL.dmg * (p.land - FALL.safe), 0, 0, 0, 'fall');
   if (F.area === 4 && F.state === 'play' && !F.ko) stepCell(F, dt);
+  if (F.ship && F.state === 'play' && !F.won) stepShip(F, dt);
   // 4. distance field
   if ((F.fieldT -= dt) <= 0) { F.fieldT = FIELD_DT; updateField(F.field, lv.grid, lv.n, lv.half, p.x, p.z, lv.maxStep); }
   // 5. aliens: awake within the level's wake radius of their encounter or once it is alerted; the asleep only tick their clock
@@ -294,27 +305,64 @@ function startHold(F, d) {
   F.events.push({ type: 'hold' });
 }
 
-// dt seconds on hold. Planned spawns come in order once due, while fewer than HOLD.cap hold aliens are alive (one that finds no
-// free slot waits, and so do those after it), each at its door, first moving next step. Mission Control's on-hold message is
-// due every HOLD.msg s from HOLD.msg / 2; at HOLD.time Houston picks up and Houston's call begins (F.ko), so the run's clock
-// stops there (R9: F.run, which the end screen and the best time use, whatever the call's radio takes).
-function stepHold(F, dt) {
-  const H = F.hold, P = H.plan, D = F.world.baseMap.spawnDoors;
-  H.t += dt;
-  let live = 0;
+// The waves of H (the hold, or the rescue ship's ring: {t, plan (planWaves), next, enc}) at H.t: planned spawns come in order once
+// due, while fewer than HOLD.cap of H's aliens are alive (one that finds no free slot waits, and so do those after it), each at
+// its point pts[door] on the ground (a floater hover m over it), its id id0 + its place in the plan, in area.
+function spawnWaves(F, H, pts, id0, area, hover) {
+  const P = H.plan; let live = 0;
   for (const a of F.aliens) if (a.enc === H.enc && a.state !== 'dead') live++;
   for (; H.next < P.length && P[H.next].at <= H.t && live < HOLD.cap; live++) {
-    const q = P[H.next], d = D[q.door], g = F.lv.ground(d.x, d.z);
-    const a = createAlien({ type: q.type, x: d.x, y: q.type === 'fl' ? g + HOVER : g, z: d.z }, HOLD_ID + H.next++, H.enc);
-    a.area = 3; F.aliens.push(a);
+    const q = P[H.next], d = pts[q.door], g = F.lv.ground(d.x, d.z);
+    const a = createAlien({ type: q.type, x: d.x, y: q.type === 'fl' ? g + hover : g, z: d.z }, id0 + H.next++, H.enc);
+    a.area = area; F.aliens.push(a);
   }
+}
+
+// dt seconds on hold: the waves come out of the spawn doors, each alien first moving next step. Mission Control's on-hold message
+// is due every HOLD.msg s from HOLD.msg / 2; at HOLD.time Houston picks up and Houston's call begins (F.ko), so the run's clock
+// stops there (R9: F.run, which the end screen and the best time use, whatever the call's radio takes).
+function stepHold(F, dt) {
+  const H = F.hold;
+  H.t += dt;
+  spawnWaves(F, H, F.world.baseMap.spawnDoors, HOLD_ID, 3, HOVER);
   while (H.t >= HOLD.msg / 2 + H.msgs * HOLD.msg) F.events.push({ type: 'holdmsg', n: H.msgs++ });
   if (H.t >= HOLD.time) { F.ko = { phase: 'call', t: 0 }; F.events.push({ type: 'houston' }); }
 }
 
-// R16: the player is pushed out of live walkers and canisters (horizontally, where their heights overlap). A push to where the
-// player doesn't fit (more than PLAYER.stepUp to climb, or indoors a wall or low ceiling under the box), or across the bound,
-// shoves the walker instead (by its own climb rule); canisters never move.
+// dt seconds of the rescue ship, for the living in the dash until you board. It comes down the opening's curve; at touchdown it
+// fires its flare and throws a ring of dust (PUFF, from F.rng), and its hatch opens SHIP.hatch s later. Its clock runs from
+// arriving: each of SHIP.calls is called as it is passed, and at 0 it leaves without you, a death with no 'dead' cue (the area
+// restarts, ship and clock fresh). Once it is down and you are within RING.near, the rush: the hold's wave planner on RING.waves,
+// from RING.n points round the ship, its aliens alerted from the start.
+function stepShip(F, dt) {
+  const S = F.ship, W = S.W;
+  S.t += dt; W.lift = shipLift(S.t);
+  if (!S.landed && S.t >= SHIP.descent) {
+    S.landed = true; F.events.push({ type: 'flare' });
+    const r = F.rng, P = F.parts, n = SHIP.puffs;
+    for (let k = 0; k < n; k++) {
+      const a = (k + r.next()) * TAU / n, cx = Math.cos(a), sz = Math.sin(a), x = S.at.x + cx * PUFF.r, z = S.at.z + sz * PUFF.r, v = r.range(PUFF.v[0], PUFF.v[1]);
+      P.push({ kind: 'puff', x, y: F.lv.ground(x, z), z, vx: cx * v, vy: r.range(PUFF.up[0], PUFF.up[1]), vz: sz * v, life: PUFF.life, s: r.range(PUFF.s[0], PUFF.s[1]) });
+    }
+    if (P.length > MAX_PARTS) P.splice(0, P.length - MAX_PARTS);
+  }
+  W.hatch = clamp01((S.t - SHIP.descent - SHIP.hatch) / .8);
+  S.left -= dt;
+  while (S.calls < SHIP.calls.length && S.left <= SHIP.calls[S.calls]) F.events.push({ type: 'clock', n: ++S.calls });
+  if (S.left <= 0) { F.state = 'dead'; F.deadT = 0; F.events.push({ type: 'missed' }); return; }
+  const p = F.player;
+  if (S.landed && !S.ring && Math.hypot(p.x - S.at.x, p.z - S.at.z) <= RING.near) {
+    const enc = { x: S.at.x, z: S.at.z, p: 1, first: false, area: 6, room: -1, alerted: true, waved: false };
+    S.ring = { t: 0, plan: planWaves(F.rng, RING.n, RING.waves), next: 0, enc, pts: ringPoints(F.rng, S.at) };
+    F.events.push({ type: 'rush' });
+  }
+  if (S.ring) { S.ring.t += dt; spawnWaves(F, S.ring, S.ring.pts, RING.id, 6, RING.hover); }
+}
+
+// R16: the player is pushed out of live walkers and canisters (horizontally, where their heights overlap), and out of the rescue
+// ship's deck (SHIP.r, at any height). A push to where the player doesn't fit (more than PLAYER.stepUp to climb, or indoors a wall
+// or low ceiling under the box), or across the bound, shoves the walker instead (by its own climb rule); canisters and the ship
+// never move.
 function bodies(F) {
   const p = F.player, G = F.lv.ground, Cl = F.lv.ceil, lim = F.lv.bound;
   const out = (x, z, R, a) => {
@@ -328,6 +376,7 @@ function bodies(F) {
   };
   for (const a of F.aliens) if (a.type !== 'fl' && a.state !== 'dead' && level(a, p.y)) out(a.x, a.z, ALIENS[a.type].radius + PLAYER.radius, a);
   for (const c of F.canisters) if (p.y < c.y + CAN_H && c.y < p.y + PLAYER.eye) out(c.x, c.z, CANISTER.radius + PLAYER.radius, null);
+  if (F.ship) out(F.ship.at.x, F.ship.at.z, SHIP.r + PLAYER.radius, null);
 }
 
 function fire(F) {
