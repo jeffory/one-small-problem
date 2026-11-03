@@ -7,7 +7,8 @@ import { VOICE } from '../game/script.js';
 // Casts the radio's four speakers from the browser's voices (Plan 5). Pure; each field is a voice from all, or null. The list is the
 // English voices (every voice if there are none), local first then by name, so input order never matters; the pool is its local
 // voices if any (Chrome's online voices on Linux are the ones that misbehave, R15). Houston takes the pool's first en-US, You the
-// pool's first voice with another accent, the Switchboard the list's first voice that is neither, the Pilot the list's first voice that is none of those three (else the Switchboard's), and each falls back to Houston.
+// pool's first voice with another accent, the Switchboard the list's first voice that is neither, the Pilot the list's first voice
+// that is none of those three (else the Switchboard's), and each falls back to Houston.
 export function castVoices(all) {
   const none = { H: null, Y: null, S: null, P: null };
   try {

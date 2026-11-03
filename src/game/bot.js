@@ -22,8 +22,8 @@ import { cameraBasis } from '../gfx/math.js';
 // error (rad) it fires under; sight: how far (m) it looks for a target; noise: the aim noise, each way (rad); strafe: how often
 // (s) its dodge flips; stuck: seconds without progress before it jiggles, and again at each multiple; stall: seconds without
 // progress before it gives up the run; use: how near the flag (m) it presses E; max: the sim time (s) after which it gives the run
-// up whatever its progress (R21: the soak's longest reach of the comms room is about 297 s); full: the same for a soak run, which
-// plays both levels to boarding (spec 10).
+// up whatever its progress (the soak bot's longest reach of the comms room is about 275 s, R21's 297 s before Plan 6); full: the
+// same for a soak run, which plays both levels to boarding (spec 10; its longest run is about 672 s).
 export const BOT = { wp: 3, turn: 5, fire: .052, sight: 40, noise: .04, strafe: 1.3, stuck: 3, stall: 45, use: 1.6, max: 600, full: 1500 };
 // GAIN: the drop in the distance left (m or field steps) that counts as progress; JIG: how long a jiggle lasts (s); NOISE_T: how
 // often the aim noise is redrawn (s); DODGE: the dodge strafe; POLE: how near (m) a target must be to swing the flag pole at it;

@@ -148,7 +148,7 @@ export function buildBaseMeshes(B) {
       if (!B.spawnDoors.some(d => Math.abs(l.x - (d.x + d.dx * .6)) < .05 && Math.abs(l.z - (d.z + d.dz * .6)) < .05)) { box(P, l.x - .15, l.y - .08, l.z - .15, l.x + .15, l.y + .08, l.z + .15, MAT.red); beam(P, [l.x, vc(t), l.z], [l.x, l.y + .08, l.z], .03, MAT.pipes); }
       continue;
     }
-    if (l.kind) continue;
+    if (l.kind) continue; // kind 2, the reactor core's pulse, has no fixture
     const c = vc(t); if (c - l.y < .12) continue;
     beam(P, [l.x, c, l.z], [l.x, l.y + .1, l.z], .03, MAT.pipes); box(P, l.x - .16, l.y - .1, l.z - .16, l.x + .16, l.y + .1, l.z + .16, l.col[0] > l.col[2] ? MAT.amber : MAT.lamp);
   }

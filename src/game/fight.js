@@ -142,6 +142,7 @@ function stepSights(F) {
   for (const k in SIGHTS) { const q = F.world.prisonMap.props.find(o => o.kind === k);
     if (q && !F.seen[k] && Math.hypot(F.player.x - q.x, F.player.z - q.z) <= SIGHTS[k]) { F.seen[k] = true; F.events.push({ type: k === 'exit' ? 'hall' : k }); } }
 }
+
 // Straight to the start of area k (the test hooks): past the knock-out you arrive stripped, with no knock-out or hold running.
 export function skipTo(F, k) { if (F.area < 4 && k >= 4) strip(F); F.ko = null; F.eye = undefined; F.hold = null; enterArea(F, k); }
 

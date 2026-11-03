@@ -1,6 +1,7 @@
 // Text overlays from the shell: #hud (help line, then debug line), #seed, the opening's title #stamp, the radio's subtitle #sub,
-// the rescue ship's clock #clk and the full-screen #msg for fatal errors. mode() picks which play overlays show: 'none' on the title
-// and the end screen, 'opening' just the prompt and crosshair; any mode but 'play' also takes the stamp down.
+// the rescue ship's clock #clk and the full-screen #msg for fatal errors. mode() picks which play overlays show: 'none' on the title,
+// through the knock-out and the lift-off, and on the end screen, 'opening' just the prompt and crosshair; any mode but 'play' also
+// takes the stamp down.
 import { SHIP } from '../game/escape.js';
 import { fmtTime } from './score.js';
 // R2: the help line shows as each run starts and hides once the run has HELP_TIME s of play time (deaths don't reset it); the

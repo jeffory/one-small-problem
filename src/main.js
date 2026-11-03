@@ -345,8 +345,8 @@ function boot() {
     cue: k => run.R && radioCue(run.R, k),
     // At the rescue ship's ladder facing it, one E (it boards once the ship is down); nothing outside the dash.
     board: () => { const F = run.F, S = F.ship; if (!S) return; const l = ladderAt(S); place(l.x, l.z, Math.atan2(S.at.dx, S.at.dz)); stepFight(F, { ...IDLE, use: true }, .001); },
-    // The clocks that pause stops: the opening's, the hold's, Houston's call's (to the knock-out), the lift-off's and its fade's
-    // (s into the fade to the end screen), each null when not running.
+    // The clocks that pause stops: the opening's, the hold's, the knock-out's (s into its phase: Houston's call, the black, the floor
+    // or getting up), the lift-off's and its fade's (s into the fade to the end screen), each null when not running.
     clock: () => ({ opening: run.O?.t ?? null, hold: run.F.hold?.t ?? null, ko: run.F.ko?.t ?? null, liftoff: run.L?.t ?? null, fade: run.fade }),
   };
 
