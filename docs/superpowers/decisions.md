@@ -155,6 +155,14 @@ Every "minor (deferred)" line, with its triage, is in the two ledgers. The Plan 
 
 Use this on real hardware (Radeon 890M, Chrome and Firefox). Tuning goes in the tables only.
 
+### Plan 5
+- **Vignette** (`VIG` in `src/game/fightView.js`): is the hit flare strong enough without hiding the fight? Below 30 hp, is the slow pulse noticeable but not tiring? Does the dead vignette read? After Houston the rim is off even at low hp (pre-flight F6); is the win screen calm?
+- **Arrow** (`WAY` in `src/game/areas.js`): helpful without being a crutch? It hides within 12 m of the rim and the hangar door. In the crater it follows the switchback vertex by vertex, then the door (pre-flight F7); does it keep you on the path, and does it flip when you cut across? Pickup flashes moved down to 56 px; do they clash? Does the chevron glyph render in your fonts?
+- **Voices** (`castVoices` in `src/audio/speech.js`): which voices do Chrome and Firefox pick for Houston, You and the Switchboard, and are they easy to tell apart? On Chrome, are You's lines actually voiced, or lost to an online voice (Plan 4 R15)? (pre-flight F9)
+- **Tape** (`TAPE_R`, `TAPE_GLINT`, layer 11 in `bake.frag`): can you spot it from a distance? Does it still read as a roll of tape now it lies still on its edge, while other pickups bob and spin?
+- **Flag pole** (`WEAPONS[0]`): fair against skitterers now? Any surprise hits on things beside you? It can no longer reach a surface floater overhead (they hover 3-4.5 m up, above the band's top); fine? (pre-flight F8)
+- **Drops** (`PICKUP.tapeDrop`): with the first-kill tape and chance drops, is the game now too easy? Every brute drops tape, final stand included.
+
 ### Plan 4
 - **Title:** does the attract bot look believable? Does the title music play after the first game?
 - **Opening:**
@@ -205,10 +213,10 @@ Use this on real hardware (Radeon 890M, Chrome and Firefox). Tuning goes in the 
 - The Firefox mouse wheel.
 
 ### Plan 2
-- Hurt tint strength.
+- Hurt tint strength: superseded by Plan 5 (vignette).
 - Pole pose.
 - Floater telegraph pulse.
 - Canister lethality.
 - Skitterer bite rate.
-- Tape visibility.
+- Tape visibility: superseded by Plan 5 (tape).
 - fps near the rim.
