@@ -328,3 +328,13 @@ test('the dawdle clock stops on hold and after Houston picks up (R16)', async ({
   expect(await dawdle()).toBeGreaterThan(2.5); await toComms(page); await onHold(page); await page.evaluate(() => { window.ospTest.god(true); window.ospTest.ff(60); });
   expect(await dawdle()).toBe(0); await page.evaluate(() => window.ospTest.ff(31)); await expect.poll(() => state(page)).toBe('ending'); expect(await dawdle()).toBe(0);
   expect(errors).toEqual([]); });
+// The whole game twice: the first on the URL's seed; the second after Back to title cleared it, so New Game rolls a Moon nobody
+// chose. Each #new click locks the mouse, and #back takes the click only because finish() lets it go (pre-flight F1).
+test('two whole games in a row: title, opening, play, the final stand, Houston, the end screen, back to the title (show)', async ({ page }) => {
+  test.setTimeout(120_000); await noVoices(page); // pre-flight F5: two games with real-time endings outrun the default 30 s; F4: pin the unvoiced path
+  const errors = watchErrors(page); await page.goto(URLS[1][1] + '#APOLLO-4471'); await ready(page);
+  for (let g = 0; g < 2; g++) { await page.click('#new'); await expect.poll(() => state(page)).toBe('opening'); await throughOpening(page);
+    await toComms(page); await onHold(page); await page.evaluate(() => { window.ospTest.god(true); window.ospTest.ff(91); });
+    await expect(page.locator('#end')).toBeVisible({ timeout: 20_000 }); await expect(page.locator('#stats')).toContainText('GOLF BALLS');
+    await page.click('#back'); await expect(page.locator('#title')).toBeVisible(); expect(await state(page)).toBe('title'); }
+  expect(await page.evaluate(() => location.hash)).toBe(''); expect(errors).toEqual([]); });
