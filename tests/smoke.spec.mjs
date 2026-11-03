@@ -396,3 +396,9 @@ test('the pause menu: palette-coloured controls, no prompt or flash showing thro
     lines: [...document.querySelectorAll('#pause label')].map(l => { const r = document.createRange(); r.selectNodeContents(l.firstChild); return [l.firstChild.data, r.getClientRects().length]; }) }));
   expect(ui.accent).toEqual(Array(4).fill('rgb(122, 114, 102)')); for (const [label, n] of ui.lines) expect(n, label).toBe(1);
   await page.keyboard.press('Escape'); await expect(page.locator('#pause')).toBeHidden(); await expect(page.locator('#prompt')).toBeVisible(); expect(errors).toEqual([]); });
+test('a hit reddens the edges of the frame and leaves its centre (Plan 5)', async ({ page }) => {
+  const errors = watchErrors(page), frames = () => page.evaluate(() => window.ospTest.frames()), cap = () => page.evaluate(() => window.ospTest.capture());
+  await start(page); await page.keyboard.press('Escape'); await expect.poll(() => paused(page)).toBe(true);
+  let f = await frames(); await expect.poll(frames).toBeGreaterThan(f + 1); const a = await cap();
+  await page.evaluate(() => window.ospTest.hurt(15)); f = await frames(); await expect.poll(frames).toBeGreaterThan(f + 1); const b = await cap();
+  expect(b.edge - a.edge).toBeGreaterThan(.02); expect(Math.abs(b.mid - a.mid)).toBeLessThan(.01); expect(errors).toEqual([]); });

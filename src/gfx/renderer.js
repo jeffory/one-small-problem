@@ -22,8 +22,8 @@ const FOV = 62 * Math.PI / 180, Z3 = [0, 0, 0];
  *   meshes: [{gpu: uploadMesh(), model: mat4, rot: mat3, flash?: 0-1 hit flash}], occTex (null = nothing casts terrain shadows),
  *   lights: {pos: vec4[16] xyz+radius, col: vec4[16], count}, spheres: vec4[8] xyz+radius, exposure, palMode: 0 off | 1 dithered | 2 flat,
  *   sprites?: {data: Float32Array(512 * 8) of x, y, z, size, r, g, b, 0 (opaque discs first, then glows), nOpaque, nGlow},
- *   view?: {gpu, model, rot} | null (drawn after a depth clear), tint?: [k, w, 0] where k mixes the tone-mapped image toward blood red,
- *   capped at .18, and w (the opening's blast flash) toward warm off-white, capped at .85}
+ *   view?: {gpu, model, rot} | null (drawn after a depth clear), tint?: [k, w, reach] where k mixes the screen edges toward blood red (capped at .85)
+ *   over reach (0-1, how far in from the edges), and w (the opening's blast flash) toward warm off-white, capped at .85}
  * Missing sprites, view and tint mean none, none and zero.
  */
 export function createRenderer(gl, hdrOK, tex = bakeTextures(gl)) {
@@ -116,13 +116,17 @@ export function createRenderer(gl, hdrOK, tex = bakeTextures(gl)) {
   }
 
   // Reads back the low-res palette target: fractions of in-palette and pure-black pixels, distinct RGB count, and the mean of
-  // (r + g + b) / 3 over the frame (0-255).
+  // (r + g + b) / 3 over the frame (0-255), and the mean redness max(0, r - (g + b) / 2) / 255 of the edge band
+  // (within w / 8 of the left or right side or h / 8 of the top or bottom) and of the centre box (|dx| < w / 8, |dy| < h / 8).
   function capture() {
     const px = new Uint8Array(w * h * 4), pal = new Set(PALETTE.map(s => parseInt(s, 16))), seen = new Set();
     gl.bindFramebuffer(gl.READ_FRAMEBUFFER, fboL); gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, px); gl.bindFramebuffer(gl.READ_FRAMEBUFFER, null);
-    let inPal = 0, black = 0, sum = 0;
-    for (let i = 0; i < px.length; i += 4) { const c = px[i] << 16 | px[i + 1] << 8 | px[i + 2]; seen.add(c); if (pal.has(c)) inPal++; if (!c) black++; sum += px[i] + px[i + 1] + px[i + 2]; }
-    return { w, h, inPalette: inPal / (w * h), black: black / (w * h), colours: seen.size, mean: sum / 3 / (w * h) };
+    let inPal = 0, black = 0, sum = 0, eS = 0, eN = 0, mS = 0, mN = 0;
+    for (let i = 0; i < px.length; i += 4) { const c = px[i] << 16 | px[i + 1] << 8 | px[i + 2]; seen.add(c); if (pal.has(c)) inPal++; if (!c) black++; sum += px[i] + px[i + 1] + px[i + 2];
+      const x = (i >> 2) % w, y = ((i >> 2) - x) / w, red = Math.max(0, px[i] - (px[i + 1] + px[i + 2]) / 2) / 255;
+      if (x < w / 8 || x >= w - w / 8 || y < h / 8 || y >= h - h / 8) { eS += red; eN++; }
+      if (Math.abs(x + .5 - w / 2) < w / 8 && Math.abs(y + .5 - h / 2) < h / 8) { mS += red; mN++; } }
+    return { w, h, inPalette: inPal / (w * h), black: black / (w * h), colours: seen.size, mean: sum / 3 / (w * h), edge: eN ? eS / eN : 0, mid: mN ? mS / mN : 0 };
   }
 
   return { resize, render, capture };

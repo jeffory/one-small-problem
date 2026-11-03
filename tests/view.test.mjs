@@ -2,7 +2,7 @@ import test from 'node:test'; import assert from 'node:assert/strict'; import { 
 import { sampleGround } from '../src/gen/surface.js'; import { generateWorld } from '../src/gen/world.js'; import { buildSurfaceScene } from '../src/game/surfaceScene.js';
 import { createFight, stepFight, hurtPlayer } from '../src/game/fight.js'; import { createAlien } from '../src/game/aliens.js'; import { give } from '../src/game/weapons.js';
 import { createFightView, fillFrame } from '../src/game/fightView.js'; import { cameraBasis, xf, dot } from '../src/gfx/math.js';
-import { TAPE_GLINT } from '../src/game/fightView.js'; import { TAPE_R } from '../src/game/models.js'; import { tilt, setWreck } from '../src/game/fightView.js'; import { readFileSync } from 'node:fs'; import { settleWreck } from '../src/game/lander.js';
+import { TAPE_GLINT, VIG } from '../src/game/fightView.js'; import { TAPE_R } from '../src/game/models.js'; import { tilt, setWreck } from '../src/game/fightView.js'; import { readFileSync } from 'node:fs'; import { settleWreck } from '../src/game/lander.js';
 const W = generateWorld('APOLLO-4471'), gl = fakeGL(), scene = buildSurfaceScene(gl, W), V = createFightView(gl, scene);
 const idle = { fwd: 0, strafe: 0, run: false, jump: false, fire: false, use: false, weapon: -1, wheel: 0 };
 const frame = () => ({ ...scene, exposure: 1, lights: { pos: new Float32Array(64), col: new Float32Array(64), count: 0 }, spheres: new Float32Array(32) });
@@ -25,9 +25,17 @@ test('the planted flag is drawn on the surface level only', () => { const fr = f
 test('the view model follows the weapon and is gone when dead', () => { const F = createFight(W), fr = frame();
   fillFrame(V, F, fr, 0); assert.equal(fr.view, null); put(F, F.flag.x + 1, F.flag.z); stepFight(F, { ...idle, use: true }, 1 / 60); fillFrame(V, F, fr, 0); assert.equal(fr.view.gpu, V.gpu.pole);
   give(F.ars, 1, 10); fillFrame(V, F, fr, 0); assert.equal(fr.view.gpu, V.gpu.pistol); F.hp = 1; hurtPlayer(F, 5, 0, 0, 0); fillFrame(V, F, fr, 0); assert.equal(fr.view, null); });
-test('the screen flashes red when hurt, then fades; the tint is a bounded mix (R17)', () => { const F = createFight(W), fr = frame(); hurtPlayer(F, 10, 0, 0, 0); fillFrame(V, F, fr, 0);
-  assert.ok(fr.tint[0] > .05 && fr.tint[0] <= .18 && fr.tint[1] === 0 && fr.tint[2] === 0); for (let i = 0; i < 60; i++) stepFight(F, idle, 1 / 60); fillFrame(V, F, fr, 1); assert.ok(fr.tint[0] < .02);
-  hurtPlayer(F, 60, 0, 0, 0); fillFrame(V, F, fr, 2); assert.ok(fr.tint[0] <= .18 && fr.tint[0] > .15); F.hp = 1; hurtPlayer(F, 5, 0, 0, 0); fillFrame(V, F, fr, 3); assert.deepEqual(fr.tint, [.12, 0, 0]); });
+test('the vignette: a hit flares it by hurtT, low health pulses a rim at 1 Hz, death is heavy; never for god mode, a won fight or the opening (Plan 5, Review Focus 3)', () => {
+  const F = createFight(W), fr = frame(), near = (a, b) => Math.abs(a - b) < 1e-9;
+  fillFrame(V, F, fr, 0); assert.deepEqual([...fr.tint], [0, 0, VIG.reach]);
+  hurtPlayer(F, 10, 0, 0, 0); fillFrame(V, F, fr, 0); assert.ok(near(fr.tint[0], VIG.hit * .5)); assert.equal(fr.tint[2], VIG.reach);
+  for (let i = 0; i < 30; i++) stepFight(F, idle, 1 / 60); fillFrame(V, F, fr, 1); assert.equal(fr.tint[0], 0);
+  F.hp = 20; for (const [t, k] of [[0, 1], [.25, 1 + VIG.pulse], [.75, 1 - VIG.pulse]]) { fillFrame(V, F, fr, t); assert.ok(near(fr.tint[0], VIG.low * k), `${t}`); }
+  hurtPlayer(F, 10, 0, 0, 0); fillFrame(V, F, fr, .75); assert.ok(near(fr.tint[0], Math.max(VIG.hit * F.hurtT, VIG.low * (1 - VIG.pulse))));
+  F.god = true; F.hurtT = 0; fillFrame(V, F, fr, .25); assert.equal(fr.tint[0], 0); F.god = false;
+  F.won = true; F.hurtT = 0; fillFrame(V, F, fr, .25); assert.equal(fr.tint[0], 0); F.won = false; // a won fight below 30 hp shows no rim (pre-flight F6)
+  hurtPlayer(F, 99, 0, 0, 0); fillFrame(V, F, fr, 0); assert.deepEqual([...fr.tint], [VIG.dead, 0, VIG.deadReach]);
+  const O = createOpening(W, createFight(W)); stepOpening(O, idle, 1 / 60); fillFrame(V, O.view, fr, .25); assert.equal(fr.tint[0], 0); });
 test('the held pole rests low, right of and below the crosshair, and its swing sweeps across the centre (R18)', () => { const F = createFight(W), fr = frame(), p = F.player;
   put(F, F.flag.x + 1, F.flag.z); stepFight(F, { ...idle, use: true }, 1 / 60);
   const tip = () => { fillFrame(V, F, fr, 0); const c = fr.cam, B = cameraBasis(c.yaw, c.pitch), q = xf(fr.view.model, [0, 1.6, 0]), d = [q[0] - c.x, q[1] - c.y, q[2] - c.z], z = dot(d, B.f); return [dot(d, B.r) / z, dot(d, B.u) / z]; };

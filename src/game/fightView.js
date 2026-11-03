@@ -1,5 +1,5 @@
 // The fight view: every frame it turns a Fight into Frame fields (camera, meshes, lights, sphere occluders, sprites,
-// the first-person view model and the damage tint). It only reads the fight, the scene's lamps and the lander's wreck; its GPU
+// the first-person view model and the red hurt vignette). It only reads the fight, the scene's lamps and the lander's wreck; its GPU
 // work is the model and lander-piece upload and dispose. The opening's view (opening.js) is fight-shaped, with three optional
 // fields a real fight never has: eye (the eye's height over the feet, else PLAYER.eye), glow ([{x, y, z, s, r, g, b}], more
 // dynamic light candidates) and flash (0-1, the blast's white flash, to tint[1]).
@@ -8,7 +8,7 @@ import { cameraBasis, chainTo, trs, setT, setRx, setRy, setSc, rot3To, I3 } from
 import { buildModels, VIEW_MODEL, TAPE_R } from './models.js';
 import { RIGS, partMatrixTo, worldSpheresTo } from './rigs.js';
 import { WEAPONS, TEAL } from './weapons.js';
-import { PLAYER } from './player.js';
+import { PLAYER } from './player.js'; import { RADIO } from './radio.js';
 import { landerMeshes, pieceMatrix } from './lander.js';
 
 // Per-frame caps (16 lights, 8 spheres, 512 sprites of which at most 192 opaque); FAR culls aliens and small props at 80 m.
@@ -204,8 +204,18 @@ export function fillFrame(V, F, frame, t) {
     frame.view = ent(G[W.melee ? 'pole' : W.id], m);
   }
 
-  // 7. damage tint (R17): tint[0] is how far the post pass mixes the tone-mapped image toward blood red (it caps that at .18);
-  // dead holds a mild fixed shift. tint[1] is the opening's white flash, mixed toward warm off-white (capped at .85, F14).
+  // 7. hurt vignette: tint = [k, w, reach]. k is how far the post pass mixes the screen edges toward blood red (it caps that at
+  // .85, after tone mapping), reach how far in from the edges the red grows; w is the opening's white flash, mixed toward warm
+  // off-white (capped at .85, F14).
   const K = frame.tint = V._tint;
-  K[0] = dead ? .12 : .18 * F.hurtT; K[1] = F.flash || 0; K[2] = 0;
+  vignette(F, t, K); K[1] = F.flash || 0;
+}
+
+// The hurt vignette (Plan 5): a hit flares it by hurtT, below RADIO.low hp a rim pulses at VIG.hz, death closes it in. God mode,
+// a won fight and the opening's view (no hp) never show the rim. Writes K[0] and K[2], leaves K[1], returns K.
+export const VIG = { hit: .6, low: .22, pulse: .35, hz: 1, reach: .4, dead: .8, deadReach: .8 };
+export function vignette(F, t, K) {
+  if (F.state === 'dead') { K[0] = VIG.dead; K[2] = VIG.deadReach; return K; }
+  const low = F.hp < RADIO.low && !F.god && !F.won ? VIG.low * (1 + VIG.pulse * Math.sin(2 * Math.PI * VIG.hz * t)) : 0;
+  K[0] = Math.max(VIG.hit * F.hurtT, low); K[2] = VIG.reach; return K;
 }
