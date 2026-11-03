@@ -117,6 +117,8 @@ test('the opening frame: glitter as small dim gold glows, the dust ring as opaqu
   let puffs = 0; for (let i = 0; i < fr.sprites.nOpaque; i++) if (D[i * 8 + 3] >= .35) puffs++; assert.ok(puffs >= 20, 'the dust ring'); });
 test('a real fight sets no flash and no eye override (opening)', () => { const F = createFight(W), fr = frame(); fillFrame(V, F, fr, 0);
   assert.equal(fr.tint[1], 0); assert.ok(Math.abs(fr.cam.y - (F.player.y + PLAYER.eye)) < 1e-6); });
+test('the starting values of VIG and TAPE_GLINT (Plan 5, pinned once; a hands-on retune changes the table and this pin)', () => {
+  assert.deepEqual(VIG, { hit: .6, low: .22, pulse: .35, hz: 1, reach: .4, dead: .8, deadReach: .8 }); assert.deepEqual(TAPE_GLINT, { period: 2.5, on: .15, size: .1 }); });
 test('tape lies still on its edge on the ground and glints for .15 s in every 2.5 s (Plan 5)', () => { const F = createFight(W), fr = frame(), q = F.pickups.find(p => p.kind === 'tape');
   put(F, q.x + 4, q.z); const at = t => { fillFrame(V, F, fr, t); return fr.meshes.find(m => m.gpu === V.gpu.tape && Math.hypot(m.model[12] - q.x, m.model[14] - q.z) < 1e-3); };
   const a = [...at(0).model], b = [...at(1.3).model]; assert.deepEqual(a, b); assert.ok(Math.abs(a[13] - (q.y + TAPE_R - .01)) < 1e-5);

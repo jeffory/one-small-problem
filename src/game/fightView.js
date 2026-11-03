@@ -19,10 +19,11 @@ const MAX_L = 16, MAX_SPH = 8, MAX_SPR = 512, MAX_OPQ = 192, FAR = 80;
 const GRIP = .25, LEAN = 1.3, TURN = .12, HOLD = [.16, -.23, .36], SWING = [.9, .35];
 // A bolt and its trail: [size, intensity] for each of its 4 sprites, spaced .03 s of flight apart.
 const TRAIL = [[1, 1], [.7, .55], [.55, .35], [.42, .2]];
+// The tape glint (Plan 5): every period s a roll flashes a small sprite for `on` s, offset per roll by position.
+export const TAPE_GLINT = { period: 2.5, on: .15, size: .1 };
 // Lights (pre-flight F18): dynamic lights (plasma, booms, the muzzle, canisters) may take MAX_DYN of the 16 slots from the
 // lamps, which keep at least 16 - MAX_DYN. A lamp counts if its sphere comes within FOG_REACH m of the camera; one that was on
 // last frame is HYST m nearer for ranking, and a lamp fades in at LIGHT_FADE per second from 0 the frame it joins.
-export const TAPE_GLINT = { period: 2.5, on: .15, size: .1 };
 export const MAX_DYN = 6, HYST = 4, LIGHT_FADE = 4, FOG_REACH = 30;
 const byD = (a, b) => a.d - b.d, smooth = v => { const x = Math.max(0, Math.min(1, v)); return x * x * (3 - 2 * x); };
 

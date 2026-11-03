@@ -1,9 +1,9 @@
 // Pure model builders (no GL): design-A aliens, held weapons, flag/pole and prop meshes as finishMesh output.
 import { createMesh, vtx, quadIdx, box, blob, lathe, finishMesh } from '../gfx/mesh.js';
 import { MAT } from '../gfx/materials.js';
-export const TAPE_R = .144; // duct-tape roll radius (m), also its rest height in fightView
 import { vn3 } from '../gen/noise.js';
 import { buildFlag } from './props.js';
+export const TAPE_R = .144; // duct-tape roll radius (m), also its rest height in fightView
 
 // Held weapon placement in camera space, [right, up, forward]. Model-local -z points forward.
 export const VIEW_MODEL = { off: [.15, -.16, .36], scale: .42 };

@@ -326,8 +326,9 @@ function killed(F, a) {
   F.events.push({ type: 'kill', x: a.x, y: gy, z: a.z, kind: a.type, n: F.kills, team: a._foe });
   const kind = a.type === 'fl' ? 'cells' : a.type === 'br' ? 'scatter' : a.enc.first || F.rng.next() < PICKUP.pistolDrop ? 'pistol' : null;
   if (kind) F.pickups.push({ kind, x: a.x, y: gy, z: a.z, n: kind === 'cells' ? PICKUP.flCells : PICKUP[kind], area: a.area });
-  const c2 = PICKUP.tapeDrop[a.type]; // the first scoring kill drops tape with no roll; else by chance (rng drawn only when 0 < c2 < 1)
-  if (scored && F.kills === 1 || c2 >= 1 || c2 > 0 && F.rng.next() < c2) {
+  const chance = PICKUP.tapeDrop[a.type]; // the first scoring kill drops tape with no roll; else by chance (rng drawn only when 0 < chance < 1)
+  if ((scored && F.kills === 1) || chance >= 1 ||
+      (chance > 0 && F.rng.next() < chance)) {
     let x = a.x, y = gy, z = a.z;
     if (kind) { const p = F.player, dx = p.x - a.x, dz = p.z - a.z, d = Math.hypot(dx, dz), tx = a.x + (d > 1e-6 ? dx / d : 1) * PICKUP.tapeOff, tz = a.z + (d > 1e-6 ? dz / d : 0) * PICKUP.tapeOff, ty = F.lv.ground(tx, tz);
       if (Math.abs(ty - gy) <= WALL) { x = tx; y = ty; z = tz; } }
