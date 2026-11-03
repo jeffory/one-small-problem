@@ -9,9 +9,10 @@ import { radioIdle } from './radio.js';
 // tape + cells of spots (m from the dish, x and z) that are floor.
 export const HOLD = { time: 90, reach: 2.5, waves: [[3, 2], [15, 3], [27, 4], [39, 5], [51, 6], [63, 7], [75, 8]], gap: .9, cap: 8, msg: 14,
   tape: 3, cells: 2, spots: [[2.5, 2.5], [-2.5, -2.5], [2.5, -2.5], [-2.5, 2.5], [0, 2.5], [0, -2.5], [2.5, 0], [-2.5, 0]] };
-// The ending: seconds from Houston picking up to the end screen, at least min (and the radio idle), at most max.
+// The ending: seconds from the stowaway sting after lift-off (escape.js LIFT) to the fade to the end screen, at least min (and the
+// radio idle), at most max.
 export const ENDING = { min: 6, max: 14 };
-// Whether the ending is over t s after Houston picked up, with the radio R (finish() then hushes whatever is still on the air).
+// Whether the ending is over t s after the sting, with the radio R (finish() then hushes whatever is still on the air).
 export const endingOver = (t, R) => t >= ENDING.min && radioIdle(R) || t >= ENDING.max;
 
 // A wave plan's spawns, [{at, type, door, wave}] in time order, from waves ([start s, budget] each; the hold's by default, the

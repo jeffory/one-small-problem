@@ -11,7 +11,7 @@ export const CUES = {
   first: { once: 1 }, brute: { cool: 20, p: .8 }, floater: { cool: 30, p: .7 }, multi: { cool: 20 }, kill: { cool: 15, p: .2 }, boom: { cool: 20, p: .5 },
   golf: { at: 1 }, dawdle: {}, crater: {}, base: {}, comms: {}, climb: {}, dash: { seq: 1 }, dead: {}, restart: { p: .5 },
   bang: { crit: 1 }, nudge: { at: 1 }, guard: { crit: 1 }, freed: { seq: 1 }, pa: { cool: 30 },
-  flare: { seq: 1 }, countdown: { at: 1 }, rush: { seq: 1 }, missed: { crit: 1 } };
+  flare: { seq: 1 }, countdown: { at: 1 }, rush: { seq: 1 }, missed: { crit: 1 }, board: { seq: 1 }, sting: { seq: 1 } };
 export const SCRIPT = {
   touchdown: ["Y|Contact light. Engine stop.", "H|We copy, you're down. Beautiful work."],
   cabin: ["H|We show the hatch open. That's usually the cue to go outside."], // carry-over (Task 7 review): still in the cabin OPEN.stay s after touchdown
@@ -87,4 +87,6 @@ export const SCRIPT = {
   countdown: ["H|Pilot says three minutes.", "H|Pilot says two minutes. He's tapping the glass.", "P|One minute. I'm not kidding.", "H|Pilot says he's serious this time."],
   rush: ["P|Contacts! Lots of contacts, coming over the ridge!", "H|Run. Just run.", "P|I'm not waiting forever, buddy."],
   missed: ["H|They'll come round again. Be at the ship this time."],
+  board: ["P|Welcome aboard. Strap in. Don't touch anything."],
+  sting: ["Y|Houston\u2026 we have one more small problem."], // the stowaway sting, after lift-off (spec 2 step 9)
   rescue: ["H|Copy. We heard. Rescue vehicle is go, touchdown at your lander in twenty min\u2014"] }; // cut off: its talk ending is the knock-out

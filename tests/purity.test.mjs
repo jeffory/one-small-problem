@@ -1,5 +1,5 @@
 import test from 'node:test'; import assert from 'node:assert/strict'; import { existsSync, readFileSync, readdirSync } from 'node:fs';
-const SIM = [...['weapons', 'bolts', 'nav', 'rigs', 'aliens', 'fight', 'models', 'areas', 'baseMesh', 'bot', 'hold', 'lander', 'opening', 'script', 'radio', 'escape'].map(n => `src/game/${n}.js`), 'src/ui/score.js', 'src/ui/settings.js'].filter(f => existsSync(f));
+const SIM = [...['weapons', 'bolts', 'nav', 'rigs', 'aliens', 'fight', 'models', 'areas', 'baseMesh', 'bot', 'hold', 'lander', 'opening', 'script', 'radio', 'escape', 'liftoff'].map(n => `src/game/${n}.js`), 'src/ui/score.js', 'src/ui/settings.js'].filter(f => existsSync(f));
 test('simulation modules stay GPU-free, DOM-free and seeded', () => { assert.ok(SIM.length >= 2);
   for (const f of SIM) assert.doesNotMatch(readFileSync(f, 'utf8'), /\bdocument\.|\bwindow\.|Math\.random|performance\.now|Date\.now|\bgl\./, f); });
 test('src/gen has no import cycles', () => {

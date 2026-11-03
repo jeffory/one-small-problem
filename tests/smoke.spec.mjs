@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test'; import { pathToFileURL } from 'node:url'; import { resolve } from 'node:path';
 import { generateWorld } from '../src/gen/world.js'; import { checksumWorld } from '../src/gen/checksum.js';
-import { HELP_TIME } from '../src/ui/hud.js'; import { fmtTime } from '../src/ui/score.js'; import { OPEN } from '../src/game/opening.js'; import { HOLD } from '../src/game/hold.js'; import { KO, BREAK, SHIP, FLARE } from '../src/game/escape.js'; import { CUES } from '../src/game/script.js';
+import { HELP_TIME } from '../src/ui/hud.js'; import { fmtTime } from '../src/ui/score.js'; import { OPEN } from '../src/game/opening.js'; import { HOLD, ENDING } from '../src/game/hold.js'; import { KO, BREAK, SHIP, FLARE, LIFT } from '../src/game/escape.js'; import { CUES } from '../src/game/script.js';
 export const URLS = [['file', pathToFileURL(resolve('dist/index.html')).href], ['http', 'http://localhost:4173/index.html']];
 // Benign Firefox parser note about the packed binary payload when the server's utf-8 header overrides the page's iso-8859-15 meta; real decoding failures are caught by the ready check.
 const BENIGN = /byte stream was erroneous according to the character encoding/i;
@@ -433,3 +433,23 @@ test('the dash shows SHIP LEAVES m:ss under the arrow, red under SHIP.warn s (Pl
   const m = Math.ceil(SHIP.clock / 60); await expect(clk).toHaveText(new RegExp('^SHIP LEAVES [' + (m - 1) + m + ']:\\d\\d$')); // pre-flight F8: read from SHIP.clock, so T12's retune can't break it
   await expect(clk).not.toHaveClass(/low/); await page.evaluate(s => window.ospTest.ff(s), SHIP.clock - SHIP.warn + 1);
   await expect(clk).toHaveClass(/low/); await expect(clk).toHaveText(/^SHIP LEAVES 0:\d\d$/); expect(errors).toEqual([]); });
+const toLiftoff = async page => { await page.evaluate(() => { const o = window.ospTest; o.god(true); o.dash(); o.calm(); }); await expect.poll(() => area(page)).toBe('dash');
+  // pre-flight F1: you start at the rim, far from the site, so touchdown does not trigger the rush and the sting keys at LIFT.sting + the board line only
+  expect(await page.evaluate(() => { const o = window.ospTest, s = o.ship().site, p = o.player(); return Math.hypot(p.x - s.x, p.z - s.z); })).toBeGreaterThan(300);
+  await page.evaluate(s => window.ospTest.ff(s), SHIP.descent + .5); await page.evaluate(() => window.ospTest.board()); await expect.poll(() => state(page)).toBe('liftoff'); };
+// R18 moved: the end gate runs from the sting. 1/30 s steps through the lift-off, cueing the switchboard intro `holds` times at the sting.
+const throughLift = (page, holds = 0) => page.evaluate(([n, sting]) => { const o = window.ospTest, sub = () => document.getElementById('sub').textContent, s = []; let cued = false;
+  for (let i = 0; i < 3000 && o.state() === 'liftoff'; i++) { const c = o.clock().liftoff;
+    if (c >= sting) { if (!cued) { cued = true; for (let k = 0; k < n; k++) o.cue('hold'); } const r = o.radio(); s.push({ t: c - sting, idle: !r.line && !r.queued.length, line: r.line, sub: sub() }); }
+    o.ff(1 / 30); }
+  return { s, T: s.at(-1).t + 1 / 30, state: o.state(), sub: sub() }; }, [holds, LIFT.sting]);
+test('R9 moved: boarding, the lift-off, then the end screen with the time at boarding (Plan 6)', async ({ page }) => {
+  await noVoices(page); const errors = watchErrors(page); await start(page); await toLiftoff(page); const f = await fight(page); expect(f.won).toBe(true);
+  await expect(page.locator('#end')).toBeVisible({ timeout: 30_000 }); await expect(page.locator('#stats')).toContainText('TIME ' + fmtTime(f.wonAt)); expect(errors).toEqual([]); });
+test('R18 moved: the end screen comes ENDING.min s after the sting once the radio is idle, then the fade', async ({ page }) => {
+  await noVoices(page); const errors = watchErrors(page); await start(page); await toLiftoff(page); const r = await throughLift(page), idle = r.s.find(x => x.idle)?.t ?? r.T;
+  expect(r.s.some(x => x.sub.includes('one more small problem'))).toBe(true); expect(r.T).toBeGreaterThanOrEqual(ENDING.min + LIFT.fade - 1e-6);
+  expect(r.T).toBeLessThanOrEqual(Math.max(ENDING.min, idle) + LIFT.fade + 2 / 30 + 1e-6); expect([r.state, r.sub]).toEqual(['end', '']); expect(errors).toEqual([]); });
+test('R18 moved: at ENDING.max after the sting the fade starts whatever is on the air', async ({ page }) => {
+  await noVoices(page); const errors = watchErrors(page); await start(page); await toLiftoff(page); const r = await throughLift(page, 3), last = r.s.at(-1);
+  expect(Math.abs(r.T - ENDING.max - LIFT.fade)).toBeLessThanOrEqual(2 / 30); expect(last.line).not.toBe(null); expect([r.state, r.sub]).toEqual(['end', '']); expect(errors).toEqual([]); });

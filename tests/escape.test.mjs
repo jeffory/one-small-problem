@@ -116,3 +116,21 @@ test('the rush holds back while RING.cap live aliens of the dash are within RING
   const ring = () => F.aliens.filter(a => a.id >= RING.id && a.state !== 'dead').length;
   run(F, idle, SHIP.descent + 6); assert.ok(F.ship.ring && F.ship.ring.t > 5); assert.equal(ring(), 0);
   hurtAlien(F.aliens[0], 999, 0, 0); run(F, idle, 3); assert.equal(ring(), 1); });
+import { LIFT, ladderAt } from '../src/game/escape.js'; import { atLadder } from '../src/game/fight.js'; import { createLiftoff, stepLiftoff } from '../src/game/liftoff.js'; import { EGRESS } from '../src/game/opening.js';
+const landed = () => { const F = createFight(W, 6); F.aliens.length = 0; run(F, idle, SHIP.descent + .1); F.events.length = 0; return F; };
+test('R9 moved: E at the landed ship\'s ladder boards it; the run clock stops for good, nothing hurts; not before, not from afar', () => {
+  assert.deepEqual(LIFT, { acc: 2, sting: 6, fade: .8 }); const E = createFight(W, 6), l0 = ladderAt(E.ship); E.aliens.length = 0; put(E, l0.x, l0.z);
+  stepFight(E, { ...idle, use: true }, 1 / 60); assert.equal(E.won, false, 'not before touchdown');
+  const F = landed(), l = ladderAt(F.ship); put(F, l.x + SHIP.reach + .5, l.z); assert.equal(atLadder(F), false); put(F, l.x, l.z); assert.ok(atLadder(F));
+  stepFight(F, { ...idle, use: true }, 1 / 60); assert.deepEqual([F.won, F.wonAt], [true, F.run]); assert.ok(F.events.some(e => e.type === 'board'));
+  const r = F.run, hp = F.hp; run(F, idle, 2); hurtPlayer(F, 500, 0, 0, 0); assert.deepEqual([F.run, F.hp, F.state], [r, hp, 'play']); });
+test('E at the ladder in the clock\'s last step boards (Review Focus 3)', () => {
+  const F = landed(), l = ladderAt(F.ship); put(F, l.x, l.z); F.ship.left = 1 / 120; stepFight(F, { ...idle, use: true }, 1 / 60);
+  assert.deepEqual([F.won, F.state], [true, 'play']); assert.ok(!F.events.some(e => e.type === 'missed')); });
+test('the lift-off: the ascent stage rises with you, the aliens turn and wave, the sting at LIFT.sting s, once', () => {
+  const F = landed(), st = W.escape.site, l = ladderAt(F.ship), a = createAlien({ type: 'sk', x: st.x + 20, y: F.lv.ground(st.x + 20, st.z), z: st.z }, 2500, F.encs[0]);
+  a.area = 6; F.aliens.push(a); put(F, l.x, l.z); stepFight(F, { ...idle, use: true }, 1 / 60); const L = createLiftoff(F), y0 = F.player.y, ev = []; let waved = 0;
+  assert.equal(L.view.eye, EGRESS[0][3]); assert.ok(L.view.aliens.includes(a));
+  for (let t = 0; t < LIFT.sting + 1; t += 1 / 30) { stepLiftoff(L, 1 / 30); ev.push(...L.events.map(e => e.key)); L.events.length = 0; waved = Math.max(waved, a.wave); }
+  assert.ok(Math.abs(F.ship.W.up - LIFT.acc * L.t * L.t / 2) < 1e-9 && F.player.y - y0 > 10); assert.deepEqual(ev, ['click', 'sting']); assert.ok(L.sting && waved > .9);
+  assert.ok(Math.abs(Math.atan2(st.x - a.x, st.z - a.z) - a.yaw) < 1e-9); });

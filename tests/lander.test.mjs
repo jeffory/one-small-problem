@@ -1,6 +1,6 @@
 import test from 'node:test'; import assert from 'node:assert/strict'; import { readFileSync } from 'node:fs'; import { generateWorld } from '../src/gen/world.js'; import { makeRng } from '../src/gen/rng.js';
 import { sampleBilinear, LANDER_OCC } from '../src/gen/surface.js'; import { FLAG, LAYER } from '../src/gfx/materials.js'; import { segmentHits } from './helpers.mjs';
-import { PIECES, WRECK, landerMeshes, createWreck, blast, stepWreck, settleWreck, wreckOcc } from '../src/game/lander.js'; import { surfaceParts } from '../src/game/surfaceScene.js';
+import { PIECES, WRECK, landerMeshes, createWreck, blast, stepWreck, settleWreck, wreckOcc, pieceMatrix } from '../src/game/lander.js'; import { surfaceParts } from '../src/game/surfaceScene.js';
 const W = generateWorld('APOLLO-4471'), M = landerMeshes(), L = W.lander;
 // Piece k's triangles in lander space, intact; the hatch (piece 2) opened by `open` rad about its hinge.
 const tris = (k, open = 0) => { const m = M[k], c = Math.cos(-open), s = Math.sin(-open), at = PIECES[k].at, out = [];
@@ -33,3 +33,5 @@ test('the cabin spins off into the sky, over 20 m up and landing over 20 m away;
   for (let t = 0; t < 3; t += 1 / 60) { stepWreck(B, 1 / 60); top = Math.max(top, c.y - L.y); } assert.ok(B.pieces.filter(p => !p.still).length >= 6);
   for (let t = 0; t < WRECK.settle; t += 1 / 60) { stepWreck(B, 1 / 60); top = Math.max(top, c.y - L.y); } assert.ok(top > 20, `${top}`); assert.ok(Math.hypot(c.x - L.x, c.z - L.z) > 20); });
 test('the static props no longer carry the lander (opening)', () => { const p = surfaceParts(W).meshes[2]; for (let i = 0; i < p.mat.length; i += 4) assert.notEqual(p.mat[i], LAYER.foil); });
+test('the ascent stage rises by W.up: the cabin, hatch and dish only (Plan 6)', () => { const A = createWreck(W, { x: 0, y: 0, z: 0 }, 0), o = new Array(16); A.up = 5; // pre-flight F2: a Float32Array would compare a float32 with a double
+  PIECES.forEach((_, k) => assert.equal(pieceMatrix(A, k, o)[13], A.pieces[k].y + (k >= 1 && k <= 3 ? 5 : 0), `${k}`)); });

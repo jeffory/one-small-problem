@@ -22,9 +22,9 @@ export const PIECES = [
 // h: the fixed step (s); bounce: the share of a hard landing's fall speed kept upward; slide: the share of horizontal speed and
 // spin kept by a bounce; settle: the longest settleWreck runs (s).
 export const WRECK = { g: GRAVITY.surface, h: 1 / 60, bounce: .3, slide: .6, settle: 30 };
-// The cabin and the hatch; the hatch's open yaw (rad, about its hinge); a landing faster than BOUNCE_V m/s bounces, a slower one
-// rests; an upright piece rests with this roll (rad).
-const CABIN = 1, HATCH = 2, HATCH_OPEN = 1.9, BOUNCE_V = 1.5, UP_ROLL = .18;
+// The cabin, the hatch and the dish (pieces CABIN to DISH are the ascent stage); the hatch's open yaw (rad, about its hinge); a
+// landing faster than BOUNCE_V m/s bounces, a slower one rests; an upright piece rests with this roll (rad).
+const CABIN = 1, HATCH = 2, DISH = 3, HATCH_OPEN = 1.9, BOUNCE_V = 1.5, UP_ROLL = .18;
 
 // --- meshes (lander space) ---
 const tri = (M, a, b, c, mt) => M.i.push(vtx(M, a[0], a[1], a[2], mt), vtx(M, b[0], b[1], b[2], mt), vtx(M, c[0], c[1], c[2], mt));
@@ -146,23 +146,25 @@ export function landerMeshes() {
 export const PUFF = { r: 2.2, v: [9, 14], up: [1, 2.5], life: 3, s: [.35, .7] };
 
 // --- the break-up ---
-// An intact lander: every piece at its place, lift 0 (the opening raises it), the hatch shut, nothing flying. By default yours,
-// at world.lander facing the spawn; the rescue ship stands at L (x, y, z) turned ly.
+// An intact lander: every piece at its place, lift 0 (the opening raises it), up 0 (the lift-off raises the ascent stage off the
+// descent stage by it), the hatch shut, nothing flying. By default yours, at world.lander facing the spawn; the rescue ship stands
+// at L (x, y, z) turned ly.
 export function createWreck(world, L = world.lander, ly = Math.atan2(world.spawn.dx, world.spawn.dz)) {
   const c = Math.cos(ly), s = Math.sin(ly);
   const pieces = PIECES.map(({ at, fly }) => ({ x: L.x + c * at[0] + s * at[2], y: L.y + at[1], z: L.z - s * at[0] + c * at[2],
     yaw: ly, pitch: 0, roll: 0, vx: 0, vy: 0, vz: 0, wy: 0, wp: 0, wr: 0, still: !fly }));
-  return { world, ly, lift: 0, hatch: 0, blown: false, acc: 0, pieces };
+  return { world, ly, lift: 0, up: 0, hatch: 0, blown: false, acc: 0, pieces };
 }
 
-// o = T(x, y + lift, z) * Ry(yaw) * Rx(pitch) * Rz(roll) for piece k; until the blast the hatch swings open by W.hatch.
+// o = T(x, y + lift, z) * Ry(yaw) * Rx(pitch) * Rz(roll) for piece k, the ascent stage W.up higher; until the blast the hatch
+// swings open by W.hatch.
 export function pieceMatrix(W, k, o) {
   const p = W.pieces[k], yaw = k === HATCH && !W.blown ? W.ly - HATCH_OPEN * W.hatch : p.yaw;
   const cy = Math.cos(yaw), sy = Math.sin(yaw), cp = Math.cos(p.pitch), sp = Math.sin(p.pitch), cr = Math.cos(p.roll), sr = Math.sin(p.roll);
   o[0] = cy * cr + sy * sp * sr; o[1] = cp * sr; o[2] = cy * sp * sr - sy * cr; o[3] = 0;
   o[4] = sy * sp * cr - cy * sr; o[5] = cp * cr; o[6] = sy * sr + cy * sp * cr; o[7] = 0;
   o[8] = sy * cp; o[9] = -sp; o[10] = cy * cp; o[11] = 0;
-  o[12] = p.x; o[13] = p.y + W.lift; o[14] = p.z; o[15] = 1;
+  o[12] = p.x; o[13] = p.y + W.lift + (k >= CABIN && k <= DISH ? W.up : 0); o[14] = p.z; o[15] = 1;
   return o;
 }
 

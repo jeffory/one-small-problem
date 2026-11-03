@@ -3,8 +3,8 @@
 // and crit cues) are never dropped and play first, in the order cued; behind them waits at most one reaction, the newest replacing
 // any still waiting, dropped once it has waited RADIO.stale s; after a reaction the radio keeps quiet RADIO.chat s. The shell applies
 // the actions stepRadio returns. While knocked out (F.ko, from Houston picking up) only Houston's and the wake's lines are cued
-// (R18), and silence kills the radio at the knock-out. Pure: its clock is R.clock, advanced only by stepRadio, and its randomness
-// the rng it is made with.
+// (R18), and silence kills the radio at the knock-out; once boarded (F.won) only the boarding line, and the lift-off cues the
+// sting itself. Pure: its clock is R.clock, advanced only by stepRadio, and its randomness the rng it is made with.
 import { SCRIPT, CUES } from './script.js';
 
 // Seconds unless noted. key: each Quindar tone, before and after a line; gap: between lines; min: the shortest a line is up; cps:
@@ -14,7 +14,7 @@ import { SCRIPT, CUES } from './script.js';
 export const RADIO = { key: .25, gap: .5, min: 1.6, cps: 14, slack: 1.5, pad: 2, stale: 5, chat: 4, low: 30, dawdle: 50, multi: [3, 4] };
 const EPS = 1e-9, NONE = Object.freeze([]), PROGRESS = new Set(['kill', 'pickup', 'flag', 'golf', 'area', 'restart', 'hold']);
 const PLAIN = { flag: 'grab', dead: 'dead', restart: 'restart', boom: 'boom', hold: 'hold', holdmsg: 'holding', bang: 'bang', guard: 'guard', freed: 'freed', pa: 'pa',
-  flare: 'flare', rush: 'rush', missed: 'missed' };
+  flare: 'flare', rush: 'rush', missed: 'missed', board: 'board' };
 const AREA_CUES = new Set(['crater', 'base', 'comms', 'climb', 'dash']);
 
 // R.q: the lines waiting, {id, key, who (a WHO letter), text, crit, at (R.clock when cued), voiced}; R.cur: the line on the air.
@@ -47,11 +47,12 @@ export function radioCue(R, key, n) {
 
 // The fight's events as cues, one per event (Houston's, two: the pair, then the rescue line Houston is cut off in). The progress
 // events restart the dawdle clock. While knocked out only Houston and the wake cue, so nothing steps on the punchline or the
-// cut-off line (R18); an alien killed by another's bolt (team 1) isn't yours to react to (R25).
+// cut-off line (R18); once boarded only the boarding line, so nothing steps on it or the stowaway sting; an alien killed by
+// another's bolt (team 1) isn't yours to react to (R25).
 export function radioEvents(R, events, F) {
   for (const e of events) {
     const t = e.type;
-    if (F.ko && t !== 'houston' && t !== 'wake' || e.team) continue;
+    if (F.ko && t !== 'houston' && t !== 'wake' || F.won && t !== 'board' || e.team) continue;
     if (PROGRESS.has(t)) R._idle = 0;
     if (t === 'kill') {
       const K = R._kills, [many, within] = RADIO.multi;

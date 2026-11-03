@@ -17,7 +17,7 @@ import { ALIENS, createAlien, stepAlien, hurtAlien, move, level, muzzleAt } from
 import { AREAS, AREA_TEXT, CRATER_AREAS, LEVEL, makeLevel, areaStart, advanceArea, stintEnd, setBars } from './areas.js';
 import { K } from '../gen/base.js';
 import { HOLD, planWaves, dishOf } from './hold.js';
-import { KO, BREAK, EXIT, exitOf, SHIP, RING, shipLift, ringPoints } from './escape.js';
+import { KO, BREAK, EXIT, exitOf, SHIP, RING, shipLift, ladderAt, ringPoints } from './escape.js';
 import { PUFF, createWreck } from './lander.js';
 
 // Alien drops (pistol, scatter, flCells) are 20% up on Plan 2's 20, 16 and 15 after the first play-test (H5). Tape drops (Plan 5) come from the sim's
@@ -95,6 +95,13 @@ function arrive(F, k) {
 
 // Whether E at the prison's exit lift would take you up now: in play, alive, within EXIT.reach of it.
 export const atExit = F => { const e = F.area === 4 && F.state === 'play' && !F.ko && exitOf(F.world.prisonMap); return !!e && Math.hypot(F.player.x - e.x, F.player.z - e.z) <= EXIT.reach; };
+
+// Whether E at the rescue ship's ladder would board it now: in the dash, in play, the ship down, not yet aboard, within SHIP.reach
+// of the ladder's foot.
+export function atLadder(F) {
+  if (F.area !== 6 || F.state !== 'play' || !F.ship?.landed || F.won) return false;
+  const l = ladderAt(F.ship); return Math.hypot(F.player.x - l.x, F.player.z - l.z) <= SHIP.reach;
+}
 
 // Whether E bangs on the bars now: in the shut cell, once, near them and facing them.
 export function canBang(F) {
@@ -229,7 +236,8 @@ export function stepFight(F, input, dt) {
   }
   const p = F.player, A = F.ars, U = F.world.crater.use;
   // 2. weapon input; the flag stands on the surface level only; E at the hangar door takes you into the base, where the rest of
-  // this step runs; E at the comms array puts you on hold
+  // this step runs; E at the comms array puts you on hold; E at the landed ship's ladder boards it, before its clock can run out
+  // (R9 moved: the run's clock stops here for good, at wonAt)
   if (input.weapon >= 0) selectWeapon(A, input.weapon);
   if (input.wheel) cycleWeapon(A, input.wheel);
   if (input.use && F.lv.id === 'surface' && !F.flag.held && Math.hypot(p.x - F.flag.x, p.z - F.flag.z) <= GRAB) {
@@ -241,6 +249,7 @@ export function stepFight(F, input, dt) {
   if (input.use && F.area === 3 && !F.hold && F.state === 'play') { const d = dishOf(F.world.baseMap); if (Math.hypot(p.x - d.x, p.z - d.z) <= HOLD.reach) startHold(F, d); }
   if (input.use && atExit(F)) enterArea(F, 5);
   if (input.use && canBang(F)) { F.cell.bang = 0; F.events.push({ type: 'bang' }); }
+  if (input.use && atLadder(F)) { F.won = true; F.wonAt = F.run; F.events.push({ type: 'board' }); }
   const lv = F.lv;
   coolWeapon(A, dt);
   if (input.fire && A.cur >= 0 && A.cool <= 0) fire(F);

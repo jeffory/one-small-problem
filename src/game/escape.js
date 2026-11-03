@@ -28,6 +28,9 @@ export const FLARE = { up: 150, rise: 3, fall: 40, size: .6, ang: .01, trail: 10
 // points r m round it, ids from id; floaters fly hover m over the ground. A spawn waits while cap live aliens of the dash are
 // within near of the ship or are the ring's own, as the hold's wait at HOLD.cap.
 export const RING = { near: 60, r: [30, 40], n: 6, id: 2000, hover: 3.5, waves: [[0, 4], [5, 5], [10, 6], [15, 6]], cap: 8 };
+// The lift-off once you board (liftoff.js): the ascent stage climbs at acc m/s/s; sting: seconds from boarding to the click and
+// the stowaway sting, from which the end gate (hold.js ENDING) runs; fade: seconds of the fade to the end screen after the gate.
+export const LIFT = { acc: 2, sting: 6, fade: .8 };
 
 const smooth = x => x * x * (3 - 2 * x);
 // The ship's height over the site t s after you arrive: the opening's descent curve, 0 from touchdown.

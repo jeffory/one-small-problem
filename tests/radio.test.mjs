@@ -74,6 +74,15 @@ test('after Houston picks up, a pickup, a kill, a hurt or a golf ball queues not
   const F = { ko: { phase: 'call', t: 0 }, won: false, hp: 10, state: 'play' }, ev = [{ type: 'pickup', kind: 'tape' }, { type: 'kill', kind: 'br', n: 9 }, { type: 'kill', kind: 'sk', n: 1 }, { type: 'hurt' }, { type: 'golf', n: 2 }, { type: 'boom' }];
   let R = createRadio(always); radioEvents(R, ev, F); assert.deepEqual(R.q, []);
   R = createRadio(always); radioEvents(R, [{ type: 'houston' }, ...ev], F); assert.deepEqual(R.q.map(l => l.key), ['houston', 'houston', 'rescue']); });
+// Plan 6 (Task 1 carry): once boarded (F.won, F.ko null again) the fight's events cue nothing but the boarding line, so no reaction
+// steps on it or on the stowaway sting; the sting is the lift-off's own cue
+test('once boarded, a pickup, a kill, a hurt, a golf ball, a clock mark or the rush queues nothing; the boarding line still queues (Plan 6)', () => {
+  const F = { ko: null, won: true, hp: 10, state: 'play' }, ev = [{ type: 'pickup', kind: 'tape' }, { type: 'kill', kind: 'br', n: 9 }, { type: 'kill', kind: 'sk', n: 1 }, { type: 'hurt' },
+    { type: 'hurt', cause: 'fall' }, { type: 'golf', n: 2 }, { type: 'boom' }, { type: 'clock', n: 4 }, { type: 'rush' }, { type: 'flare' }];
+  let R = createRadio(always); radioEvents(R, ev, F); assert.deepEqual(R.q, []);
+  R = createRadio(always); radioEvents(R, [...ev, { type: 'board' }], F); assert.deepEqual(R.q.map(l => l.key), ['board']);
+  assert.deepEqual([SCRIPT.board, SCRIPT.sting], [["P|Welcome aboard. Strap in. Don't touch anything."], ['Y|Houston\u2026 we have one more small problem.']]);
+  assert.ok(CUES.board.seq && CUES.sting.seq); });
 // R18 (b): Houston picking up cuts a reaction on the air, so the punchline never waits behind it (a voice whose onend never comes
 // would hold a reaction for its whole fallback); a story line on the air plays on, and with nothing on the air there is nothing to cut
 import { cutReaction } from '../src/game/radio.js'; import { ENDING, endingOver } from '../src/game/hold.js';
