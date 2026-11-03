@@ -14,7 +14,8 @@ import { AREAS, AREA_TEXT, LEVEL, makeLevel, areaStart, advanceArea } from './ar
 import { K } from '../gen/base.js';
 import { HOLD, planWaves, dishOf } from './hold.js';
 
-export const PICKUP = { tape: 25, cells: 25, pistol: 20, scatter: 16, flCells: 15, pistolDrop: .3 };
+// Alien drops (pistol, scatter, flCells) are 20% up on Plan 2's 20, 16 and 15 after the first play-test (H5).
+export const PICKUP = { tape: 25, cells: 25, pistol: 24, scatter: 19, flCells: 18, pistolDrop: .3 };
 export const CANISTER = { hp: 15, radius: .45, blast: 5, dmg: 70, knock: 9, fuse: .2 };
 export const DEATH_TIME = 2.5;
 // GOLF_TOTAL: golf balls in a world (3 on the surface, 2 in the base); DOOR_REACH: how near (m) the hangar door's use point E works.

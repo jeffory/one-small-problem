@@ -143,8 +143,9 @@ The user reported: "it's extremely difficult when you go into the base because t
 | H2 | Fewer aliens: `BASE_SCALE` 0.7 → 0.5. That cuts the base from a median of 55 aliens to 38. Brutes still need a room budget of 6 or more, so the first even room may have none. `src/gen/baseplan.js` |
 | H3 | Result: the bot's base damage drops from about 1100 to about 590, roughly the same as the surface and crater combined. The hangar crowd no longer wakes while you stand at the lift (median 0 alerted after 10 s, was 6). |
 | H4 | The goldens were re-pinned: APOLLO-4471 `60273c6a`, EAGLE-0001 `39762eb2`, SOAK-0042 `ee4eda57`. The R2 slow-seed list moved to APOLLO-2428, EAGLE-4739, CRATER-7635 and MERCURY-5618; 60,000 seeds all generate within 10 of 32 attempts. |
+| H5 | The user asked: "Can the aliens drop like 20% more ammo?" Every alien drop carries 20% more cells: pistol 20 → 24, scattergun 16 → 19, floater cells 15 → 18. Drop chances are unchanged, so the rng and the goldens are too; placed tape and cells and the final-stand supplies stay at 25. `PICKUP` in `src/game/fight.js` |
 
-If it is still too hard (or now too easy), the two knobs are `BASE_SCALE` (alien budget) and `BASE.cell` (corridor length). 18 is the most a 20 m comms room allows: past that, its shifted corridor no longer stays inside the neighbouring room's band. Shorter cells also need the soak's 6–15 m corridor bound changed.
+If it is still too hard (or now too easy), the knobs are `BASE_SCALE` (alien budget), `BASE.cell` (corridor length) and `PICKUP` (drop sizes). 18 is the most a 20 m comms room allows: past that, its shifted corridor no longer stays inside the neighbouring room's band. Shorter cells also need the soak's 6–15 m corridor bound changed.
 
 ## Deferred minor findings
 
