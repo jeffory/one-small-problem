@@ -19,10 +19,12 @@ export const CANISTER = { hp: 15, radius: .45, blast: 5, dmg: 70, knock: 9, fuse
 export const DEATH_TIME = 2.5;
 // GOLF_TOTAL: golf balls in a world (3 on the surface, 2 in the base); DOOR_REACH: how near (m) the hangar door's use point E works.
 export const GOLF_TOTAL = 5, DOOR_REACH = 2.5;
+// MAX_PARTS: the most particles at once (the oldest go past it); the opening hands its glitter over within it.
+export const MAX_PARTS = 300;
 // CORPSE: seconds a corpse lasts, the last SINK of them sinking 1 m; DECALS: each kind's ring (M5: goo can't evict scorch);
 // GRAB: flag reach; REACH: pickup reach; CAN_Y: canister centre above its base; CAN_H: its height; WALL: ground this far above
 // a particle stops it like a wall.
-const CORPSE = 8, SINK = 2, MAX_PARTS = 300, DECALS = { scorch: 40, goo: 24 }, BOOM_LIFE = .6, FIELD_DT = .25, GRAB = 2.2, REACH = 1.2;
+const CORPSE = 8, SINK = 2, DECALS = { scorch: 40, goo: 24 }, BOOM_LIFE = .6, FIELD_DT = .25, GRAB = 2.2, REACH = 1.2;
 const CAN_Y = .4, CAN_H = .9, WALL = .35, TAU = 2 * Math.PI, sqrt = Math.sqrt, STILL = { fwd: 0, strafe: 0, run: false, jump: false };
 // HOLD_ID: the first hold alien's id; HOVER: a hold floater's height above its door's floor (its top just under the lintel).
 const HOLD_ID = 1000, HOVER = 1.7;

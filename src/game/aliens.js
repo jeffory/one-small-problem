@@ -22,6 +22,9 @@ const sin = Math.sin, cos = Math.cos, atan2 = Math.atan2;
 const go = (a, state, st = 0) => { a.state = state; a.st = st; };
 const ease = (v, to, r) => (v < to ? Math.min(to, v + r) : Math.max(to, v - r));
 const smooth = v => { const x = Math.max(0, Math.min(1, v)); return x * x * (3 - 2 * x); };
+// A wave's pose st seconds into it: up over .25 s, held, and down over the last .25 s of WAVE_TIME (0 outside it). The opening's
+// scripted brute waves with it too.
+export const waveAt = st => smooth(Math.min(st, WAVE_TIME - st) / .25);
 
 export function createAlien({ type, x, y, z }, id, enc) {
   // hover (floaters) is y - ground at the spawn; createAlien has no ground, so the first stepAlien fills it in.
@@ -177,7 +180,7 @@ export function stepAlien(a, ctx, dt) {
       if (a.enc.waved) go(a, ACTIVE[a.type]); else { a.enc.waved = true; go(a, 'wave'); }
     }
   } else if (a.state === 'wave') {
-    a.yaw = toP; a.wave = smooth(Math.min(a.st, WAVE_TIME - a.st) / .25);
+    a.yaw = toP; a.wave = waveAt(a.st);
     if (a.st >= WAVE_TIME) go(a, ACTIVE[a.type]);
   } else moved += a.type === 'sk' ? skitterer(a, ctx, dt, d, toP) : fl ? floater(a, ctx, dt, dx, dz, d, toP) : brute(a, ctx, dt, d, toP);
   if (T.gait) a.gait += moved * T.gait;
