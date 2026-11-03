@@ -15,8 +15,8 @@ export function castVoices(all) {
     const name = v => String(v.name || ''), list = [...src].sort((a, b) => (!!b.localService - !!a.localService) || (name(a) < name(b) ? -1 : name(a) > name(b) ? 1 : 0));
     const local = list.filter(v => v.localService), pool = local.length ? local : list, acc = v => String(v.lang || '').replace('_', '-').toLowerCase();
     const H = pool.find(v => acc(v) === 'en-us') || list[0] || null;
-    const Y = pool.find(v => v !== H && acc(v) !== acc(H)) || list.find(v => v !== H) || H;
-    const S = list.find(v => v !== H && v !== Y) || H;
+    const Y = pool.find(v => name(v) !== name(H) && acc(v) !== acc(H)) || list.find(v => name(v) !== name(H)) || H;
+    const S = list.find(v => name(v) !== name(H) && name(v) !== name(Y)) || H;
     return { H, Y, S };
   } catch { return none; }
 }

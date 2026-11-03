@@ -37,7 +37,8 @@ test('castVoices with 0, 1, 2 and 3 voices: Houston en-US, You another accent, t
 test('a local voice beats a remote en-US one; non-English voices still speak; odd entries and a throwing getVoices never throw (Plan 5, Review Focus 4)', () => {
   const k = v('Kate', 'en-GB'), o = v('Online US', 'en-US', false); assert.deepEqual(castVoices([o, k]), { H: k, Y: o, S: k });
   const h = v('Hans', 'de-DE'); assert.deepEqual(castVoices([h]), { H: h, Y: h, S: h });
-  assert.doesNotThrow(() => castVoices([{}, { name: 'x' }, { lang: 'en' }, v('d', 'en-US'), v('d', 'en-US')]));
+  const d = v('d', 'en-US'), odd = [{}, { name: 'x' }, { lang: 'en' }, d, d]; assert.doesNotThrow(() => castVoices(odd));
+  const c = castVoices(odd); assert.notEqual(c.Y.name, c.H.name); // a duplicate entry is not a second voice (name, not object identity)
   const W = fake(); W.speechSynthesis.getVoices = () => { throw new Error('no'); }; assert.equal(createSpeech(W).ok, false); });
 test('each speaker speaks in their own voice at their own pitch and rate; a recast on voiceschanged leaves a line in flight alone: no cancel, no new utterance (Plan 5, pre-flight F3)', () => {
   const L = [v('Amy', 'en-US'), v('Kate', 'en-GB'), v('Zed', 'en-US')], W = fake(L), S = createSpeech(W);
