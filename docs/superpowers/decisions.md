@@ -188,13 +188,13 @@ Every `[call]` in `docs/superpowers/plans/2026-11-04-plan-6-escape.md`, by task.
 | Call | Decision |
 |---|---|
 | `KO` (T1, `src/game/escape.js`) | The knock-out table. `KO.call` is the fallback (s) from Houston to the knock-out when no radio triggers it (bot, replay, Node); the rest is used in T10. |
-| Cell block (T4) | The cell block's long side runs along its entry link `lc[id - 1]`, along x when that link's cells share a row. |
-| Prison attempts (T4) | 64 attempts: one loop among 6-8 rooms re-rolls more. |
-| Prison `p` (T4) | `p` runs from .4 at the cell to .9 at the hall, by the base's formula. |
-| Side rooms (T4) | Side rooms ("empty cells") get tape and, holding no golf, cells by the base's rule; you start with a pole. |
-| Prison room features (T4, step 7) | Alcoves along both long walls of the cell block (from 2 tiles in from each corner, then every 3; one gets a cow); 4-6 optional crates in the guard room; a required chair in the interrogation room; required shelves in the evidence room; the hall's raised exit band and 8-10 crates. |
-| `LIGHT.alarm` (T4) | `{ col: [2.2, .25, .08], r: 8, kind: 1 }`, the red alarm lamp. |
-| Prison props (T4, `baseMesh.js`) | Free shapes within the footprints: bars (glowing teal, h 2.6), cow, chair with probe arm, shelf, exit disc with posts and amber ring. |
+| Cell block (T3) | The cell block's long side runs along its entry link `lc[id - 1]`, along x when that link's cells share a row. |
+| Prison attempts (T3) | 64 attempts: one loop among 6-8 rooms re-rolls more. |
+| Prison `p` (T3) | `p` runs from .4 at the cell to .9 at the hall, by the base's formula. |
+| Side rooms (T3) | Side rooms ("empty cells") get tape and, holding no golf, cells by the base's rule; you start with a pole. |
+| Prison room features (T3, step 7) | Alcoves along both long walls of the cell block (from 2 tiles in from each corner, then every 3; one gets a cow); 4-6 optional crates in the guard room; a required chair in the interrogation room; required shelves in the evidence room; the hall's raised exit band and 8-10 crates. |
+| `LIGHT.alarm` (T3) | `{ col: [2.2, .25, .08], r: 8, kind: 1 }`, the red alarm lamp. |
+| Prison props (T3, `baseMesh.js`) | Free shapes within the footprints: bars (glowing teal, h 2.6), cow, chair with probe arm, shelf, exit disc with posts and amber ring. |
 | `BREAK` (T5) | The break-out table: the bars, the guard's timing and the nudge. |
 | `SFX.bang`, `SFX.bars` (T5) | A clang and a falling zap, mapped by `sfxFor`. |
 | `ESCAPE` (T6, `src/gen/encounters.js`) | The escape plan's table (dash encounter counts and gaps, e.g. `shipGap`). |
@@ -202,7 +202,7 @@ Every `[call]` in `docs/superpowers/plans/2026-11-04-plan-6-escape.md`, by task.
 | `SHIP`, `FLARE`, `RING` (T8) | The dash tables, in `src/game/escape.js`. `SHIP.clock` started at 240 s and was retuned to 430 s by the bot soak (T12). |
 | Clock HUD (T8) | `#clk` ("SHIP LEAVES m:ss") at the top centre, red under `SHIP.warn`; `#flash` moves from 56 to 76 px; the dead prompt reads "The ship left without you. Back to the crater rim...". |
 | `LIFT` (T9) | The ascent's climb (m/s^2), the seconds from boarding to the sting, and the fade (s) after the end gate. |
-| `SFX.click` (T10) | The stamp's click. |
+| `SFX.click` (T9) | The stamp's click. |
 | `GOLF_TOTAL = 7` (T10) | Runs are now two levels long (golf 0-2 surface, 3-4 base, 5 evidence locker, 6 dash). |
 | `SIGHTS` (T11) | The level 2 sight distances, pinned in their test. |
 | `BOT.full = 1500` (T12) | The stall limit (s) of a `'board'` bot run. |
