@@ -1,4 +1,4 @@
-import test from 'node:test'; import assert from 'node:assert/strict'; import { createSpeech } from '../src/audio/speech.js'; import { VOICE } from '../src/game/script.js';
+import test from 'node:test'; import assert from 'node:assert/strict'; import { createSpeech, castVoices } from '../src/audio/speech.js'; import { VOICE } from '../src/game/script.js';
 const fake = (voices = []) => { const W = { said: [], cancels: 0, on: {} };
   W.speechSynthesis = { getVoices: () => voices, speak: u => W.said.push(u), cancel: () => { W.cancels++; }, addEventListener: (t, f) => { W.on[t] = f; } };
   W.SpeechSynthesisUtterance = class { constructor(text) { this.text = text; } }; return W; };
@@ -26,3 +26,23 @@ test('a voice that errors or throws at once leaves each line up as a subtitle fo
         if (a.do === 'say' && a.line.voiced && !S.say(a.line, f => radioDone(R, a.line.id, f))) radioDone(R, a.line.id, true); } }
     const say = A.filter(a => a.do === 'say'), un = A.filter(a => a.do === 'unkey'); assert.equal(spoke, 3, how); assert.equal(say.length, 3, how); assert.equal(un.length, 3, how);
     say.forEach((s, i) => assert.ok(Math.abs(un[i].t - s.t - Math.max(RADIO.min, s.line.text.length / RADIO.cps)) <= 1 / 60 + 1e-9, `${how}: ${s.line.text}`)); } });
+const v = (name, lang, local = true) => ({ name, lang, localService: local });
+test('castVoices with 0, 1, 2 and 3 voices: Houston en-US, You another accent, the Switchboard a third or Houston\'s; input order never matters (Plan 5)', () => {
+  assert.deepEqual(castVoices([]), { H: null, Y: null, S: null });
+  const a = v('Alpha', 'en-GB'); assert.deepEqual(castVoices([a]), { H: a, Y: a, S: a });
+  const us = v('Zed', 'en_US'), gb = v('Beth', 'en-GB'); assert.deepEqual(castVoices([gb, us]), { H: us, Y: gb, S: us });
+  const L = [v('Zed', 'en-US'), v('Amy', 'en-US'), v('Kate', 'en-GB'), v('Hans', 'de-DE'), v('Online', 'en-US', false)];
+  const c = castVoices(L); assert.deepEqual([c.H.name, c.Y.name, c.S.name], ['Amy', 'Kate', 'Zed']);
+  assert.deepEqual(castVoices([...L].reverse()), c); });
+test('a local voice beats a remote en-US one; non-English voices still speak; odd entries and a throwing getVoices never throw (Plan 5, Review Focus 4)', () => {
+  const k = v('Kate', 'en-GB'), o = v('Online US', 'en-US', false); assert.deepEqual(castVoices([o, k]), { H: k, Y: o, S: k });
+  const h = v('Hans', 'de-DE'); assert.deepEqual(castVoices([h]), { H: h, Y: h, S: h });
+  assert.doesNotThrow(() => castVoices([{}, { name: 'x' }, { lang: 'en' }, v('d', 'en-US'), v('d', 'en-US')]));
+  const W = fake(); W.speechSynthesis.getVoices = () => { throw new Error('no'); }; assert.equal(createSpeech(W).ok, false); });
+test('each speaker speaks in their own voice at their own pitch and rate; a recast on voiceschanged leaves a line in flight alone: no cancel, no new utterance (Plan 5, pre-flight F3)', () => {
+  const L = [v('Amy', 'en-US'), v('Kate', 'en-GB'), v('Zed', 'en-US')], W = fake(L), S = createSpeech(W);
+  for (const who of ['H', 'Y', 'S']) S.say({ ...line, who }, () => {});
+  assert.deepEqual(W.said.map(u => [u.voice.name, u.lang, u.pitch, u.rate]), [['Amy', 'en-US', ...VOICE.H], ['Kate', 'en-GB', ...VOICE.Y], ['Zed', 'en-US', ...VOICE.S]]);
+  const u = W.said[2], c = W.cancels, n = W.said.length; W.speechSynthesis.getVoices = () => [v('Bob', 'en-US')]; W.on.voiceschanged();
+  assert.equal(u.voice.name, 'Zed'); assert.deepEqual([W.cancels, W.said.length], [c, n]);
+  S.say({ ...line, who: 'Y' }, () => {}); assert.equal(W.said.at(-1).voice.name, 'Bob'); });
