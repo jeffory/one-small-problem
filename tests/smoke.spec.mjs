@@ -380,3 +380,14 @@ for (const [how, text, act] of [['an error in the frame loop', 'Something went w
     await page.evaluate(act); await expect(page.locator('#msg')).toContainText(text); await expect(page.locator('#msg')).toBeVisible();
     await expect.poll(() => page.evaluate(() => window.ospTest.audio().ctx)).not.toBe('running');
     await expect.poll(() => page.evaluate(() => document.pointerLockElement)).toBe(null); });
+// R19, R24: the pause menu's checkboxes and sliders take the palette's dim #7a7266, not the browser's saturated accent; the play
+// overlays under it (the prompt and the flashes) hide while it is up and come back on resume; no setting's label wraps.
+test('the pause menu: palette-coloured controls, no prompt or flash showing through, every label on one line (R19, R24)', async ({ page }) => {
+  const errors = watchErrors(page); await start(page); await page.evaluate(() => { window.ospTest.grab(); window.ospTest.door(); });
+  await expect(page.locator('#prompt')).toHaveText('[E] enter the hangar'); await expect(page.locator('#flash')).toBeVisible();
+  await page.keyboard.press('Escape'); await expect(page.locator('#pause')).toBeVisible();
+  await expect(page.locator('#prompt')).toBeHidden(); await expect(page.locator('#flash')).toBeHidden();
+  const ui = await page.evaluate(() => ({ accent: [...document.querySelectorAll('#pause input')].map(e => getComputedStyle(e).accentColor),
+    lines: [...document.querySelectorAll('#pause label')].map(l => { const r = document.createRange(); r.selectNodeContents(l.firstChild); return [l.firstChild.data, r.getClientRects().length]; }) }));
+  expect(ui.accent).toEqual(Array(4).fill('rgb(122, 114, 102)')); for (const [label, n] of ui.lines) expect(n, label).toBe(1);
+  await page.keyboard.press('Escape'); await expect(page.locator('#pause')).toBeHidden(); await expect(page.locator('#prompt')).toBeVisible(); expect(errors).toEqual([]); });

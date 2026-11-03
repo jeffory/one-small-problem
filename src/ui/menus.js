@@ -40,14 +40,15 @@ export function createMenus({ onNew, onBack, onResume, onQuit, onSetting }) {
       link.style.display = r.link ? '' : 'none'; code.style.display = copy.style.display = r.link ? 'none' : '';
       show(end);
     },
-    // The pause menu, shown with the controls set from `settings` and the controls text `help`.
+    // The pause menu, shown with the controls set from `settings` and the controls text `help`. While it is up the body carries
+    // .paused, which hides the play overlays that would show through it, the prompt and the flashes (R24).
     pause(on, settings, help) {
       const p = $('pause');
       if (on) {
         cur = settings; $('res').value = settings.res; $('pal').checked = settings.pal; $('vol').value = settings.vol; $('sens').value = settings.sens;
         $('inv').checked = settings.invert; $('controls').textContent = help || '';
       }
-      p.style.display = on ? 'flex' : 'none';
+      p.style.display = on ? 'flex' : 'none'; document.body.classList.toggle('paused', on);
     },
     hide: () => show(null),
   };
