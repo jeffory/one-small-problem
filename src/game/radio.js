@@ -47,15 +47,15 @@ export function radioCue(R, key, n) {
 
 // The fight's events as cues, one per event (Houston's, two: the pair, then the rescue line Houston is cut off in). The progress
 // events restart the dawdle clock. While knocked out only Houston and the wake cue, so nothing steps on the punchline or the
-// cut-off line (R18); once boarded only the boarding line, so nothing steps on it or the stowaway sting, and boarding drops the
-// reactions still waiting (the shell cuts one on the air with cutReaction); an alien killed by another's bolt (team 1) isn't
-// yours to react to (R25).
+// cut-off line (R18); once boarded only the boarding line, so nothing steps on it or the stowaway sting, and boarding drops every
+// line still waiting, story or reaction (the shell cuts the one on the air with cutAll); an alien killed by another's bolt (team 1)
+// isn't yours to react to (R25).
 export function radioEvents(R, events, F) {
   for (const e of events) {
     const t = e.type;
     if (F.ko && t !== 'houston' && t !== 'wake' || F.won && t !== 'board' || e.team) continue;
     if (PROGRESS.has(t)) R._idle = 0;
-    if (t === 'board') R.q = R.q.filter(l => l.crit);
+    if (t === 'board') R.q.length = 0;
     if (t === 'kill') {
       const K = R._kills, [many, within] = RADIO.multi;
       K.push(R.clock);
@@ -135,6 +135,10 @@ export function silence(R) {
   R.q.length = 0; R.cur = null; go(R, 'gap', null);
   return on ? [{ do: 'off' }] : NONE;
 }
+// Boarding clears the air: every line waiting is dropped, and the one on the air (keyed, talking or keying down), story or reaction,
+// comes down with no closing tone, so the lift-off airs only the boarding line, after just the gap, and then the sting at its click;
+// with nothing on the air the boarding line keys at once (final review FR1). The actions, as stepRadio's.
+export function cutAll(R) { R.q.length = 0; return R.cur && R.phase !== 'gap' && R.phase !== 'idle' ? over(R) : NONE; }
 
 // Nothing on the air or waiting.
 export function radioIdle(R) { return !R.cur && !R.q.length && (R.phase === 'idle' || R.phase === 'gap'); }

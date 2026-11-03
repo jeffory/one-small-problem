@@ -1,5 +1,5 @@
 import test from 'node:test'; import assert from 'node:assert/strict'; import { makeRng } from '../src/gen/rng.js';
-import { SCRIPT, CUES, WHO, VOICE } from '../src/game/script.js'; import { RADIO, createRadio, radioCue, radioEvents, stepRadio, radioDone, pauseRadio, radioIdle, silence } from '../src/game/radio.js'; import { KO } from '../src/game/escape.js';
+import { SCRIPT, CUES, WHO, VOICE } from '../src/game/script.js'; import { RADIO, createRadio, radioCue, radioEvents, stepRadio, radioDone, pauseRadio, radioIdle, silence, cutAll } from '../src/game/radio.js'; import { KO, LIFT } from '../src/game/escape.js';
 const R0 = () => createRadio(makeRng('r')), always = { next: () => 0, int: () => 0, range: a => a };
 const run = (R, secs, voiced = false, dawdle = false, dt = 1 / 60, out = []) => { for (let t = 0; t < secs - 1e-9; t += dt) for (const a of stepRadio(R, dt, voiced, dawdle)) out.push({ ...a, t: R.clock }); return out; };
 const said = A => A.filter(a => a.do === 'key').map(a => a.line.who + '|' + a.line.text);
@@ -88,15 +88,35 @@ test('once boarded, a pickup, a kill, a hurt, a golf ball, a clock mark or the r
   R = createRadio(always); radioEvents(R, [...ev, { type: 'board' }], F); assert.deepEqual(R.q.map(l => l.key), ['board']);
   assert.deepEqual([SCRIPT.board, SCRIPT.sting], [["P|Welcome aboard. Strap in. Don't touch anything."], ['Y|Houston\u2026 we have one more small problem.']]);
   assert.ok(CUES.board.seq && CUES.sting.seq); });
-// Review fix (Task 9): boarding drops the reactions waiting (radioEvents on 'board') and the shell cuts one on the air
-// (cutReaction, as at Houston), so neither airs in the lift-off: the boarding line keys at once, the sting as it is cued
+// Review fix (Task 9): boarding drops the reactions waiting (radioEvents on 'board') and the shell cuts one on the air (cutAll,
+// since the final review), so neither airs in the lift-off: the boarding line keys at once, the sting as it is cued
 test('boarding drops a waiting reaction and cuts one on the air: only the boarding line, then the sting within RADIO.gap of its cue (Plan 6)', () => {
   const F = { ko: null, won: true, hp: 100, state: 'play' }, dt = 1 / 60;
   for (const onAir of [false, true]) {
     const R = createRadio(always), keys = [], step = s => { for (let t = 0; t < s - 1e-9; t += dt) for (const a of stepRadio(R, dt, false, false)) if (a.do === 'key') keys.push([R.clock, a.line.key]); };
     radioCue(R, 'low'); step(onAir ? .5 : 5); if (!onAir) { radioCue(R, 'fall'); step(.5); } // 'fall' waits in the quiet after 'low'; or 'low' is still talking
-    const n = keys.length; cutReaction(R); radioEvents(R, [{ type: 'board' }], F); step(6); radioCue(R, 'sting'); const ts = R.clock; step(10);
+    const n = keys.length; cutAll(R); radioEvents(R, [{ type: 'board' }], F); step(6); radioCue(R, 'sting'); const ts = R.clock; step(10);
     assert.deepEqual(keys.slice(n).map(k => k[1]), ['board', 'sting'], `on the air: ${onAir}`); assert.ok(keys.at(-1)[0] - ts <= RADIO.gap + dt + 1e-9, `on the air: ${onAir}`); } });
+// Final review FR1: the rush's lines are story (seq), so boarding soon after it left them queued ahead of the boarding line and
+// the sting (unvoiced, the sting keyed 5.8 s late boarding 3 s after the rush, and the Pilot's "not waiting" line aired aboard).
+// Boarding now drops the whole queue, and the shell cuts the line on the air, story or reaction, with no closing tone (cutAll).
+// In main.js's order: on the boarding frame the cut, then the fight's events, then the step; LIFT.sting s on, the sting's cue.
+test('boarding 3, 6 or 12 s after the rush: the rush is dropped and cut, and only the boarding line then the sting key up, the sting at its click (Plan 6)', () => {
+  const Q = createRadio(always); radioEvents(Q, [{ type: 'rush' }], { ko: null, won: false, hp: 100, state: 'play' }); assert.deepEqual(Q.q.map(l => l.key), ['rush', 'rush', 'rush']);
+  radioEvents(Q, [{ type: 'board' }], { ko: null, won: true, hp: 100, state: 'play' }); assert.deepEqual(Q.q.map(l => l.key), ['board'], 'boarding drops the story lines waiting too');
+  const dt = 1 / 60;
+  for (const at of [3, 6, 12]) {
+    const R = createRadio(makeRng('rush')), F = { ko: null, won: false, hp: 100, state: 'play' }, b = Math.round(at / dt), c = b + Math.round(LIFT.sting / dt), keys = [];
+    radioEvents(R, [{ type: 'rush' }], F); let click = 0, aboard = 0;
+    for (let i = 0; i < c + 10 / dt; i++) {
+      const ev = [];
+      if (i === b) { F.won = true; aboard = R.clock; ev.push({ type: 'board' }); const cut = cutAll(R); assert.ok(cut.every(a => a.do === 'off'), `${at} s: no closing tone`); }
+      radioEvents(R, ev, F);
+      if (i === c) { click = R.clock; radioCue(R, 'sting'); }
+      for (const a of stepRadio(R, dt, false, false)) if (a.do === 'key' && i >= b) keys.push([R.clock, a.line.key]);
+    }
+    assert.deepEqual(keys.map(k => k[1]), ['board', 'sting'], `${at} s after the rush`); assert.ok(keys[0][0] - aboard <= RADIO.gap + dt + 1e-9, `${at} s: the boarding line`);
+    assert.ok(keys[1][0] >= click && keys[1][0] - click <= RADIO.gap + dt + 1e-9, `${at} s after the rush: the sting keyed ${(keys[1][0] - click).toFixed(3)} s after its click`); } });
 // R18 (b): Houston picking up cuts a reaction on the air, so the punchline never waits behind it (a voice whose onend never comes
 // would hold a reaction for its whole fallback); a story line on the air plays on, and with nothing on the air there is nothing to cut
 import { cutReaction } from '../src/game/radio.js'; import { ENDING, endingOver } from '../src/game/hold.js';

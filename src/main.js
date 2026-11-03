@@ -22,7 +22,7 @@ import { createLiftoff, stepLiftoff } from './game/liftoff.js';
 import { createBot, botStep } from './game/bot.js';
 import { HOLD, dishOf, callSpot, endingOver } from './game/hold.js';
 import { WHO } from './game/script.js';
-import { createRadio, radioCue, radioEvents, stepRadio, radioDone, pauseRadio, cutReaction, dawdling, silence } from './game/radio.js';
+import { createRadio, radioCue, radioEvents, stepRadio, radioDone, pauseRadio, cutReaction, cutAll, dawdling, silence } from './game/radio.js';
 import { createAudio } from './audio/audio.js';
 import { buildSfx, sfxFor } from './audio/sfx.js';
 import { renderSongs } from './audio/music.js';
@@ -265,9 +265,9 @@ function boot() {
     }
     const R = run.R;
     if (state === 'play' && F.events.some(e => e.type === 'ko')) { audio.sfx('thud'); speech.cancel(); radioDo(R, silence(R)); hud.mode('none'); }
-    if (state === 'play' && F.events.some(e => e.type === 'board')) { // a reaction on the air is cut, as at Houston: nothing but story airs in the lift-off
+    if (state === 'play' && F.events.some(e => e.type === 'board')) { // the line on the air, story or reaction, is cut: only the boarding line and the sting air in the lift-off
       state = 'liftoff'; run.L = createLiftoff(F); run.fade = null; hud.mode('none'); hud.prompt('');
-      const cut = cutReaction(R); if (cut.length) { speech.cancel(); radioDo(R, cut); }
+      const cut = cutAll(R); if (cut.length) { speech.cancel(); radioDo(R, cut); }
     }
     if (R && (state === 'opening' || state === 'play' || state === 'liftoff')) { radioEvents(R, F.events, F); radioDo(R, stepRadio(R, dt, speech.ok, dawdling(state, F))); }
     if (state === 'play' && F.events.some(e => e.type === 'houston')) { const cut = cutReaction(R); if (cut.length) { speech.cancel(); radioDo(R, cut); } }
