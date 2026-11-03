@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test'; import { pathToFileURL } from 'node:url'; import { resolve } from 'node:path';
 import { generateWorld } from '../src/gen/world.js'; import { checksumWorld } from '../src/gen/checksum.js';
-import { HELP_TIME } from '../src/ui/hud.js'; import { fmtTime } from '../src/ui/score.js'; import { OPEN } from '../src/game/opening.js';
+import { HELP_TIME } from '../src/ui/hud.js'; import { fmtTime } from '../src/ui/score.js'; import { OPEN } from '../src/game/opening.js'; import { ENDING } from '../src/game/hold.js';
 export const URLS = [['file', pathToFileURL(resolve('dist/index.html')).href], ['http', 'http://localhost:4173/index.html']];
 // Benign Firefox parser note about the packed binary payload when the server's utf-8 header overrides the page's iso-8859-15 meta; real decoding failures are caught by the ready check.
 const BENIGN = /byte stream was erroneous according to the character encoding/i;
@@ -338,3 +338,22 @@ test('two whole games in a row: title, opening, play, the final stand, Houston, 
     await expect(page.locator('#end')).toBeVisible({ timeout: 20_000 }); await expect(page.locator('#stats')).toContainText('GOLF BALLS');
     await page.click('#back'); await expect(page.locator('#title')).toBeVisible(); expect(await state(page)).toBe('title'); }
   expect(await page.evaluate(() => location.hash)).toBe(''); expect(errors).toEqual([]); });
+// R18: the ending's gate in the shell. In one evaluate (no frames between steps): 1/30 s steps on hold until Houston picks up, then
+// through the ending, noting the ending's clock, whether the radio is idle and the subtitle at each step. As the ending starts, the
+// switchboard's three lines are cued `holds` more times. Returns the samples, the ending's length T (its clock at the last sample,
+// plus the step that ended it), the state and #sub.
+const throughEnding = (page, holds = 0) => page.evaluate(n => { const o = window.ospTest, sub = () => document.getElementById('sub').textContent, s = []; o.god(true);
+  for (let i = 0; i < 3000 && o.state() !== 'ending'; i++) o.ff(1 / 30);
+  for (let i = 0; i < n; i++) o.cue('hold');
+  for (let i = 0; i < 1000 && o.state() === 'ending'; i++) { const r = o.radio(); s.push({ t: o.clock().ending, idle: !r.line && !r.queued.length, line: r.line, sub: sub() }); o.ff(1 / 30); }
+  return { s, T: s.at(-1).t + 1 / 30, state: o.state(), sub: sub(), end: getComputedStyle(document.getElementById('end')).display }; }, holds);
+test('the end screen comes ENDING.min s after Houston once the radio is idle, else as it goes idle, with the punchline over and no subtitle left (R18)', async ({ page }) => {
+  await noVoices(page); const errors = watchErrors(page); await start(page); await toComms(page); await onHold(page); const r = await throughEnding(page);
+  const idle = r.s.find(x => x.idle)?.t ?? r.T; expect(r.s.some(x => x.sub.includes('one small problem'))).toBe(true);
+  expect(r.T).toBeGreaterThanOrEqual(ENDING.min - 1e-6); expect(r.T).toBeLessThanOrEqual(Math.max(ENDING.min, idle) + 2 / 30 + 1e-6); expect(r.T).toBeLessThan(ENDING.max);
+  expect([r.state, r.sub, r.end]).toEqual(['end', '', 'flex']); expect(errors).toEqual([]); });
+test('at ENDING.max the end screen comes whatever is still on the air, and takes its subtitle down (R18)', async ({ page }) => {
+  await noVoices(page); const errors = watchErrors(page); await start(page); await toComms(page); await onHold(page);
+  const r = await throughEnding(page, 3), last = r.s.at(-1); // still talking at ENDING.max
+  expect(Math.abs(r.T - ENDING.max)).toBeLessThanOrEqual(2 / 30); expect(last.line).not.toBe(null); expect(last.sub).not.toBe('');
+  expect([r.state, r.sub, r.end]).toEqual(['end', '', 'flex']); expect(errors).toEqual([]); });

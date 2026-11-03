@@ -16,9 +16,9 @@ import { buildBaseScene } from './game/baseScene.js';
 import { settleWreck, stepWreck } from './game/lander.js';
 import { createOpening, stepOpening } from './game/opening.js';
 import { createBot, botStep } from './game/bot.js';
-import { HOLD, ENDING, dishOf, callSpot } from './game/hold.js';
+import { HOLD, endingOver, dishOf, callSpot } from './game/hold.js';
 import { WHO } from './game/script.js';
-import { createRadio, radioCue, radioEvents, stepRadio, radioDone, pauseRadio, radioIdle, dawdling } from './game/radio.js';
+import { createRadio, radioCue, radioEvents, stepRadio, radioDone, pauseRadio, cutReaction, dawdling } from './game/radio.js';
 import { createAudio } from './audio/audio.js';
 import { buildSfx, sfxFor } from './audio/sfx.js';
 import { renderSongs } from './audio/music.js';
@@ -192,8 +192,9 @@ function boot() {
   // ending the radio takes the opening's cues and the fight's events, then steps (its dawdle clock runs in play, off hold, R16).
   // After the opening the wreck keeps settling, a call at a time, until every piece is still (pre-flight F29). A level swap is handled for whatever run is on screen, and the events (the fight's and the opening's) are
   // cleared here, so each call (a frame or an ff step) sees only its own (pre-flight F3). When the bot is done (the comms room, or
-  // stalled) a fresh attract Moon replaces it; the hash is never touched. Houston picking up starts the ending, which goes to
-  // the end screen after ENDING.min s once the radio is idle, or after ENDING.max s whatever it is saying (finish hushes it).
+  // stalled) a fresh attract Moon replaces it; the hash is never touched. Houston picking up starts the ending and cuts a
+  // reaction on the air, its voice with it, so the punchline comes at once (R18); the ending goes to the end screen after
+  // ENDING.min s once the radio is idle, or after ENDING.max s whatever it is saying (endingOver; finish hushes it).
   function advance(dt, inp) {
     const F = run.F, B = run.bot, O = run.O, n = Math.max(1, Math.ceil(dt / .05)), h = dt / n, playing = state === 'play' || state === 'ending';
     if (state === 'title') for (let k = 0; k < n && !B.done; k++) { const b = botStep(B, F, h); stepFight(F, k ? { ...b, use: false, weapon: -1, wheel: 0 } : b, h); }
@@ -229,8 +230,8 @@ function boot() {
     }
     const R = run.R;
     if (R && (state === 'opening' || state === 'play' || state === 'ending')) { radioEvents(R, F.events, F); radioDo(R, stepRadio(R, dt, speech.ok, dawdling(state, F))); }
-    if (state === 'play' && F.events.some(e => e.type === 'houston')) { state = 'ending'; endT = 0; }
-    else if (state === 'ending' && ((endT += dt) >= ENDING.min && radioIdle(R) || endT >= ENDING.max)) finish();
+    if (state === 'play' && F.events.some(e => e.type === 'houston')) { state = 'ending'; endT = 0; const cut = cutReaction(R); if (cut.length) { speech.cancel(); radioDo(R, cut); } }
+    else if (state === 'ending' && endingOver(endT += dt, R)) finish();
     F.events.length = 0; music();
     if (state === 'title' && B.done) { stopRun(); startRun('attract', randomSeed()); }
   }
@@ -284,8 +285,9 @@ function boot() {
     give: () => { const A = run.F.ars; for (let i = 0; i < WEAPONS.length; i++) A.owned[i] = true; A.cells = 150; if (A.cur < 0) A.cur = 0; },
     door, enter, warp, comms, hurt: n => hurtPlayer(run.F, n, 0, 0, 0), god: on => { run.F.god = on; },
     // The radio of a play run: the subtitle of the line on the air (null between lines), the cues of the lines waiting and the
-    // dawdle clock (s).
+    // dawdle clock (s); cue(key) cues its lines.
     radio: () => run.R && { line: run.R.cur && WHO[run.R.cur.who] + ': ' + run.R.cur.text, queued: run.R.q.map(l => l.key), dawdle: run.R._idle },
+    cue: k => run.R && radioCue(run.R, k),
     // The clocks that pause stops: the opening's, the hold's and the ending's, each null when not running.
     clock: () => ({ opening: run.O?.t ?? null, hold: run.F.hold?.t ?? null, ending: state === 'ending' ? endT : null }),
   };

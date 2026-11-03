@@ -1,6 +1,7 @@
 // The final stand (pure): E at the comms array puts you on hold, and waves come out of the comms room's spawn doors until
 // Houston picks up. This holds the table, the wave plan and where the array is; the fight runs the hold (fight.js).
 import { COST } from '../gen/encounters.js';
+import { radioIdle } from './radio.js';
 
 // time: seconds on hold until Houston picks up; reach: how near the dish (m) E calls; waves: [start s, budget] each, spent at
 // COST; gap: seconds between a wave's spawns; cap: the most hold aliens alive at once (the rest wait for a slot); msg: seconds
@@ -10,6 +11,8 @@ export const HOLD = { time: 90, reach: 2.5, waves: [[3, 2], [15, 3], [27, 4], [3
   tape: 3, cells: 2, spots: [[2.5, 2.5], [-2.5, -2.5], [2.5, -2.5], [-2.5, 2.5], [0, 2.5], [0, -2.5], [2.5, 0], [-2.5, 0]] };
 // The ending: seconds from Houston picking up to the end screen, at least min (and the radio idle), at most max.
 export const ENDING = { min: 6, max: 14 };
+// Whether the ending is over t s after Houston picked up, with the radio R (finish() then hushes whatever is still on the air).
+export const endingOver = (t, R) => t >= ENDING.min && radioIdle(R) || t >= ENDING.max;
 
 // The hold's spawns, [{at, type, door, wave}] in time order. Each wave spends its budget: a brute when the budget is at least 6
 // (so 2 is left for the rest), then a floater on a coin flip if 2 is left, then skitterers; its spawns come HOLD.gap s apart,

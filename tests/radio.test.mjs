@@ -64,3 +64,38 @@ import { dawdling } from '../src/game/radio.js';
 test('the dawdle clock runs only in play, never on hold or after Houston picks up (R16)', () => { const F = { hold: null, won: false };
   assert.equal(dawdling('play', F), true); for (const s of ['title', 'opening', 'ending', 'end']) assert.equal(dawdling(s, F), false, s);
   assert.equal(dawdling('play', { ...F, hold: { t: 3 } }), false, 'on hold'); assert.equal(dawdling('play', { ...F, won: true }), false, 'after Houston'); });
+// R18 (a): once Houston has picked up, the fight's events cue nothing but Houston, so no reaction steps on the punchline
+test('after Houston picks up, a pickup, a kill, a hurt or a golf ball queues nothing; Houston itself still queues (R18)', () => {
+  const F = { won: true, hp: 10, state: 'play' }, ev = [{ type: 'pickup', kind: 'tape' }, { type: 'kill', kind: 'br', n: 9 }, { type: 'kill', kind: 'sk', n: 1 }, { type: 'hurt' }, { type: 'golf', n: 2 }, { type: 'boom' }];
+  let R = createRadio(always); radioEvents(R, ev, F); assert.deepEqual(R.q, []);
+  R = createRadio(always); radioEvents(R, [{ type: 'houston' }, ...ev], F); assert.deepEqual(R.q.map(l => l.key), ['houston', 'houston']); });
+// R18 (b): Houston picking up cuts a reaction on the air, so the punchline never waits behind it (a voice whose onend never comes
+// would hold a reaction for its whole fallback); a story line on the air plays on, and with nothing on the air there is nothing to cut
+import { cutReaction } from '../src/game/radio.js'; import { ENDING, endingOver } from '../src/game/hold.js';
+const WON = { won: true, hp: 100, state: 'play' }, PUNCH = SCRIPT.houston[1].slice(2);
+test('Houston picking up cuts a reaction on the air, keyed, talking or keying down, and the Houston pair keys within .6 s; a story line plays on (R18)', () => {
+  for (const voiced of [true, false]) for (const phase of ['key', 'talk', 'unkey']) {
+    const R = createRadio(always); radioCue(R, 'low'); while (R.phase !== phase) stepRadio(R, 1 / 60, voiced, false); assert.equal(R.cur.key, 'low');
+    radioEvents(R, [{ type: 'houston' }], WON); const c0 = R.clock; assert.deepEqual(cutReaction(R).map(a => a.do), ['off'], phase); assert.equal(R.cur, null);
+    const k = run(R, 1, voiced).find(a => a.do === 'key'); assert.equal(k.line.text, SCRIPT.houston[0].slice(2)); assert.ok(k.t - c0 <= .6, `${phase}: keyed ${(k.t - c0).toFixed(3)} s after`); }
+  const Q = createRadio(always); radioCue(Q, 'holding'); run(Q, .5, true); radioEvents(Q, [{ type: 'houston' }], WON);
+  assert.deepEqual(cutReaction(Q), []); assert.equal(Q.cur.key, 'holding', 'a story line is never cut');
+  const E = createRadio(always); assert.deepEqual(cutReaction(E), [], 'idle'); radioCue(E, 'low'); run(E, 4); assert.equal(E.phase, 'gap'); assert.deepEqual(cutReaction(E), [], 'in the gap'); });
+// R18: the reviewer's ending (main.js's order: the fight's events, the radio's step, then on Houston the cut, then the gate) with a
+// voice whose onend never comes, a reaction on the air as Houston picks up, and a pickup and kills during the ending
+test('with a voice whose onend never comes and a reaction on the air at Houston, the punchline keys at once, ends before the end screen, and nothing plays after it (R18)', () => {
+  const R = createRadio(always), dt = 1 / 60, A = []; radioCue(R, 'low'); run(R, .5, true);
+  radioEvents(R, [{ type: 'houston' }], WON); cutReaction(R); let t = 0;
+  for (; !endingOver(t, R); t += dt) { if (Math.abs(t - 3) < dt / 2) radioEvents(R, [{ type: 'pickup', kind: 'tape' }, { type: 'kill', kind: 'br', n: 9 }], WON); for (const a of stepRadio(R, dt, true, false)) A.push({ ...a, t }); }
+  assert.deepEqual(said(A), SCRIPT.houston); const k = A.find(a => a.do === 'key' && a.line.text === PUNCH), u = A.find(a => a.do === 'unkey' && a.line.text === PUNCH);
+  assert.ok(k.t < 6, `punchline keyed at ${k.t.toFixed(2)} s`); assert.ok(u.t < t && t < ENDING.max, `punchline ends at ${u.t.toFixed(2)} s, the ending at ${t.toFixed(2)} s`); });
+// R18 (c): the ending's gate: the end screen comes ENDING.min s after Houston once the radio is idle, else as it goes idle, and
+// at ENDING.max whatever is on the air (finish() then takes the subtitle down: the smoke test checks #sub)
+test('the ending lasts ENDING.min s with the radio idle, waits for a line still on the air, and stops at ENDING.max for a line that never ends (R18)', () => {
+  const R = createRadio(always); assert.ok(radioIdle(R)); assert.equal(endingOver(ENDING.min - .01, R), false); assert.equal(endingOver(ENDING.min, R), true);
+  radioCue(R, 'houston'); assert.equal(endingOver(ENDING.min, R), false, 'the punchline still to come'); assert.equal(endingOver(ENDING.max, R), true);
+  // a voiced line whose onend never comes, long enough that its fallback outlasts the ending
+  const L = createRadio(always, { x: ['H|' + 'a'.repeat(200)] }, { x: { crit: 1 } }), dt = 1 / 30; radioCue(L, 'x'); let t = 0;
+  assert.ok(RADIO.slack * 200 / RADIO.cps + RADIO.pad > ENDING.max);
+  for (; !endingOver(t, L); t += dt) stepRadio(L, dt, true, false);
+  assert.ok(Math.abs(t - ENDING.max) <= dt + 1e-9, `${t}`); assert.equal(L.phase, 'talk', 'still on the air'); });

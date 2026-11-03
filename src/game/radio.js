@@ -42,10 +42,12 @@ export function radioCue(R, key, n) {
   return true;
 }
 
-// The fight's events as cues, one per event. The progress events restart the dawdle clock.
+// The fight's events as cues, one per event. The progress events restart the dawdle clock. Once Houston has picked up only
+// Houston cues, so nothing steps on the punchline (R18).
 export function radioEvents(R, events, F) {
   for (const e of events) {
     const t = e.type;
+    if (F.won && t !== 'houston') continue;
     if (PROGRESS.has(t)) R._idle = 0;
     if (t === 'kill') {
       const K = R._kills, [many, within] = RADIO.multi;
@@ -107,6 +109,10 @@ export function pauseRadio(R) {
   }
   return R.phase === 'unkey' ? over(R) : [];
 }
+
+// Houston picks up: a reaction on the air (keyed, talking or keying down) ends now, so the Houston pair keys after just the gap;
+// a story line plays on, and nothing on the air leaves nothing to cut (R18). The actions, as stepRadio's.
+export function cutReaction(R) { return R.cur && !R.cur.crit && R.phase !== 'gap' && R.phase !== 'idle' ? over(R) : NONE; }
 
 // Nothing on the air or waiting.
 export function radioIdle(R) { return !R.cur && !R.q.length && (R.phase === 'idle' || R.phase === 'gap'); }
