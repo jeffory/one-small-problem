@@ -1,7 +1,7 @@
 // Weapons: flag pole, plasma pistol, scattergun. Pure simulation, no DOM/GPU.
 export const TEAL = [.3, 1, .8], SICK = [.8, 1, .3], MAX_CELLS = 150;
 export const WEAPONS = [
-  { id: 'flag', name: 'FLAG POLE', melee: true, dmg: 25, range: 2.2, cosArc: 0.8, cool: 0.65, knock: 7, cells: 0 },
+  { id: 'flag', name: 'FLAG POLE', melee: true, dmg: 25, range: 2.6, cosArc: .65, band: [-.3, 2.2], cool: 0.65, knock: 7, cells: 0 },
   { id: 'pistol', name: 'PLASMA PISTOL', dmg: 12, cool: 0.18, cells: 1, n: 1, spread: 0, speed: 60, life: 1.2, size: .12, col: TEAL, muzzle: [.15, -.16, .55] },
   { id: 'scatter', name: 'PLASMA SCATTERGUN', dmg: 10, cool: 0.8, cells: 4, n: 5, spread: 0.1, speed: 40, life: 0.5, size: .16, col: TEAL, muzzle: [.15, -.16, .57] },
 ];
@@ -49,12 +49,14 @@ export function fireWeapon(a, eye, basis, aimPoint) {
   }
   return { bolts, w };
 }
-export function meleeTargets(eye, f, targets, range, cosArc) {
-  const out = [];
+// The pole's swing is judged side to side, not along the view: a target is hit when it is within W.range of the feet (past its
+// radius, horizontally), overlaps the height band above the feet, and lies inside the horizontal cone about the facing. Pitch plays no part.
+export function meleeTargets(x, y, z, yaw, targets, W) {
+  const out = [], fx = -Math.sin(yaw), fz = -Math.cos(yaw), lo = y + W.band[0], hi = y + W.band[1];
   for (const t of targets) {
-    const dx = t.x - eye[0], dy = t.y - eye[1], dz = t.z - eye[2], d = Math.hypot(dx, dy, dz);
-    if (d - t.r > range) continue;
-    if (d < 1e-6 || (dx * f[0] + dy * f[1] + dz * f[2]) / d >= cosArc) out.push(t);
+    const dx = t.x - x, dz = t.z - z, h = Math.hypot(dx, dz);
+    if (h - t.r > W.range || t.y + t.r < lo || t.y - t.r > hi) continue;
+    if (h < 1e-6 || (dx * fx + dz * fz) / h >= W.cosArc) out.push(t);
   }
   return out;
 }

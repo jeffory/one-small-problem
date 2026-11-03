@@ -1,6 +1,7 @@
 import test from 'node:test'; import assert from 'node:assert/strict';
 import { WEAPONS, MAX_CELLS, createArsenal, give, selectWeapon, cycleWeapon, coolWeapon, fireWeapon, meleeTargets } from '../src/game/weapons.js';
 import { stepBolts, groundNormal } from '../src/game/bolts.js';
+import { PLAYER } from '../src/game/player.js';
 import { tileLevel } from './helpers.mjs';
 const B = { f: [0, 0, -1], r: [1, 0, 0], u: [0, 1, 0] }, eye = [0, 1.7, 0], aim = [0, 1.7, -50], flat = () => 0;
 const bolt = (o = {}) => ({ x: 0, y: 1, z: 0, vx: 0, vy: 0, vz: -60, dmg: 10, r: .12, life: 2, col: [1, 1, 1], team: 0, src: 0, ...o });
@@ -29,8 +30,14 @@ test('weapon keys and the wheel only reach owned weapons (Review Focus 4)', () =
   assert.equal(selectWeapon(a, 2), false); assert.equal(a.cur, 0); give(a, 2, 4); assert.equal(a.cur, 2); give(a, 0, 0); assert.equal(a.cur, 2); selectWeapon(a, 0);
   cycleWeapon(a, 1); assert.equal(a.cur, 2); cycleWeapon(a, 1); assert.equal(a.cur, 0); cycleWeapon(a, -1); assert.equal(a.cur, 2);
   give(a, 1, 500); assert.equal(a.cells, MAX_CELLS); });
-test('melee reaches targets in front and in range only', () => { const T = [{ x: 0, y: 1.7, z: -1.8, r: .4 }, { x: 0, y: 1.7, z: 1.5, r: .4 }, { x: 0, y: 1.7, z: -4, r: .4 }];
-  assert.deepEqual(meleeTargets(eye, B.f, T, 2.2, 0.8), [T[0]]); });
+test('the pole judges its swing side to side: 2.6 m past the radius, cosArc .65, feet -.3 to eye +.5; pitch plays no part (Plan 5)', () => {
+  const W = WEAPONS[0], d2r = Math.PI / 180, at = (deg, d, y = .55, r = .4) => ({ x: d * Math.sin(deg * d2r), y, z: -d * Math.cos(deg * d2r), r });
+  assert.deepEqual([W.range, W.cosArc, W.band[0], W.band[1], W.dmg, W.cool, W.knock], [2.6, .65, -.3, PLAYER.eye + .5, 25, .65, 7]);
+  const hit = [at(0, 1.2), at(40, 1.2), at(-45, 1.2), at(0, 2.95), at(0, 1.5, -.6), at(0, 1.5, 2.5), at(0, 0)];
+  const miss = [at(180, 1.2), at(90, 1.2), at(55, 1.2), at(0, 3.05), at(0, 1.5, -.8), at(0, 1.5, 2.7)];
+  assert.deepEqual(meleeTargets(0, 0, 0, 0, [...hit, ...miss], W), hit);
+  const left = { x: -1.2, y: .55, z: 0, r: .4 }; assert.deepEqual(meleeTargets(0, 0, 0, Math.PI / 2, [left], W), [left]);
+  const up = { x: 5, y: 10.55, z: -1.2, r: .4 }; assert.deepEqual(meleeTargets(5, 10, 0, 0, [up], W), [up]); });
 test('a fast bolt cannot tunnel through a small target at 20 fps (Review Focus 3)', () => { const bs = [bolt()], T = [{ x: 0, y: 1, z: -10, r: .3, id: 5 }];
   let h = []; for (let i = 0; i < 20 && !h.length; i++) h = stepBolts(bs, 0.05, flat, T); assert.equal(h[0].t, T[0]); assert.equal(bs.length, 0); });
 test('bolts hit the ground, expire, and never hit their shooter', () => {

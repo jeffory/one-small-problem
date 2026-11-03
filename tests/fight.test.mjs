@@ -1,6 +1,6 @@
 import test from 'node:test'; import assert from 'node:assert/strict';
-import { sampleGround } from '../src/gen/surface.js'; import { generateWorld } from '../src/gen/world.js'; import { PLAYER } from '../src/game/player.js'; import { give } from '../src/game/weapons.js';
-import { createFight, stepFight, hurtPlayer, PICKUP, CANISTER, DEATH_TIME } from '../src/game/fight.js'; import { ALIENS } from '../src/game/aliens.js';
+import { sampleGround } from '../src/gen/surface.js'; import { generateWorld } from '../src/gen/world.js'; import { PLAYER } from '../src/game/player.js'; import { give, WEAPONS } from '../src/game/weapons.js';
+import { createFight, stepFight, hurtPlayer, PICKUP, CANISTER, DEATH_TIME } from '../src/game/fight.js'; import { ALIENS, createAlien } from '../src/game/aliens.js';
 const W = generateWorld('APOLLO-4471'), idle = { fwd: 0, strafe: 0, run: false, jump: false, fire: false, use: false, weapon: -1, wheel: 0 };
 const run = (F, inp, secs, dt = 1 / 60) => { for (let t = 0; t < secs; t += dt) stepFight(F, typeof inp === 'function' ? inp(t) : inp, dt); };
 const put = (F, x, z) => { Object.assign(F.player, { x, z, y: F.lv.ground(x, z), vx: 0, vy: 0, vz: 0, kx: 0, kz: 0 }); };
@@ -125,3 +125,16 @@ test('an alien finished by another alien\'s bolt is not your kill: KILLS and the
   shootAt(F, b); run(F, idle, .2); assert.equal(b.state, 'dead'); assert.equal(F.kills, 1); assert.equal(kills()[1].team, undefined); assert.equal(kills()[1].n, 1);
   const c = F.canisters[0], d = F.aliens.at(-1), n = kills().length; Object.assign(d, { x: c.x + 2, z: c.z, y: sampleGround(W, c.x + 2, c.z), hp: 1 }); shootAt(F, c, 20); run(F, idle, 1.5);
   const blast = kills().slice(n); assert.equal(d.state, 'dead'); assert.ok(blast.length >= 1 && blast.every(e => !e.team), 'the blast kills count'); assert.equal(F.kills, 1 + blast.length); });
+
+// A fight on stub ground G (`stub`, shared with Task 2) with the player at the origin, level (pitch 0), facing -z, holding the pole, and skitterers at spots
+// [x, z] facing the player; one swing, then each skitterer's hp.
+const stub = (G, x = 0) => { const F = createFight(W); F.lv.ground = F._ctx.ground = G; F.aliens.length = F.canisters.length = 0;
+  Object.assign(F.player, { x, y: 0, z: 0, vx: 0, vy: 0, vz: 0, kx: 0, kz: 0 }); return F; }; // (pre-flight F10)
+const swing = (G, spots) => { const F = stub(G), p = F.player; Object.assign(p, { yaw: 0, pitch: 0, onGround: true }); give(F.ars, 0, 0);
+  const sk = spots.map(([x, z], i) => { const a = createAlien({ type: 'sk', x, y: G(x, z), z }, 900 + i, F.encs[0]); a.yaw = Math.atan2(-x, -z); a.area = 0; F.aliens.push(a); return a; });
+  stepFight(F, { ...idle, fire: true }, 1 / 60); return sk.map(a => a.hp); };
+test('a level pole swing hits a skitterer at your feet 1.2 m ahead and one 40 deg aside, not one behind (Plan 5)', () => {
+  const r = 40 * Math.PI / 180, hurt = ALIENS.sk.hp - WEAPONS[0].dmg;
+  assert.deepEqual(swing(() => 0, [[0, -1.2], [1.2 * Math.sin(r), -1.2 * Math.cos(r)], [0, 1.2]]), [hurt, hurt, ALIENS.sk.hp]); });
+test('a skitterer 1.5 m ahead and 1 m down a slope is hit by a level swing (Review Focus 5)', () => {
+  assert.deepEqual(swing((x, z) => (z < 0 ? .7 * z : 0), [[0, -1.5]]), [ALIENS.sk.hp - WEAPONS[0].dmg]); });

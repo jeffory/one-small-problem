@@ -276,7 +276,7 @@ function fire(F) {
     T.push({ x: q[0], y: q[1], z: q[2], r: q[3], a });
   }
   for (const c of F.canisters) T.push({ x: c.x, y: c.y + CAN_Y, z: c.z, r: CANISTER.radius, c });
-  for (const t of meleeTargets(eye, f, T, W.range, W.cosArc)) {
+  for (const t of meleeTargets(p.x, p.y, p.z, p.yaw, T, W)) {
     if (t.a) { F.events.push({ type: 'hit' }); hurtAlien(t.a, W.dmg, f[0] * W.knock, f[2] * W.knock); burst(F, 'goo', t.x, t.y, t.z, 6, 1.2, .5, 2, 8, 8); }
     else t.c.hp -= W.dmg;
   }
