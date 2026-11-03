@@ -14,15 +14,17 @@ import { MAX_PARTS } from './fight.js';
 // The beats; times (s) count from the beat each follows. alt: the lander's height (m) as the descent starts; descent: the start to
 // touchdown; dust: the height (m) under which the engine sprays dust; hatch: touchdown to the hatch opening, which swings over hatchT;
 // cabin, crawl, climb: your speeds (m/s) in the cabin, crawling out to the porch, and down the ladder; far, near: where the flag can
-// go (m from the lander's centre); nag, auto: your first step to Houston's nudge and to Houston planting it for you; talk: your first
-// step to the earliest the aliens' wait can start, so the step line is over before the flag's (R11); company: that wait, from the
-// plant, to the aliens, who rise over rise, then speak (line), wave and fire, their bolts flying for flight; from the blast, flash
-// (held, then faded over), down (the knock-down: look, its pitch (rad) up at Earth, and downEye, its eye (m), back to PLAYER.eye over
-// getUp), tele (the telemetry line) and title (the drop); aliens: the actors d m down the route, side m apart across it; parts: the
-// most particles at once.
-export const OPEN = { alt: 24, descent: 9, dust: 5, hatch: 5.5, hatchT: .8, cabin: 1.2, crawl: 1, climb: 1.2, near: 15, far: 3.5, nag: 15, auto: 30,
+// go (m from the lander's centre); plant: where E puts it, m ahead of you and m left of your view line, so its cloth (which hangs
+// toward world +x) stays off the view's centre and the company (R12); nag, auto: your first step to Houston's nudge and to Houston
+// planting it for you; talk: your first step to the earliest the aliens' wait can start, so the step line is over before the flag's
+// (R11); company: that wait, from the plant, to the aliens, who rise over rise, then speak (line), wave and fire, their bolts flying
+// for flight; from the blast, flash (held, then faded over), down (the knock-down: look, its pitch (rad) up at Earth, and downEye, its
+// eye (m), back to PLAYER.eye over getUp), tele (the telemetry line) and title (the drop); aliens: the actors d m from where you
+// planted the flag, turn rad right of the way you faced then (so the brute's wave is seen past the flag, R12), side m apart across
+// that line; parts: the most particles at once.
+export const OPEN = { alt: 24, descent: 9, dust: 5, hatch: 5.5, hatchT: .8, cabin: 1.2, crawl: 1, climb: 1.2, near: 15, far: 3.5, plant: { ahead: 1, left: 1 }, nag: 15, auto: 30,
   talk: 3.5, company: 2.5, rise: 1.5, line: 1, wave: 1.5, fire: 4.5, flight: .45, flash: [.12, 1.2], down: 2, look: .75, downEye: .3, getUp: .7,
-  tele: .6, title: 5.5, aliens: { d: 40, side: 6, types: ['sk', 'br', 'fl'] }, parts: 500 };
+  tele: .6, title: 5.5, aliens: { d: 40, turn: .35, side: 6, types: ['sk', 'br', 'fl'] }, parts: 500 };
 // The way out, [x, y, z, eye] in lander space (y the feet): the cabin, the hatch, the porch, the foot of the ladder.
 export const EGRESS = [[0, 2.5, .2, 1.05], [0, 2.5, 1.45, .45], [0, 2.45, 2.0, 1.7], [0, 0, 3.9, 1.7]];
 
@@ -66,11 +68,12 @@ export function createOpening(world, F) {
   const O = { phase: 'descent', t: 0, hatch: 0, planted: false, prompt: '', lock: false, flash: 0, events: [], wreck, rng: makeRng(world.seed + '/opening'),
     view: { player: p, state: 'play', deadT: 0, ars: { cur: -1 }, shotT: 9, hurtT: 0, lv: F.lv, flag: F.flag, aliens: [], bolts: [], parts: [], booms: [],
       decals: [], pickups: [], canisters: [], balls: [], glow: [], eye: EGRESS[0][3], flash: 0 },
-    // _u: down the route (lander +z); _x: across it (lander +x); _C: the cabin's centre; _path, _S: the way out and its arc lengths;
-    // _arc: how far along it you are; _ox, _oz: where you are on the cabin's disc; _dust, _plume: spray owed; the beats' times
-    // (null until known): _groundT your first step, _compT the aliens, _blastT the blast; _pl, _cl: the plume and cabin lights.
-    _world: world, _F: F, _L: L, _ahead: ahead, _u: [s, c], _x: [c, -s], _C: at(CABIN), _path: path, _S: S, _arc: 0, _ox: 0, _oz: 0,
-    _dust: 0, _plume: 0, _groundT: null, _compT: null, _blastT: null,
+    // _u: down the route (lander +z); _C: the cabin's centre; _path, _S: the way out and its arc lengths; _arc: how far along it you
+    // are; _ox, _oz: where you are on the cabin's disc; _dust, _plume: spray owed; the beats' times (null until known): _groundT your
+    // first step, _compT the aliens, _blastT the blast; _at: where you stood and faced as the flag went in ([x, z, yaw]); _pl, _cl: the
+    // plume and cabin lights.
+    _world: world, _F: F, _L: L, _ahead: ahead, _u: [s, c], _C: at(CABIN), _path: path, _S: S, _arc: 0, _ox: 0, _oz: 0,
+    _dust: 0, _plume: 0, _groundT: null, _compT: null, _blastT: null, _at: null,
     _pl: { x: L.x, y: 0, z: L.z, s: gw.plume.s, r: 0, g: 0, b: 0 }, _cl: { x: 0, y: 0, z: 0, s: gw.cabin.s, r: gw.cabin.col[0], g: gw.cabin.col[1], b: gw.cabin.col[2] } };
   inCabin(O);
   return O;
@@ -193,31 +196,36 @@ function eye(O, t) {
 
 // --- the flag ---
 
-// In range, E plants it a metre ahead. Houston nags at OPEN.nag and plants it at OPEN.auto: a metre ahead in range, else at
-// the flag spot, so you plant near the lander and see the blast, and the opening never stalls. The aliens come OPEN.company after
-// the plant, but never before OPEN.talk + OPEN.company after your first step: the radio speaks its story lines in turn, and a quick
-// plant would otherwise push "are we expecting anyone?" past the blast and the title line over 3 s past the stamp (R11).
+// In range, E plants it OPEN.plant ahead and to the left of your view line (R12). Houston nags at OPEN.nag and plants it at
+// OPEN.auto: there in range, else at the flag spot, so you plant near the lander and see the blast, and the opening never stalls.
+// The aliens come OPEN.company after the plant, but never before OPEN.talk + OPEN.company after your first step: the radio speaks
+// its story lines in turn, and a quick plant would otherwise push "are we expecting anyone?" past the blast and the title line over
+// 3 s past the stamp (R11).
 function flag(O, input, beat, t) {
   const p = O._F.player, L = O._L, d = Math.hypot(p.x - L.x, p.z - L.z), ok = d >= OPEN.far && d <= OPEN.near;
   if (ok) O.prompt = '[E] plant the flag';
-  const ahead = () => plant(O, p.x - Math.sin(p.yaw), p.z - Math.cos(p.yaw), t);
+  // forward is (-sin yaw, -cos yaw), left (-cos yaw, sin yaw)
+  const { ahead: A, left: Lf } = OPEN.plant, s = Math.sin(p.yaw), c = Math.cos(p.yaw), ahead = () => plant(O, p.x - s * A - c * Lf, p.z - c * A + s * Lf, t);
   if (ok && input.use) { ahead(); say(O, 'radio', 'planted'); return; }
   if (beat(O._groundT + OPEN.nag)) say(O, 'radio', 'nag');
   if (t >= O._groundT + OPEN.auto) { say(O, 'radio', 'autoplant'); if (ok) ahead(); else { const f = flagSpot(O._world); plant(O, f.x, f.z, t); } }
 }
 function plant(O, x, z, t) {
-  const F = O._F;
+  const F = O._F, p = F.player;
+  O._at = [p.x, p.z, p.yaw];
   F.flag.x = x; F.flag.z = z; F.flag.y = drawnGround(O._world, x, z); F.flag.held = false; // on the dust, not the deck's collision ramp (R10)
   O.planted = true; O.prompt = ''; O._compT = Math.max(t, O._groundT + OPEN.talk) + OPEN.company;
 }
 
 // --- company ---
 
-// Three scripted actors (not fight aliens) OPEN.aliens.d down the route, side by side across it, facing the lander.
+// Three scripted actors (not fight aliens) OPEN.aliens.d from where you planted the flag, OPEN.aliens.turn to the right of the way
+// you faced (yaw turns left, so right is yaw - turn), side by side across that line with the brute in the middle, facing the lander.
 function company(O) {
-  const { d, side, types } = OPEN.aliens, L = O._L, [ux, uz] = O._u, [xx, xz] = O._x, G = O._F.lv.ground;
+  const { d, turn, side, types } = OPEN.aliens, L = O._L, [px, pz, yaw] = O._at, a0 = yaw - turn, G = O._F.lv.ground;
+  const ux = -Math.sin(a0), uz = -Math.cos(a0), xx = Math.cos(a0), xz = -Math.sin(a0); // along the line, and its right
   types.forEach((type, k) => {
-    const x = L.x + ux * d + xx * side * (k - 1), z = L.z + uz * d + xz * side * (k - 1), a = createAlien({ type, x, y: G(x, z) + rise(type)[0], z }, 900 + k, null);
+    const x = px + ux * d + xx * side * (k - 1), z = pz + uz * d + xz * side * (k - 1), a = createAlien({ type, x, y: G(x, z) + rise(type)[0], z }, 900 + k, null);
     a.yaw = Math.atan2(L.x - x, L.z - z);
     O.view.aliens.push(a);
   });
