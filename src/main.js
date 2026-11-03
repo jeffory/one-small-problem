@@ -136,13 +136,14 @@ function boot() {
   // The radio's actions: the subtitle and its keyed dot, the Quindar tones with their static, the noise bed under the line, the
   // music ducked while a line is on, and the voice when the line has one (a voice that fails, at once or by its onerror, leaves
   // the line up for its unvoiced reading time, R15). off leaves out key(false), which would sound the closing tone, so a line cut
-  // short by a pause stops dead (pre-flight F11).
+  // short by a pause stops dead (pre-flight F11); it keeps the duck while a story line waits, so the music doesn't swell between
+  // the lines of a sequence, but not for a reaction alone (R23).
   function radioDo(R, acts) {
     for (const { do: d, line } of acts) {
       if (d === 'key') { hud.sub(WHO[line.who] + ': ' + line.text, true); audio.key(true); audio.duck(true); audio.bed(true); }
       else if (d === 'say') { if (line.voiced && !speech.say(line, failed => radioDone(R, line.id, failed))) radioDone(R, line.id, true); }
       else if (d === 'unkey') { hud.sub(WHO[line.who] + ': ' + line.text, false); audio.key(false); audio.bed(false); }
-      else { hud.sub(''); audio.duck(false); audio.bed(false); }
+      else { hud.sub(''); audio.duck(R.q.some(l => l.crit)); audio.bed(false); }
     }
   }
   // A new level gets its own scene; the old one's GPU meshes are freed.

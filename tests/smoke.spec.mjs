@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test'; import { pathToFileURL } from 'node:url'; import { resolve } from 'node:path';
 import { generateWorld } from '../src/gen/world.js'; import { checksumWorld } from '../src/gen/checksum.js';
-import { HELP_TIME } from '../src/ui/hud.js'; import { fmtTime } from '../src/ui/score.js'; import { OPEN } from '../src/game/opening.js'; import { ENDING } from '../src/game/hold.js';
+import { HELP_TIME } from '../src/ui/hud.js'; import { fmtTime } from '../src/ui/score.js'; import { OPEN } from '../src/game/opening.js'; import { ENDING } from '../src/game/hold.js'; import { CUES } from '../src/game/script.js';
 export const URLS = [['file', pathToFileURL(resolve('dist/index.html')).href], ['http', 'http://localhost:4173/index.html']];
 // Benign Firefox parser note about the packed binary payload when the server's utf-8 header overrides the page's iso-8859-15 meta; real decoding failures are caught by the ready check.
 const BENIGN = /byte stream was erroneous according to the character encoding/i;
@@ -357,3 +357,15 @@ test('at ENDING.max the end screen comes whatever is still on the air, and takes
   const r = await throughEnding(page, 3), last = r.s.at(-1); // still talking at ENDING.max
   expect(Math.abs(r.T - ENDING.max)).toBeLessThanOrEqual(2 / 30); expect(last.line).not.toBe(null); expect(last.sub).not.toBe('');
   expect([r.state, r.sub, r.end]).toEqual(['end', '', 'flex']); expect(errors).toEqual([]); });
+// R23: the music stays ducked between the lines of a sequence: in the gaps of the switchboard's three-line intro (after its first or
+// second line, the rest still waiting) the duck holds. Between lines with no story line waiting (nothing, or a reaction alone) it is
+// off: the duck is set as a line goes off, and a story line can only leave the queue by keying up. One evaluate of 1/30 s steps,
+// 40 s on hold, so no frame falls between samples.
+test('the music stays ducked in the gaps between the switchboard intro\'s lines, and not for a reaction alone (R23)', async ({ page }) => {
+  await noVoices(page); const errors = watchErrors(page); await start(page); await toComms(page); await onHold(page);
+  const s = await page.evaluate(() => { const o = window.ospTest, s = []; o.god(true);
+    for (let i = 0; i < 30 * 40; i++) { o.ff(1 / 30); const r = o.radio(); s.push({ line: r.line, q: r.queued, duck: o.audio().duck }); } return s; });
+  const story = k => !!(CUES[k].seq || CUES[k].crit), gaps = s.filter(x => !x.line && [1, 2].includes(x.q.filter(k => k === 'hold').length));
+  expect(gaps.length).toBeGreaterThan(20); for (const g of gaps) expect(g.duck, JSON.stringify(g)).toBe(true); // two gaps of RADIO.gap s
+  const free = s.filter(x => !x.line && !x.q.some(story)); expect(free.length).toBeGreaterThan(0); for (const g of free) expect(g.duck, JSON.stringify(g)).toBe(false);
+  expect(errors).toEqual([]); });
