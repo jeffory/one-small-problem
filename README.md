@@ -32,7 +32,7 @@ The title screen runs a demo bot. Choose **New Game** to start. A full run, both
 | Left mouse | Fire |
 | Esc | Pause and settings |
 
-You start with only the flag pole. Every other weapon comes from the aliens you kill, and they drop most of your ammo and some repair tape too (the first alien you kill always drops tape); a few cell packs and repair tapes lie around. Five of Alan Shepard's golf balls are hidden on each Moon.
+You start with only the flag pole. Every other weapon comes from the aliens you kill, and they drop most of your ammo and some repair tape too (the first alien you kill always drops tape); a few cell packs and repair tapes lie around. Seven of Alan Shepard's golf balls are hidden in each run: three on the surface, two in the base, one in the prison's evidence locker and one along the dash to the rescue ship. Walk over one to pick it up; the end screen shows how many you found.
 
 The pause menu has resolution, palette, volume, mouse sensitivity and invert Y. Settings are saved in the browser.
 
