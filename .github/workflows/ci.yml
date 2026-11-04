@@ -1,7 +1,8 @@
 # Builds the single-file game and runs every test suite. Three jobs run in parallel:
 #   build  - unit tests, then the release build (which fails over the 131,072-byte cap); uploads the playable dist/index.html
-#   soak   - 1000 generated seeds checked, and the immortal bot playing 60 seeds to the comms room
+#   soak   - 1000 generated seeds checked, and the immortal bot playing 60 seeds through both levels to boarding
 #   smoke  - Playwright in Chromium (SwiftShader WebGL) and Firefox against the release build
+# On main only, deploy then publishes the build job's index.html to GitHub Pages once all three have passed.
 name: CI
 
 on:
@@ -42,6 +43,15 @@ jobs:
           path: dist/index.html
           archive: false
           if-no-files-found: error
+      # Only the release page goes to Pages (dist/ can also hold the unminified dev.html)
+      - name: Stage the page for GitHub Pages
+        if: github.ref == 'refs/heads/main'
+        run: mkdir -p _site && cp dist/index.html _site/
+      - name: Upload the Pages artifact
+        if: github.ref == 'refs/heads/main'
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: _site/
 
   soak:
     name: Seed and bot soaks
@@ -86,3 +96,21 @@ jobs:
           path: test-results/
           if-no-files-found: ignore
           retention-days: 7
+
+  # Publishes https://jeffory.github.io/one-small-problem/ from the build job's artifact, and only once every suite has passed on the
+  # same commit. A newer push to main cancels this run like any other; that push's own run deploys once its tests pass.
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: [build, soak, smoke]
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v5
